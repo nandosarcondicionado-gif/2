@@ -1,11 +1,8 @@
 "use client";
 
 import {
-  ArrowLeft,
   Building2,
   CalendarDays,
-  CheckCircle2,
-  ClipboardCheck,
   Edit,
   History,
   MapPin,
@@ -17,10 +14,18 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+type Client = {
+  id: string;
+  nome: string;
+  cidade: string;
+};
 
 type Equipment = {
-  id: number;
+  id: string;
+  cliente_id: string;
   client: string;
   city: string;
   location: string;
@@ -35,8 +40,8 @@ type Equipment = {
 };
 
 type Maintenance = {
-  id: number;
-  equipmentId: number;
+  id: string;
+  equipamento_id: string;
   date: string;
   type: string;
   technician: string;
@@ -48,123 +53,34 @@ type Maintenance = {
   status: "Concluída" | "Em andamento";
 };
 
-const initialEquipment: Equipment[] = [
-  {
-    id: 1,
-    client: "João da Silva",
-    city: "Araraquara",
-    location: "Quarto principal",
-    brand: "LG",
-    model: "Dual Inverter",
-    btu: "12.000",
-    type: "Split Inverter",
-    serial: "LG123456",
-    lastService: "10/08/2026",
-    nextService: "10/11/2026",
-    status: "Ativo",
-  },
-  {
-    id: 2,
-    client: "João da Silva",
-    city: "Araraquara",
-    location: "Sala",
-    brand: "Samsung",
-    model: "WindFree",
-    btu: "18.000",
-    type: "Split Inverter",
-    serial: "SM789456",
-    lastService: "05/07/2026",
-    nextService: "05/10/2026",
-    status: "Ativo",
-  },
-  {
-    id: 3,
-    client: "Clínica Saúde",
-    city: "Araraquara",
-    location: "Recepção",
-    brand: "Daikin",
-    model: "EcoSwing",
-    btu: "24.000",
-    type: "Split",
-    serial: "DK456789",
-    lastService: "15/06/2026",
-    nextService: "15/09/2026",
-    status: "Manutenção",
-  },
-];
-
-const initialMaintenance: Maintenance[] = [
-  {
-    id: 1,
-    equipmentId: 1,
-    date: "10/08/2026",
-    type: "Manutenção preventiva",
-    technician: "Carlos Técnico",
-    problem: "Equipamento apresentando acúmulo de sujeira.",
-    service:
-      "Limpeza completa, higienização dos filtros e verificação geral.",
-    parts: "Nenhuma",
-    value: "R$ 180,00",
-    observations:
-      "Equipamento funcionando normalmente após a manutenção.",
-    status: "Concluída",
-  },
-  {
-    id: 2,
-    equipmentId: 1,
-    date: "10/05/2026",
-    type: "Manutenção preventiva",
-    technician: "Carlos Técnico",
-    problem: "Revisão periódica.",
-    service:
-      "Limpeza dos filtros, evaporadora e condensadora.",
-    parts: "Nenhuma",
-    value: "R$ 150,00",
-    observations: "Sem problemas encontrados.",
-    status: "Concluída",
-  },
-  {
-    id: 3,
-    equipmentId: 3,
-    date: "15/06/2026",
-    type: "Manutenção corretiva",
-    technician: "Marcos Técnico",
-    problem:
-      "Equipamento não estava resfriando adequadamente.",
-    service:
-      "Verificação do sistema e correção do problema.",
-    parts: "Capacitor",
-    value: "R$ 320,00",
-    observations:
-      "Equipamento encaminhado para acompanhamento.",
-    status: "Concluída",
-  },
-];
-
-function formatMaintenanceDate(date: string) {
-  if (!date) {
-    return "";
-  }
-
-  if (date.includes("/")) {
-    return date;
-  }
+function formatDate(date: string | null) {
+  if (!date) return "Não informado";
 
   const parts = date.split("-");
 
-  if (parts.length !== 3) {
-    return date;
-  }
+  if (parts.length !== 3) return date;
 
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
-export default function EquipamentosPage() {
-  const [equipment, setEquipment] =
-    useState<Equipment[]>(initialEquipment);
+function formatMoney(value: string) {
+  const number = Number(value || 0);
 
-  const [maintenance, setMaintenance] =
-    useState<Maintenance[]>(initialMaintenance);
+  return number.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+export default function EquipamentosPage() {
+  const supabase = createClient();
+
+  const [clients, setClients] = useState<Client[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [maintenance, setMaintenance] = useState<Maintenance[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [search, setSearch] = useState("");
 
@@ -182,9 +98,8 @@ export default function EquipamentosPage() {
   const [maintenanceEquipment, setMaintenanceEquipment] =
     useState<Equipment | null>(null);
 
-  // FORMULÁRIO EQUIPAMENTO
-  const [client, setClient] = useState("");
-  const [city, setCity] = useState("Araraquara");
+  // EQUIPAMENTO
+  const [clientId, setClientId] = useState("");
   const [location, setLocation] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -194,51 +109,142 @@ export default function EquipamentosPage() {
   const [status, setStatus] =
     useState<Equipment["status"]>("Ativo");
 
-  // FORMULÁRIO MANUTENÇÃO
-  const [maintenanceDate, setMaintenanceDate] =
-    useState("");
-
+  // MANUTENÇÃO
+  const [maintenanceDate, setMaintenanceDate] = useState("");
   const [maintenanceType, setMaintenanceType] =
     useState("Manutenção preventiva");
-
   const [maintenanceTechnician, setMaintenanceTechnician] =
     useState("");
-
   const [maintenanceProblem, setMaintenanceProblem] =
     useState("");
-
   const [maintenanceService, setMaintenanceService] =
     useState("");
-
   const [maintenanceParts, setMaintenanceParts] =
     useState("");
-
   const [maintenanceValue, setMaintenanceValue] =
     useState("");
-
   const [maintenanceObservations, setMaintenanceObservations] =
     useState("");
-
   const [maintenanceStatus, setMaintenanceStatus] =
     useState<Maintenance["status"]>("Concluída");
 
-  const filteredEquipment = equipment.filter((item) => {
-    const term = search.toLowerCase().trim();
+  async function loadData() {
+    setLoading(true);
 
-    return (
-      item.client.toLowerCase().includes(term) ||
-      item.city.toLowerCase().includes(term) ||
-      item.brand.toLowerCase().includes(term) ||
-      item.model.toLowerCase().includes(term) ||
-      item.serial.toLowerCase().includes(term) ||
-      item.location.toLowerCase().includes(term) ||
-      item.type.toLowerCase().includes(term)
+    const [clientsResult, equipmentResult, maintenanceResult] =
+      await Promise.all([
+        supabase
+          .from("clientes")
+          .select("id,nome,cidade")
+          .order("nome"),
+
+        supabase
+          .from("equipamentos")
+          .select(`
+            id,
+            cliente_id,
+            ambiente,
+            marca,
+            modelo,
+            btu,
+            tipo,
+            numero_serie,
+            ultima_manutencao,
+            proxima_manutencao,
+            status,
+            clientes (
+              nome,
+              cidade
+            )
+          `)
+          .order("created_at", {
+            ascending: false,
+          }),
+
+        supabase
+          .from("manutencoes_equipamentos")
+          .select("*")
+          .order("data", {
+            ascending: false,
+          }),
+      ]);
+
+    if (clientsResult.error) {
+      console.error(clientsResult.error);
+    }
+
+    if (equipmentResult.error) {
+      console.error(equipmentResult.error);
+      alert(
+        "Erro ao carregar os equipamentos: " +
+          equipmentResult.error.message
+      );
+    }
+
+    if (maintenanceResult.error) {
+      console.error(maintenanceResult.error);
+    }
+
+    setClients(
+      (clientsResult.data || []) as Client[]
     );
-  });
 
-  function clearForm() {
-    setClient("");
-    setCity("Araraquara");
+    const mappedEquipment: Equipment[] =
+      (equipmentResult.data || []).map(
+        (item: any) => ({
+          id: item.id,
+          cliente_id: item.cliente_id,
+          client: item.clientes?.nome || "Cliente não encontrado",
+          city: item.clientes?.cidade || "",
+          location: item.ambiente || "",
+          brand: item.marca || "",
+          model: item.modelo || "",
+          btu: item.btu || "",
+          type: item.tipo || "",
+          serial: item.numero_serie || "Não informado",
+          lastService: formatDate(
+            item.ultima_manutencao
+          ),
+          nextService: formatDate(
+            item.proxima_manutencao
+          ),
+          status: item.status,
+        })
+      );
+
+    setEquipment(mappedEquipment);
+
+    const mappedMaintenance: Maintenance[] =
+      (maintenanceResult.data || []).map(
+        (item: any) => ({
+          id: item.id,
+          equipamento_id: item.equipamento_id,
+          date: formatDate(item.data),
+          type: item.tipo,
+          technician: item.tecnico,
+          problem:
+            item.problema || "Não informado",
+          service: item.servico,
+          parts: item.pecas || "Nenhuma",
+          value: formatMoney(item.valor),
+          observations:
+            item.observacoes ||
+            "Nenhuma observação.",
+          status: item.status,
+        })
+      );
+
+    setMaintenance(mappedMaintenance);
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  function clearEquipmentForm() {
+    setClientId("");
     setLocation("");
     setBrand("");
     setModel("");
@@ -250,22 +256,23 @@ export default function EquipamentosPage() {
   }
 
   function openNewEquipment() {
-    clearForm();
+    clearEquipmentForm();
     setShowForm(true);
   }
 
   function openEdit(item: Equipment) {
     setEditingEquipment(item);
 
-    setClient(item.client);
-    setCity(item.city);
+    setClientId(item.cliente_id);
     setLocation(item.location);
     setBrand(item.brand);
     setModel(item.model);
     setBtu(item.btu);
     setType(item.type);
     setSerial(
-      item.serial === "Não informado" ? "" : item.serial
+      item.serial === "Não informado"
+        ? ""
+        : item.serial
     );
     setStatus(item.status);
 
@@ -277,149 +284,144 @@ export default function EquipamentosPage() {
     setShowDetails(true);
   }
 
-  function saveEquipment(
+  async function saveEquipment(
     event: React.FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
     if (
-      !client.trim() ||
+      !clientId ||
       !brand.trim() ||
       !model.trim()
     ) {
+      alert(
+        "Selecione um cliente e informe marca e modelo."
+      );
       return;
     }
+
+    setSaving(true);
+
+    const data = {
+      cliente_id: clientId,
+      ambiente: location.trim() || null,
+      marca: brand.trim(),
+      modelo: model.trim(),
+      btu,
+      tipo: type,
+      numero_serie: serial.trim() || null,
+      status,
+    };
 
     if (editingEquipment) {
-      setEquipment((current) =>
-        current.map((item) =>
-          item.id === editingEquipment.id
-            ? {
-                ...item,
-                client: client.trim(),
-                city,
-                location: location.trim(),
-                brand: brand.trim(),
-                model: model.trim(),
-                btu,
-                type,
-                serial:
-                  serial.trim() || "Não informado",
-                status,
-              }
-            : item
-        )
-      );
+      const { error } = await supabase
+        .from("equipamentos")
+        .update(data)
+        .eq("id", editingEquipment.id);
 
-      if (selectedEquipment?.id === editingEquipment.id) {
-        setSelectedEquipment({
-          ...editingEquipment,
-          client: client.trim(),
-          city,
-          location: location.trim(),
-          brand: brand.trim(),
-          model: model.trim(),
-          btu,
-          type,
-          serial:
-            serial.trim() || "Não informado",
-          status,
-        });
+      if (error) {
+        alert(
+          "Erro ao atualizar equipamento: " +
+            error.message
+        );
+        setSaving(false);
+        return;
       }
     } else {
-      const newEquipment: Equipment = {
-        id: Date.now(),
-        client: client.trim(),
-        city,
-        location: location.trim(),
-        brand: brand.trim(),
-        model: model.trim(),
-        btu,
-        type,
-        serial:
-          serial.trim() || "Não informado",
-        lastService: "Ainda não realizado",
-        nextService: "A definir",
-        status,
-      };
+      const { error } = await supabase
+        .from("equipamentos")
+        .insert(data);
 
-      setEquipment((current) => [
-        newEquipment,
-        ...current,
-      ]);
+      if (error) {
+        alert(
+          "Erro ao cadastrar equipamento: " +
+            error.message
+        );
+        setSaving(false);
+        return;
+      }
     }
 
-    clearForm();
+    await loadData();
+
+    clearEquipmentForm();
     setShowForm(false);
+    setSaving(false);
   }
 
-  function deleteEquipment(id: number) {
+  async function deleteEquipment(id: string) {
     const item = equipment.find(
-      (equipmentItem) => equipmentItem.id === id
+      (equipmentItem) =>
+        equipmentItem.id === id
     );
 
-    if (!item) {
-      return;
-    }
+    if (!item) return;
 
     const confirmed = window.confirm(
       `Deseja realmente excluir o equipamento ${item.brand} ${item.model}?`
     );
 
-    if (!confirmed) {
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("equipamentos")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      alert(
+        "Erro ao excluir equipamento: " +
+          error.message
+      );
       return;
     }
-
-    setEquipment((current) =>
-      current.filter(
-        (equipmentItem) =>
-          equipmentItem.id !== id
-      )
-    );
-
-    setMaintenance((current) =>
-      current.filter(
-        (maintenanceItem) =>
-          maintenanceItem.equipmentId !== id
-      )
-    );
 
     if (selectedEquipment?.id === id) {
       setSelectedEquipment(null);
       setShowDetails(false);
     }
+
+    await loadData();
   }
 
-  function toggleStatus(item: Equipment) {
+  async function toggleStatus(item: Equipment) {
     const newStatus: Equipment["status"] =
       item.status === "Ativo"
         ? "Manutenção"
         : "Ativo";
 
-    setEquipment((current) =>
-      current.map((equipmentItem) =>
-        equipmentItem.id === item.id
-          ? {
-              ...equipmentItem,
-              status: newStatus,
-            }
-          : equipmentItem
-      )
-    );
-
-    if (selectedEquipment?.id === item.id) {
-      setSelectedEquipment({
-        ...item,
+    const { error } = await supabase
+      .from("equipamentos")
+      .update({
         status: newStatus,
-      });
+      })
+      .eq("id", item.id);
+
+    if (error) {
+      alert(
+        "Erro ao alterar status: " +
+          error.message
+      );
+      return;
     }
+
+    await loadData();
+
+    const updated = {
+      ...item,
+      status: newStatus,
+    };
+
+    setSelectedEquipment(updated);
   }
 
   function openMaintenanceForm(item: Equipment) {
     setMaintenanceEquipment(item);
 
     setMaintenanceDate("");
-    setMaintenanceType("Manutenção preventiva");
+    setMaintenanceType(
+      "Manutenção preventiva"
+    );
     setMaintenanceTechnician("");
     setMaintenanceProblem("");
     setMaintenanceService("");
@@ -436,7 +438,7 @@ export default function EquipamentosPage() {
     setMaintenanceEquipment(null);
   }
 
-  function saveMaintenance(
+  async function saveMaintenance(
     event: React.FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
@@ -447,72 +449,120 @@ export default function EquipamentosPage() {
       !maintenanceTechnician.trim() ||
       !maintenanceService.trim()
     ) {
+      alert(
+        "Preencha a data, técnico e serviço realizado."
+      );
       return;
     }
 
-    const formattedDate =
-      formatMaintenanceDate(maintenanceDate);
+    setSaving(true);
 
-    const newMaintenance: Maintenance = {
-      id: Date.now(),
-      equipmentId: maintenanceEquipment.id,
-      date: formattedDate,
-      type: maintenanceType,
-      technician: maintenanceTechnician.trim(),
-      problem:
-        maintenanceProblem.trim() ||
-        "Não informado",
-      service: maintenanceService.trim(),
-      parts:
-        maintenanceParts.trim() || "Nenhuma",
-      value:
-        maintenanceValue.trim() || "R$ 0,00",
-      observations:
-        maintenanceObservations.trim() ||
-        "Nenhuma observação.",
-      status: maintenanceStatus,
-    };
+    const valueNumber = Number(
+      maintenanceValue
+        .replace("R$", "")
+        .replace(/\./g, "")
+        .replace(",", ".")
+        .trim()
+    );
 
-    setMaintenance((current) => [
-      newMaintenance,
-      ...current,
-    ]);
+    const { error } = await supabase
+      .from("manutencoes_equipamentos")
+      .insert({
+        equipamento_id:
+          maintenanceEquipment.id,
+        data: maintenanceDate,
+        tipo: maintenanceType,
+        tecnico:
+          maintenanceTechnician.trim(),
+        problema:
+          maintenanceProblem.trim() ||
+          null,
+        servico:
+          maintenanceService.trim(),
+        pecas:
+          maintenanceParts.trim() ||
+          null,
+        valor: isNaN(valueNumber)
+          ? 0
+          : valueNumber,
+        observacoes:
+          maintenanceObservations.trim() ||
+          null,
+        status: maintenanceStatus,
+      });
 
-    if (maintenanceStatus === "Concluída") {
-      setEquipment((current) =>
-        current.map((item) =>
-          item.id === maintenanceEquipment.id
-            ? {
-                ...item,
-                lastService: formattedDate,
-              }
-            : item
-        )
+    if (error) {
+      alert(
+        "Erro ao salvar manutenção: " +
+          error.message
       );
-
-      setSelectedEquipment((current) =>
-        current?.id === maintenanceEquipment.id
-          ? {
-              ...current,
-              lastService: formattedDate,
-            }
-          : current
-      );
+      setSaving(false);
+      return;
     }
 
+    if (maintenanceStatus === "Concluída") {
+      await supabase
+        .from("equipamentos")
+        .update({
+          ultima_manutencao:
+            maintenanceDate,
+        })
+        .eq(
+          "id",
+          maintenanceEquipment.id
+        );
+    }
+
+    await loadData();
+
     closeMaintenanceForm();
+    setSaving(false);
   }
 
-  const selectedMaintenance = selectedEquipment
-    ? maintenance.filter(
-        (item) =>
-          item.equipmentId === selectedEquipment.id
-      )
-    : [];
+  const filteredEquipment =
+    equipment.filter((item) => {
+      const term = search
+        .toLowerCase()
+        .trim();
+
+      if (!term) return true;
+
+      return (
+        item.client
+          .toLowerCase()
+          .includes(term) ||
+        item.city
+          .toLowerCase()
+          .includes(term) ||
+        item.brand
+          .toLowerCase()
+          .includes(term) ||
+        item.model
+          .toLowerCase()
+          .includes(term) ||
+        item.serial
+          .toLowerCase()
+          .includes(term) ||
+        item.location
+          .toLowerCase()
+          .includes(term) ||
+        item.type
+          .toLowerCase()
+          .includes(term)
+      );
+    });
+
+  const selectedMaintenance =
+    selectedEquipment
+      ? maintenance.filter(
+          (item) =>
+            item.equipamento_id ===
+            selectedEquipment.id
+        )
+      : [];
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* CABEÇALHO */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
           <div className="flex items-center gap-3">
@@ -533,7 +583,7 @@ export default function EquipamentosPage() {
 
           <button
             onClick={openNewEquipment}
-            className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-600"
+            className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600"
           >
             <Plus size={18} />
 
@@ -549,20 +599,6 @@ export default function EquipamentosPage() {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {/* CAMINHO */}
-        <div className="mb-6 flex items-center gap-2 text-sm text-slate-500">
-          <ArrowLeft size={16} />
-
-          <span>ClimaPro</span>
-
-          <span>/</span>
-
-          <span className="font-medium text-slate-700">
-            Equipamentos
-          </span>
-        </div>
-
-        {/* RESUMO */}
         <section className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">
@@ -582,7 +618,8 @@ export default function EquipamentosPage() {
             <p className="mt-2 text-2xl font-bold text-emerald-600">
               {
                 equipment.filter(
-                  (item) => item.status === "Ativo"
+                  (item) =>
+                    item.status === "Ativo"
                 ).length
               }
             </p>
@@ -597,16 +634,16 @@ export default function EquipamentosPage() {
               {
                 equipment.filter(
                   (item) =>
-                    item.status === "Manutenção"
+                    item.status ===
+                    "Manutenção"
                 ).length
               }
             </p>
           </div>
         </section>
 
-        {/* BUSCA E LISTA */}
         <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-4 sm:p-5">
+          <div className="border-b border-slate-100 p-4">
             <div className="relative">
               <Search
                 size={19}
@@ -616,140 +653,154 @@ export default function EquipamentosPage() {
               <input
                 value={search}
                 onChange={(event) =>
-                  setSearch(event.target.value)
+                  setSearch(
+                    event.target.value
+                  )
                 }
                 placeholder="Buscar cliente, marca, modelo, série ou ambiente..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-2 focus:ring-cyan-100"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-cyan-400 focus:bg-white"
               />
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100">
-            {filteredEquipment.length === 0 ? (
-              <div className="p-10 text-center">
-                <Snowflake
-                  size={34}
-                  className="mx-auto text-slate-300"
-                />
+          {loading ? (
+            <div className="p-10 text-center text-sm text-slate-500">
+              Carregando equipamentos...
+            </div>
+          ) : filteredEquipment.length ===
+            0 ? (
+            <div className="p-10 text-center">
+              <Snowflake
+                size={36}
+                className="mx-auto text-slate-300"
+              />
 
-                <p className="mt-3 font-medium text-slate-700">
-                  Nenhum equipamento encontrado
-                </p>
+              <p className="mt-3 font-semibold text-slate-700">
+                Nenhum equipamento encontrado
+              </p>
 
-                <p className="mt-1 text-sm text-slate-400">
-                  Tente outra busca.
-                </p>
-              </div>
-            ) : (
-              filteredEquipment.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-5 transition hover:bg-slate-50"
-                >
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                    {/* INFORMAÇÕES */}
-                    <button
-                      onClick={() =>
-                        openDetails(item)
-                      }
-                      className="flex items-start gap-4 text-left"
-                    >
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                        <Snowflake size={22} />
-                      </div>
-
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-semibold text-slate-900">
-                            {item.brand}{" "}
-                            {item.model}
-                          </h3>
-
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                              item.status ===
-                              "Ativo"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {item.status}
-                          </span>
-                        </div>
-
-                        <div className="mt-2 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                          <span className="flex items-center gap-1">
-                            <User size={14} />
-                            {item.client}
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <MapPin size={14} />
-                            {item.city}
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <Building2 size={14} />
-                            {item.location ||
-                              "Local não informado"}
-                          </span>
-
-                          <span>
-                            {item.btu} BTUs •{" "}
-                            {item.type}
-                          </span>
-                        </div>
-
-                        <p className="mt-2 text-xs text-slate-400">
-                          Nº de série: {item.serial}
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* AÇÕES */}
-                    <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                      <div className="rounded-xl bg-slate-50 px-4 py-3">
-                        <p className="text-[11px] text-slate-400">
-                          Próxima manutenção
-                        </p>
-
-                        <p className="mt-1 text-sm font-semibold text-slate-700">
-                          {item.nextService}
-                        </p>
-                      </div>
-
+              <p className="mt-1 text-sm text-slate-400">
+                Cadastre o primeiro equipamento.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filteredEquipment.map(
+                (item) => (
+                  <div
+                    key={item.id}
+                    className="p-5 hover:bg-slate-50"
+                  >
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                       <button
                         onClick={() =>
-                          openEdit(item)
+                          openDetails(item)
                         }
-                        className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white hover:text-cyan-600"
+                        className="flex items-start gap-4 text-left"
                       >
-                        <Edit size={16} />
-                        Editar
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                          <Snowflake
+                            size={22}
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold text-slate-900">
+                              {item.brand}{" "}
+                              {item.model}
+                            </h3>
+
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                item.status ===
+                                "Ativo"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                            <span className="flex items-center gap-1">
+                              <User size={14} />
+                              {item.client}
+                            </span>
+
+                            <span className="flex items-center gap-1">
+                              <MapPin size={14} />
+                              {item.city}
+                            </span>
+
+                            <span className="flex items-center gap-1">
+                              <Building2
+                                size={14}
+                              />
+                              {item.location ||
+                                "Local não informado"}
+                            </span>
+
+                            <span>
+                              {item.btu} BTUs •{" "}
+                              {item.type}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-xs text-slate-400">
+                            Nº de série:{" "}
+                            {item.serial}
+                          </p>
+                        </div>
                       </button>
 
-                      <button
-                        onClick={() =>
-                          deleteEquipment(item.id)
-                        }
-                        className="rounded-xl border border-slate-200 p-3 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                        title="Excluir equipamento"
-                      >
-                        <Trash2 size={17} />
-                      </button>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="rounded-xl bg-slate-50 px-4 py-3">
+                          <p className="text-[11px] text-slate-400">
+                            Próxima manutenção
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold text-slate-700">
+                            {item.nextService}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() =>
+                            openEdit(item)
+                          }
+                          className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:text-cyan-600"
+                        >
+                          <Edit size={16} />
+                          Editar
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            deleteEquipment(
+                              item.id
+                            )
+                          }
+                          className="rounded-xl border border-slate-200 p-3 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2
+                            size={17}
+                          />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                )
+              )}
+            </div>
+          )}
         </section>
 
-        {/* AVISO */}
         <section className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50 p-5">
           <div className="flex gap-3">
             <Wrench
-              className="mt-0.5 shrink-0 text-cyan-600"
+              className="mt-0.5 text-cyan-600"
               size={20}
             />
 
@@ -759,19 +810,18 @@ export default function EquipamentosPage() {
               </h3>
 
               <p className="mt-1 text-sm text-cyan-800">
-                Os equipamentos agora possuem histórico
-                de manutenção. Nas próximas etapas,
-                esse histórico será ligado às ordens de
-                serviço e ao Supabase.
+                Os equipamentos e seus históricos
+                de manutenção agora são salvos
+                diretamente no Supabase.
               </p>
             </div>
           </div>
         </section>
       </div>
 
-      {/* MODAL NOVO / EDITAR EQUIPAMENTO */}
+      {/* NOVO / EDITAR EQUIPAMENTO */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 sm:items-center sm:p-4">
           <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
             <div className="mb-6 flex items-start justify-between">
               <div>
@@ -782,15 +832,13 @@ export default function EquipamentosPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  {editingEquipment
-                    ? "Altere os dados do equipamento."
-                    : "Cadastre o aparelho do cliente."}
+                  Cadastre o aparelho do cliente.
                 </p>
               </div>
 
               <button
                 onClick={() => {
-                  clearForm();
+                  clearEquipmentForm();
                   setShowForm(false);
                 }}
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
@@ -808,53 +856,56 @@ export default function EquipamentosPage() {
                   Cliente *
                 </label>
 
-                <input
-                  value={client}
+                <select
+                  value={clientId}
                   onChange={(event) =>
-                    setClient(event.target.value)
+                    setClientId(
+                      event.target.value
+                    )
                   }
-                  placeholder="Ex.: João da Silva"
                   required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-400"
+                >
+                  <option value="">
+                    Selecione o cliente
+                  </option>
+
+                  {clients.map((client) => (
+                    <option
+                      key={client.id}
+                      value={client.id}
+                    >
+                      {client.nome}
+                      {client.cidade
+                        ? ` — ${client.cidade}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+
+                {clients.length === 0 && (
+                  <p className="mt-2 text-xs text-red-500">
+                    Cadastre um cliente primeiro
+                    no módulo Clientes.
+                  </p>
+                )}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Cidade
-                  </label>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Ambiente
+                </label>
 
-                  <select
-                    value={city}
-                    onChange={(event) =>
-                      setCity(event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-400"
-                  >
-                    <option>Araraquara</option>
-                    <option>São Carlos</option>
-                    <option>Matão</option>
-                    <option>
-                      Américo Brasiliense
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Ambiente
-                  </label>
-
-                  <input
-                    value={location}
-                    onChange={(event) =>
-                      setLocation(event.target.value)
-                    }
-                    placeholder="Ex.: Sala"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                  />
-                </div>
+                <input
+                  value={location}
+                  onChange={(event) =>
+                    setLocation(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Ex.: Sala, quarto, recepção..."
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400"
+                />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -866,11 +917,13 @@ export default function EquipamentosPage() {
                   <input
                     value={brand}
                     onChange={(event) =>
-                      setBrand(event.target.value)
+                      setBrand(
+                        event.target.value
+                      )
                     }
-                    placeholder="Ex.: Daikin"
+                    placeholder="Ex.: Samsung"
                     required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400"
                   />
                 </div>
 
@@ -882,11 +935,13 @@ export default function EquipamentosPage() {
                   <input
                     value={model}
                     onChange={(event) =>
-                      setModel(event.target.value)
+                      setModel(
+                        event.target.value
+                      )
                     }
-                    placeholder="Ex.: EcoSwing"
+                    placeholder="Ex.: WindFree"
                     required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400"
                   />
                 </div>
               </div>
@@ -900,7 +955,9 @@ export default function EquipamentosPage() {
                   <select
                     value={btu}
                     onChange={(event) =>
-                      setBtu(event.target.value)
+                      setBtu(
+                        event.target.value
+                      )
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
                   >
@@ -923,7 +980,9 @@ export default function EquipamentosPage() {
                   <select
                     value={type}
                     onChange={(event) =>
-                      setType(event.target.value)
+                      setType(
+                        event.target.value
+                      )
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
                   >
@@ -948,8 +1007,7 @@ export default function EquipamentosPage() {
                     value={status}
                     onChange={(event) =>
                       setStatus(
-                        event.target
-                          .value as Equipment["status"]
+                        event.target.value as Equipment["status"]
                       )
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
@@ -968,10 +1026,12 @@ export default function EquipamentosPage() {
                 <input
                   value={serial}
                   onChange={(event) =>
-                    setSerial(event.target.value)
+                    setSerial(
+                      event.target.value
+                    )
                   }
                   placeholder="Ex.: ABC123456"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400"
                 />
               </div>
 
@@ -979,19 +1039,22 @@ export default function EquipamentosPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    clearForm();
+                    clearEquipmentForm();
                     setShowForm(false);
                   }}
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+                  className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700"
                 >
                   Cancelar
                 </button>
 
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600"
+                  disabled={saving}
+                  className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white disabled:opacity-50"
                 >
-                  {editingEquipment
+                  {saving
+                    ? "Salvando..."
+                    : editingEquipment
                     ? "Salvar alterações"
                     : "Salvar equipamento"}
                 </button>
@@ -1001,14 +1064,14 @@ export default function EquipamentosPage() {
         </div>
       )}
 
-      {/* MODAL DETALHES DO EQUIPAMENTO */}
+      {/* DETALHES */}
       {showDetails && selectedEquipment && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 sm:items-center sm:p-4">
           <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                  <Snowflake size={23} />
+                <div className="rounded-xl bg-cyan-50 p-3 text-cyan-600">
+                  <Snowflake size={22} />
                 </div>
 
                 <div>
@@ -1040,14 +1103,13 @@ export default function EquipamentosPage() {
               </button>
             </div>
 
-            {/* DADOS DO EQUIPAMENTO */}
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-xs text-slate-400">
                   Cliente
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="mt-1 font-semibold">
                   {selectedEquipment.client}
                 </p>
               </div>
@@ -1057,7 +1119,7 @@ export default function EquipamentosPage() {
                   Cidade
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="mt-1 font-semibold">
                   {selectedEquipment.city}
                 </p>
               </div>
@@ -1067,7 +1129,7 @@ export default function EquipamentosPage() {
                   Ambiente
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="mt-1 font-semibold">
                   {selectedEquipment.location ||
                     "Não informado"}
                 </p>
@@ -1078,7 +1140,7 @@ export default function EquipamentosPage() {
                   Tipo
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="mt-1 font-semibold">
                   {selectedEquipment.type}
                 </p>
               </div>
@@ -1088,7 +1150,7 @@ export default function EquipamentosPage() {
                   Capacidade
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="mt-1 font-semibold">
                   {selectedEquipment.btu} BTUs
                 </p>
               </div>
@@ -1098,7 +1160,7 @@ export default function EquipamentosPage() {
                   Número de série
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="mt-1 font-semibold">
                   {selectedEquipment.serial}
                 </p>
               </div>
@@ -1108,7 +1170,7 @@ export default function EquipamentosPage() {
                   Última manutenção
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-blue-700">
+                <p className="mt-1 font-semibold text-blue-700">
                   {selectedEquipment.lastService}
                 </p>
               </div>
@@ -1118,14 +1180,13 @@ export default function EquipamentosPage() {
                   Próxima manutenção
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-cyan-700">
+                <p className="mt-1 font-semibold text-cyan-700">
                   {selectedEquipment.nextService}
                 </p>
               </div>
             </div>
 
-            {/* HISTÓRICO DE MANUTENÇÃO */}
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white">
+            <div className="mt-6 rounded-2xl border border-slate-200">
               <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
@@ -1133,13 +1194,13 @@ export default function EquipamentosPage() {
                   </div>
 
                   <div>
-                    <h3 className="font-bold text-slate-900">
+                    <h3 className="font-bold">
                       Histórico de manutenção
                     </h3>
 
                     <p className="text-xs text-slate-500">
                       {selectedMaintenance.length}{" "}
-                      registro(s) encontrado(s)
+                      registro(s)
                     </p>
                   </div>
                 </div>
@@ -1150,56 +1211,47 @@ export default function EquipamentosPage() {
                       selectedEquipment
                     )
                   }
-                  className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-white"
                 >
                   <Plus size={15} />
                   Nova manutenção
                 </button>
               </div>
 
-              <div className="divide-y divide-slate-100">
-                {selectedMaintenance.length === 0 ? (
-                  <div className="p-6 text-center">
-                    <History
-                      size={30}
-                      className="mx-auto text-slate-300"
-                    />
+              {selectedMaintenance.length ===
+              0 ? (
+                <div className="p-8 text-center">
+                  <History
+                    size={30}
+                    className="mx-auto text-slate-300"
+                  />
 
-                    <p className="mt-2 text-sm font-medium text-slate-600">
-                      Nenhuma manutenção registrada
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      Cadastre a primeira manutenção
-                      deste equipamento.
-                    </p>
-                  </div>
-                ) : (
-                  selectedMaintenance.map(
+                  <p className="mt-2 text-sm text-slate-500">
+                    Nenhuma manutenção registrada.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {selectedMaintenance.map(
                     (item) => (
                       <div
                         key={item.id}
                         className="p-4"
                       >
-                        <div className="flex items-start gap-3">
-                          <div className="mt-1 rounded-lg bg-slate-100 p-2 text-slate-600">
-                            <Wrench size={16} />
+                        <div className="flex gap-3">
+                          <div className="rounded-lg bg-slate-100 p-2 text-slate-600">
+                            <Wrench
+                              size={16}
+                            />
                           </div>
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h4 className="text-sm font-semibold text-slate-900">
+                              <h4 className="text-sm font-semibold">
                                 {item.type}
                               </h4>
 
-                              <span
-                                className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                                  item.status ===
-                                  "Concluída"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-amber-50 text-amber-700"
-                                }`}
-                              >
+                              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
                                 {item.status}
                               </span>
                             </div>
@@ -1239,7 +1291,7 @@ export default function EquipamentosPage() {
                                 Serviço realizado
                               </p>
 
-                              <p className="mt-1 text-xs leading-5 text-slate-700">
+                              <p className="mt-1 text-xs leading-5">
                                 {item.service}
                               </p>
                             </div>
@@ -1251,7 +1303,7 @@ export default function EquipamentosPage() {
                                   Problema encontrado
                                 </p>
 
-                                <p className="mt-1 text-xs leading-5 text-red-800">
+                                <p className="mt-1 text-xs text-red-800">
                                   {item.problem}
                                 </p>
                               </div>
@@ -1264,7 +1316,7 @@ export default function EquipamentosPage() {
                                   Observações
                                 </p>
 
-                                <p className="mt-1 text-xs leading-5 text-blue-800">
+                                <p className="mt-1 text-xs text-blue-800">
                                   {item.observations}
                                 </p>
                               </div>
@@ -1273,28 +1325,31 @@ export default function EquipamentosPage() {
                         </div>
                       </div>
                     )
-                  )
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* AÇÕES */}
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <button
                 onClick={() => {
                   setShowDetails(false);
-                  openEdit(selectedEquipment);
+                  openEdit(
+                    selectedEquipment
+                  );
                 }}
-                className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600"
+                className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white"
               >
                 Editar
               </button>
 
               <button
                 onClick={() =>
-                  toggleStatus(selectedEquipment)
+                  toggleStatus(
+                    selectedEquipment
+                  )
                 }
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold"
               >
                 {selectedEquipment.status ===
                 "Ativo"
@@ -1308,7 +1363,7 @@ export default function EquipamentosPage() {
                     selectedEquipment.id
                   )
                 }
-                className="flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50"
+                className="flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600"
               >
                 <Trash2 size={16} />
                 Excluir
@@ -1318,30 +1373,23 @@ export default function EquipamentosPage() {
         </div>
       )}
 
-      {/* MODAL NOVA MANUTENÇÃO */}
+      {/* NOVA MANUTENÇÃO */}
       {showMaintenanceForm &&
         maintenanceEquipment && (
-          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
+          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/50 sm:items-center sm:p-4">
             <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
               <div className="mb-6 flex items-start justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <ClipboardCheck
-                      size={21}
-                      className="text-cyan-600"
-                    />
-
-                    <h2 className="text-xl font-bold text-slate-900">
-                      Nova manutenção
-                    </h2>
-                  </div>
+                  <h2 className="text-xl font-bold">
+                    Nova manutenção
+                  </h2>
 
                   <p className="mt-1 text-sm text-slate-500">
                     {maintenanceEquipment.brand}{" "}
                     {maintenanceEquipment.model}
                   </p>
 
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="text-xs text-slate-400">
                     Cliente:{" "}
                     {maintenanceEquipment.client}
                   </p>
@@ -1351,7 +1399,7 @@ export default function EquipamentosPage() {
                   onClick={
                     closeMaintenanceForm
                   }
-                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                  className="rounded-lg p-2 text-slate-400"
                 >
                   <X size={20} />
                 </button>
@@ -1363,7 +1411,7 @@ export default function EquipamentosPage() {
               >
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    <label className="mb-1.5 block text-sm font-medium">
                       Data *
                     </label>
 
@@ -1376,13 +1424,13 @@ export default function EquipamentosPage() {
                         )
                       }
                       required
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Tipo de manutenção
+                    <label className="mb-1.5 block text-sm font-medium">
+                      Tipo
                     </label>
 
                     <select
@@ -1397,19 +1445,15 @@ export default function EquipamentosPage() {
                       <option>
                         Manutenção preventiva
                       </option>
-
                       <option>
                         Manutenção corretiva
                       </option>
-
                       <option>
                         Higienização
                       </option>
-
                       <option>
                         Instalação
                       </option>
-
                       <option>
                         Visita técnica
                       </option>
@@ -1418,7 +1462,7 @@ export default function EquipamentosPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-1.5 block text-sm font-medium">
                     Técnico responsável *
                   </label>
 
@@ -1429,14 +1473,14 @@ export default function EquipamentosPage() {
                         event.target.value
                       )
                     }
-                    placeholder="Ex.: Carlos Técnico"
                     required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    placeholder="Nome do técnico"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-1.5 block text-sm font-medium">
                     Problema encontrado
                   </label>
 
@@ -1447,14 +1491,13 @@ export default function EquipamentosPage() {
                         event.target.value
                       )
                     }
-                    placeholder="Descreva o problema encontrado..."
                     rows={3}
-                    className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-1.5 block text-sm font-medium">
                     Serviço realizado *
                   </label>
 
@@ -1465,16 +1508,15 @@ export default function EquipamentosPage() {
                         event.target.value
                       )
                     }
-                    placeholder="Descreva o serviço realizado..."
-                    rows={3}
                     required
-                    className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    <label className="mb-1.5 block text-sm font-medium">
                       Peças utilizadas
                     </label>
 
@@ -1485,13 +1527,13 @@ export default function EquipamentosPage() {
                           event.target.value
                         )
                       }
-                      placeholder="Ex.: Capacitor, filtro..."
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                      placeholder="Ex.: Capacitor"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    <label className="mb-1.5 block text-sm font-medium">
                       Valor
                     </label>
 
@@ -1502,34 +1544,14 @@ export default function EquipamentosPage() {
                           event.target.value
                         )
                       }
-                      placeholder="Ex.: R$ 250,00"
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                      placeholder="Ex.: 250,00"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Status
-                  </label>
-
-                  <select
-                    value={maintenanceStatus}
-                    onChange={(event) =>
-                      setMaintenanceStatus(
-                        event.target
-                          .value as Maintenance["status"]
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                  >
-                    <option>Concluída</option>
-                    <option>Em andamento</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-1.5 block text-sm font-medium">
                     Observações
                   </label>
 
@@ -1542,10 +1564,32 @@ export default function EquipamentosPage() {
                         event.target.value
                       )
                     }
-                    placeholder="Informações adicionais..."
                     rows={3}
-                    className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Status
+                  </label>
+
+                  <select
+                    value={maintenanceStatus}
+                    onChange={(event) =>
+                      setMaintenanceStatus(
+                        event.target.value as Maintenance["status"]
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  >
+                    <option>
+                      Concluída
+                    </option>
+                    <option>
+                      Em andamento
+                    </option>
+                  </select>
                 </div>
 
                 <div className="flex gap-3 pt-3">
@@ -1554,28 +1598,25 @@ export default function EquipamentosPage() {
                     onClick={
                       closeMaintenanceForm
                     }
-                    className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+                    className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold"
                   >
                     Cancelar
                   </button>
 
                   <button
                     type="submit"
-                    className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600"
+                    disabled={saving}
+                    className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white disabled:opacity-50"
                   >
-                    Salvar manutenção
+                    {saving
+                      ? "Salvando..."
+                      : "Salvar manutenção"}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
-      {/* INDICADOR */}
-      <div className="fixed bottom-4 right-4 hidden items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-lg sm:flex">
-        <CheckCircle2 size={15} />
-        Sistema em desenvolvimento
-      </div>
     </main>
   );
 }
