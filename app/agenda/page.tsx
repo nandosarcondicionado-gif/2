@@ -49,6 +49,7 @@ const statusStyles: Record<AppointmentStatus, string> = {
 
 function getToday() {
   const now = new Date();
+
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
@@ -57,11 +58,14 @@ function getToday() {
 }
 
 function formatDate(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  });
+  return new Date(`${date}T12:00:00`).toLocaleDateString(
+    "pt-BR",
+    {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+    }
+  );
 }
 
 export default function AgendaPage() {
@@ -89,8 +93,13 @@ export default function AgendaPage() {
   const selectedAppointments = useMemo(
     () =>
       appointments
-        .filter((appointment) => appointment.data === selectedDate)
-        .sort((a, b) => a.horario.localeCompare(b.horario)),
+        .filter(
+          (appointment) =>
+            appointment.data === selectedDate
+        )
+        .sort((a, b) =>
+          a.horario.localeCompare(b.horario)
+        ),
     [appointments, selectedDate]
   );
 
@@ -99,7 +108,10 @@ export default function AgendaPage() {
 
     return Array.from({ length: 7 }, (_, index) => {
       const dateItem = new Date(base);
-      dateItem.setDate(base.getDate() - 3 + index);
+
+      dateItem.setDate(
+        base.getDate() - 3 + index
+      );
 
       return dateItem.toISOString().split("T")[0];
     });
@@ -112,22 +124,26 @@ export default function AgendaPage() {
   async function loadData() {
     setLoading(true);
 
-    const [agendaResult, clientsResult] = await Promise.all([
-      supabase
-        .from("agenda")
-        .select("*")
-        .order("data", { ascending: true })
-        .order("horario", { ascending: true }),
+    const [agendaResult, clientsResult] =
+      await Promise.all([
+        supabase
+          .from("agenda")
+          .select("*")
+          .order("data", { ascending: true })
+          .order("horario", { ascending: true }),
 
-      supabase
-        .from("clientes")
-        .select("id, nome, cidade")
-        .eq("status", "Ativo")
-        .order("nome", { ascending: true }),
-    ]);
+        supabase
+          .from("clientes")
+          .select("id, nome, cidade")
+          .eq("status", "Ativo")
+          .order("nome", { ascending: true }),
+      ]);
 
     if (agendaResult.error) {
-      console.error("Erro ao carregar agenda:", agendaResult.error);
+      console.error(
+        "Erro ao carregar agenda:",
+        agendaResult.error
+      );
     } else {
       setAppointments(
         (agendaResult.data || []) as Appointment[]
@@ -135,19 +151,31 @@ export default function AgendaPage() {
     }
 
     if (clientsResult.error) {
-      console.error("Erro ao carregar clientes:", clientsResult.error);
+      console.error(
+        "Erro ao carregar clientes:",
+        clientsResult.error
+      );
     } else {
-      setClients((clientsResult.data || []) as Client[]);
+      setClients(
+        (clientsResult.data || []) as Client[]
+      );
     }
 
     setLoading(false);
   }
 
   function moveDay(days: number) {
-    const dateItem = new Date(`${selectedDate}T12:00:00`);
-    dateItem.setDate(dateItem.getDate() + days);
+    const dateItem = new Date(
+      `${selectedDate}T12:00:00`
+    );
 
-    setSelectedDate(dateItem.toISOString().split("T")[0]);
+    dateItem.setDate(
+      dateItem.getDate() + days
+    );
+
+    setSelectedDate(
+      dateItem.toISOString().split("T")[0]
+    );
   }
 
   function handleClientChange(id: string) {
@@ -178,7 +206,9 @@ export default function AgendaPage() {
       !date ||
       !time
     ) {
-      alert("Preencha todos os campos obrigatórios.");
+      alert(
+        "Preencha todos os campos obrigatórios."
+      );
       return;
     }
 
@@ -193,12 +223,15 @@ export default function AgendaPage() {
 
     setSaving(true);
 
-    const { data, error } = await supabase
+    const insertResult = await supabase
       .from("agenda")
       .insert({
         cliente_id: selectedClient.id,
         cliente_nome: selectedClient.nome,
-        cidade: city || selectedClient.cidade || "",
+        cidade:
+          city ||
+          selectedClient.cidade ||
+          "",
         servico: service.trim(),
         tecnico: technician.trim(),
         data,
@@ -208,16 +241,35 @@ export default function AgendaPage() {
       .select()
       .single();
 
-    if (error) {
-      console.error(error);
-      alert("Não foi possível salvar o atendimento.");
+    const insertedAppointment =
+      insertResult.data;
+
+    const insertError =
+      insertResult.error;
+
+    if (insertError) {
+      console.error(insertError);
+
+      alert(
+        "Não foi possível salvar o atendimento."
+      );
+
+      setSaving(false);
+      return;
+    }
+
+    if (!insertedAppointment) {
+      alert(
+        "O atendimento foi enviado, mas não retornou os dados."
+      );
+
       setSaving(false);
       return;
     }
 
     setAppointments((current) => [
       ...current,
-      data as Appointment,
+      insertedAppointment as Appointment,
     ]);
 
     setSelectedDate(date);
@@ -245,20 +297,29 @@ export default function AgendaPage() {
 
     if (error) {
       console.error(error);
-      alert("Não foi possível atualizar o status.");
+
+      alert(
+        "Não foi possível atualizar o status."
+      );
+
       return;
     }
 
     setAppointments((current) =>
       current.map((appointment) =>
         appointment.id === id
-          ? { ...appointment, status }
+          ? {
+              ...appointment,
+              status,
+            }
           : appointment
       )
     );
   }
 
-  async function deleteAppointment(id: string) {
+  async function deleteAppointment(
+    id: string
+  ) {
     const confirmed = window.confirm(
       "Deseja realmente excluir este atendimento?"
     );
@@ -272,12 +333,19 @@ export default function AgendaPage() {
 
     if (error) {
       console.error(error);
-      alert("Não foi possível excluir o atendimento.");
+
+      alert(
+        "Não foi possível excluir o atendimento."
+      );
+
       return;
     }
 
     setAppointments((current) =>
-      current.filter((appointment) => appointment.id !== id)
+      current.filter(
+        (appointment) =>
+          appointment.id !== id
+      )
     );
   }
 
@@ -322,7 +390,9 @@ export default function AgendaPage() {
               Novo atendimento
             </span>
 
-            <span className="sm:hidden">Novo</span>
+            <span className="sm:hidden">
+              Novo
+            </span>
           </button>
         </div>
       </header>
@@ -363,26 +433,33 @@ export default function AgendaPage() {
                 `${dateItem}T12:00:00`
               );
 
-              const weekday = dateObject.toLocaleDateString(
-                "pt-BR",
-                {
-                  weekday: "short",
-                }
-              );
+              const weekday =
+                dateObject.toLocaleDateString(
+                  "pt-BR",
+                  {
+                    weekday: "short",
+                  }
+                );
 
-              const day = dateObject.getDate();
+              const day =
+                dateObject.getDate();
 
-              const count = appointments.filter(
-                (appointment) =>
-                  appointment.data === dateItem
-              ).length;
+              const count =
+                appointments.filter(
+                  (appointment) =>
+                    appointment.data ===
+                    dateItem
+                ).length;
 
-              const selected = dateItem === selectedDate;
+              const selected =
+                dateItem === selectedDate;
 
               return (
                 <button
                   key={dateItem}
-                  onClick={() => setSelectedDate(dateItem)}
+                  onClick={() =>
+                    setSelectedDate(dateItem)
+                  }
                   className={`min-w-[58px] rounded-xl p-3 text-center transition ${
                     selected
                       ? "bg-cyan-500 text-white shadow-md"
@@ -405,7 +482,9 @@ export default function AgendaPage() {
                     }`}
                   >
                     {count} atendimento
-                    {count !== 1 ? "s" : ""}
+                    {count !== 1
+                      ? "s"
+                      : ""}
                   </p>
                 </button>
               );
@@ -423,12 +502,17 @@ export default function AgendaPage() {
                   </h3>
 
                   <p className="mt-1 text-xs text-slate-400">
-                    {selectedAppointments.length} atendimento
-                    {selectedAppointments.length !== 1
+                    {
+                      selectedAppointments.length
+                    }{" "}
+                    atendimento
+                    {selectedAppointments.length !==
+                    1
                       ? "s"
                       : ""}{" "}
                     agendado
-                    {selectedAppointments.length !== 1
+                    {selectedAppointments.length !==
+                    1
                       ? "s"
                       : ""}
                   </p>
@@ -445,7 +529,8 @@ export default function AgendaPage() {
               <div className="p-10 text-center text-sm text-slate-400">
                 Carregando agenda...
               </div>
-            ) : selectedAppointments.length === 0 ? (
+            ) : selectedAppointments.length ===
+              0 ? (
               <div className="p-10 text-center">
                 <CalendarDays
                   size={36}
@@ -457,11 +542,14 @@ export default function AgendaPage() {
                 </p>
 
                 <p className="mt-1 text-sm text-slate-400">
-                  Não existem atendimentos para este dia.
+                  Não existem atendimentos
+                  para este dia.
                 </p>
 
                 <button
-                  onClick={openNewAppointment}
+                  onClick={
+                    openNewAppointment
+                  }
                   className="mt-5 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white"
                 >
                   Agendar atendimento
@@ -469,136 +557,161 @@ export default function AgendaPage() {
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {selectedAppointments.map((appointment) => (
-                  <div
-                    key={appointment.id}
-                    className="p-5"
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex gap-4">
-                        <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
-                          <div className="text-center">
-                            <Clock
-                              size={16}
-                              className="mx-auto"
-                            />
+                {selectedAppointments.map(
+                  (appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="p-5"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex gap-4">
+                          <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                            <div className="text-center">
+                              <Clock
+                                size={16}
+                                className="mx-auto"
+                              />
 
-                            <span className="mt-1 block text-sm font-bold">
-                              {appointment.horario.slice(
-                                0,
-                                5
-                              )}
-                            </span>
+                              <span className="mt-1 block text-sm font-bold">
+                                {appointment.horario.slice(
+                                  0,
+                                  5
+                                )}
+                              </span>
+                            </div>
                           </div>
-                        </div>
 
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="font-bold text-slate-900">
-                              {appointment.cliente_nome}
-                            </h4>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-bold text-slate-900">
+                                {
+                                  appointment.cliente_nome
+                                }
+                              </h4>
 
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                                statusStyles[
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                  statusStyles[
+                                    appointment
+                                      .status
+                                  ]
+                                }`}
+                              >
+                                {
                                   appointment.status
-                                ]
-                              }`}
-                            >
-                              {appointment.status}
-                            </span>
-                          </div>
-
-                          <div className="mt-2 space-y-1.5 text-sm text-slate-500">
-                            <div className="flex items-center gap-2">
-                              <Wrench size={15} />
-                              {appointment.servico}
+                                }
+                              </span>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <MapPin size={15} />
-                              {appointment.cidade}
-                            </div>
+                            <div className="mt-2 space-y-1.5 text-sm text-slate-500">
+                              <div className="flex items-center gap-2">
+                                <Wrench
+                                  size={15}
+                                />
+                                {
+                                  appointment.servico
+                                }
+                              </div>
 
-                            <div className="flex items-center gap-2">
-                              <User size={15} />
-                              {appointment.tecnico}
+                              <div className="flex items-center gap-2">
+                                <MapPin
+                                  size={15}
+                                />
+                                {
+                                  appointment.cidade
+                                }
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <User
+                                  size={15}
+                                />
+                                {
+                                  appointment.tecnico
+                                }
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
-                        {appointment.status === "Agendado" && (
-                          <button
-                            onClick={() =>
-                              changeStatus(
-                                appointment.id,
-                                "Confirmado"
-                              )
-                            }
-                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
-                          >
-                            Confirmar
-                          </button>
-                        )}
-
-                        {appointment.status === "Confirmado" && (
-                          <button
-                            onClick={() =>
-                              changeStatus(
-                                appointment.id,
-                                "Em atendimento"
-                              )
-                            }
-                            className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white"
-                          >
-                            Iniciar
-                          </button>
-                        )}
-
-                        {appointment.status ===
-                          "Em atendimento" && (
-                          <button
-                            onClick={() =>
-                              changeStatus(
-                                appointment.id,
-                                "Concluído"
-                              )
-                            }
-                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
-                          >
-                            Concluir
-                          </button>
-                        )}
-
-                        {appointment.status !== "Concluído" &&
-                          appointment.status !== "Cancelado" && (
+                        <div className="flex flex-wrap gap-2 sm:justify-end">
+                          {appointment.status ===
+                            "Agendado" && (
                             <button
                               onClick={() =>
                                 changeStatus(
                                   appointment.id,
-                                  "Cancelado"
+                                  "Confirmado"
                                 )
                               }
-                              className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600"
+                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
                             >
-                              Cancelar
+                              Confirmar
                             </button>
                           )}
 
-                        <button
-                          onClick={() =>
-                            deleteAppointment(appointment.id)
-                          }
-                          className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500"
-                        >
-                          Excluir
-                        </button>
+                          {appointment.status ===
+                            "Confirmado" && (
+                            <button
+                              onClick={() =>
+                                changeStatus(
+                                  appointment.id,
+                                  "Em atendimento"
+                                )
+                              }
+                              className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white"
+                            >
+                              Iniciar
+                            </button>
+                          )}
+
+                          {appointment.status ===
+                            "Em atendimento" && (
+                            <button
+                              onClick={() =>
+                                changeStatus(
+                                  appointment.id,
+                                  "Concluído"
+                                )
+                              }
+                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
+                            >
+                              Concluir
+                            </button>
+                          )}
+
+                          {appointment.status !==
+                            "Concluído" &&
+                            appointment.status !==
+                              "Cancelado" && (
+                              <button
+                                onClick={() =>
+                                  changeStatus(
+                                    appointment.id,
+                                    "Cancelado"
+                                  )
+                                }
+                                className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+
+                          <button
+                            onClick={() =>
+                              deleteAppointment(
+                                appointment.id
+                              )
+                            }
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500"
+                          >
+                            Excluir
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             )}
           </div>
@@ -617,7 +730,9 @@ export default function AgendaPage() {
                 <p className="mt-1 text-2xl font-bold text-blue-700">
                   {
                     appointments.filter(
-                      (item) => item.status === "Agendado"
+                      (item) =>
+                        item.status ===
+                        "Agendado"
                     ).length
                   }
                 </p>
@@ -631,7 +746,9 @@ export default function AgendaPage() {
                 <p className="mt-1 text-2xl font-bold text-emerald-700">
                   {
                     appointments.filter(
-                      (item) => item.status === "Confirmado"
+                      (item) =>
+                        item.status ===
+                        "Confirmado"
                     ).length
                   }
                 </p>
@@ -646,7 +763,8 @@ export default function AgendaPage() {
                   {
                     appointments.filter(
                       (item) =>
-                        item.status === "Em atendimento"
+                        item.status ===
+                        "Em atendimento"
                     ).length
                   }
                 </p>
@@ -660,7 +778,9 @@ export default function AgendaPage() {
                 <p className="mt-1 text-2xl font-bold text-slate-700">
                   {
                     appointments.filter(
-                      (item) => item.status === "Concluído"
+                      (item) =>
+                        item.status ===
+                        "Concluído"
                     ).length
                   }
                 </p>
@@ -685,7 +805,9 @@ export default function AgendaPage() {
               </div>
 
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() =>
+                  setShowForm(false)
+                }
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
               >
                 <X size={20} />
@@ -704,7 +826,9 @@ export default function AgendaPage() {
                 <select
                   value={clientId}
                   onChange={(event) =>
-                    handleClientChange(event.target.value)
+                    handleClientChange(
+                      event.target.value
+                    )
                   }
                   required
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
@@ -725,7 +849,8 @@ export default function AgendaPage() {
 
                 {clients.length === 0 && (
                   <p className="mt-2 text-xs text-amber-600">
-                    Nenhum cliente ativo encontrado.
+                    Nenhum cliente ativo
+                    encontrado.
                   </p>
                 )}
               </div>
@@ -750,7 +875,9 @@ export default function AgendaPage() {
                 <input
                   value={city}
                   onChange={(event) =>
-                    setCity(event.target.value)
+                    setCity(
+                      event.target.value
+                    )
                   }
                   placeholder="Cidade do atendimento"
                   required
@@ -766,7 +893,9 @@ export default function AgendaPage() {
                 <input
                   value={service}
                   onChange={(event) =>
-                    setService(event.target.value)
+                    setService(
+                      event.target.value
+                    )
                   }
                   placeholder="Ex.: Manutenção preventiva"
                   required
@@ -782,7 +911,9 @@ export default function AgendaPage() {
                 <input
                   value={technician}
                   onChange={(event) =>
-                    setTechnician(event.target.value)
+                    setTechnician(
+                      event.target.value
+                    )
                   }
                   placeholder="Nome do técnico"
                   required
@@ -800,7 +931,9 @@ export default function AgendaPage() {
                     type="date"
                     value={date}
                     onChange={(event) =>
-                      setDate(event.target.value)
+                      setDate(
+                        event.target.value
+                      )
                     }
                     required
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
@@ -816,7 +949,9 @@ export default function AgendaPage() {
                     type="time"
                     value={time}
                     onChange={(event) =>
-                      setTime(event.target.value)
+                      setTime(
+                        event.target.value
+                      )
                     }
                     required
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
@@ -827,7 +962,9 @@ export default function AgendaPage() {
               <div className="flex gap-3 pt-3">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={() =>
+                    setShowForm(false)
+                  }
                   className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Cancelar
@@ -838,7 +975,9 @@ export default function AgendaPage() {
                   disabled={saving}
                   className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {saving ? "Salvando..." : "Agendar"}
+                  {saving
+                    ? "Salvando..."
+                    : "Agendar"}
                 </button>
               </div>
             </form>
