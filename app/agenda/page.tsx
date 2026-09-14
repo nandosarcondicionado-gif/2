@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   ChevronLeft,
@@ -7,11 +8,11 @@ import {
   Clock,
   MapPin,
   Plus,
+  Search,
+  Trash2,
   User,
-  Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type AppointmentStatus =
@@ -31,193 +32,185 @@ type Appointment = {
   data: string;
   horario: string;
   status: AppointmentStatus;
+  created_at?: string;
+  updated_at?: string;
 };
 
 type Client = {
   id: string;
   nome: string;
-  cidade: string | null;
+  cidade: string;
 };
 
-const statusStyles: Record<AppointmentStatus, string> = {
-  Agendado: "bg-blue-50 text-blue-700",
-  Confirmado: "bg-emerald-50 text-emerald-700",
-  "Em atendimento": "bg-amber-50 text-amber-700",
-  Concluído: "bg-slate-100 text-slate-600",
-  Cancelado: "bg-red-50 text-red-700",
-};
+const STATUS: AppointmentStatus[] = [
+  "Agendado",
+  "Confirmado",
+  "Em atendimento",
+  "Concluído",
+  "Cancelado",
+];
 
-function getToday() {
-  const now = new Date();
-
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+function formatDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
-function formatDate(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString(
-    "pt-BR",
-    {
-      weekday: "long",
-      day: "2-digit",
-      month: "long",
-    }
-  );
+function formatDateBR(dateString: string) {
+  if (!dateString) return "";
+
+  const [year, month, day] = dateString.split("-");
+
+  if (!year || !month || !day) return dateString;
+
+  return `${day}/${month}/${year}`;
+}
+
+function getInitialDate() {
+  const today = new Date();
+  return formatDate(today);
+}
+
+function statusClass(status: AppointmentStatus) {
+  switch (status) {
+    case "Agendado":
+      return "bg-blue-100 text-blue-700";
+
+    case "Confirmado":
+      return "bg-green-100 text-green-700";
+
+    case "Em atendimento":
+      return "bg-yellow-100 text-yellow-700";
+
+    case "Concluído":
+      return "bg-emerald-100 text-emerald-700";
+
+    case "Cancelado":
+      return "bg-red-100 text-red-700";
+
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
 }
 
 export default function AgendaPage() {
   const supabase = createClient();
 
-  const today = getToday();
-
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
 
-  const [selectedDate, setSelectedDate] = useState(today);
-
-  const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [clientId, setClientId] = useState("");
-  const [clientName, setClientName] = useState("");
+  const [date, setDate] = useState(getInitialDate());
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    AppointmentStatus | "Todos"
+  >("Todos");
+
+  const [showModal, setShowModal] = useState(false);
+
+  const [selectedClientId, setSelectedClientId] = useState("");
   const [city, setCity] = useState("");
   const [service, setService] = useState("");
   const [technician, setTechnician] = useState("");
-  const [date, setDate] = useState(today);
   const [time, setTime] = useState("08:00");
-
-  const selectedAppointments = useMemo(
-    () =>
-      appointments
-        .filter(
-          (appointment) =>
-            appointment.data === selectedDate
-        )
-        .sort((a, b) =>
-          a.horario.localeCompare(b.horario)
-        ),
-    [appointments, selectedDate]
-  );
-
-  const visibleDates = useMemo(() => {
-    const base = new Date(`${selectedDate}T12:00:00`);
-
-    return Array.from({ length: 7 }, (_, index) => {
-      const dateItem = new Date(base);
-
-      dateItem.setDate(
-        base.getDate() - 3 + index
-      );
-
-      return dateItem.toISOString().split("T")[0];
-    });
-  }, [selectedDate]);
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   async function loadData() {
     setLoading(true);
 
-    const [agendaResult, clientsResult] =
-      await Promise.all([
-        supabase
-          .from("agenda")
-          .select("*")
-          .order("data", { ascending: true })
-          .order("horario", { ascending: true }),
+    const [appointmentsResult, clientsResult] = await Promise.all([
+      supabase
+        .from("agenda")
+        .select("*")
+        .order("data", { ascending: true })
+        .order("horario", { ascending: true }),
 
-        supabase
-          .from("clientes")
-          .select("id, nome, cidade")
-          .eq("status", "Ativo")
-          .order("nome", { ascending: true }),
-      ]);
+      supabase
+        .from("clientes")
+        .select("id,nome,cidade")
+        .eq("ativo", true)
+        .order("nome", { ascending: true }),
+    ]);
 
-    if (agendaResult.error) {
-      console.error(
-        "Erro ao carregar agenda:",
-        agendaResult.error
-      );
+    if (appointmentsResult.error) {
+      console.error(appointmentsResult.error);
+      alert("Não foi possível carregar a agenda.");
     } else {
       setAppointments(
-        (agendaResult.data || []) as Appointment[]
+        (appointmentsResult.data || []) as Appointment[]
       );
     }
 
     if (clientsResult.error) {
-      console.error(
-        "Erro ao carregar clientes:",
-        clientsResult.error
-      );
+      console.error(clientsResult.error);
     } else {
-      setClients(
-        (clientsResult.data || []) as Client[]
-      );
+      setClients((clientsResult.data || []) as Client[]);
     }
 
     setLoading(false);
   }
 
-  function moveDay(days: number) {
-    const dateItem = new Date(
-      `${selectedDate}T12:00:00`
-    );
+  useEffect(() => {
+    loadData();
+  }, []);
 
-    dateItem.setDate(
-      dateItem.getDate() + days
-    );
-
-    setSelectedDate(
-      dateItem.toISOString().split("T")[0]
-    );
+  function openNewAppointment() {
+    setSelectedClientId("");
+    setCity("");
+    setService("");
+    setTechnician("");
+    setTime("08:00");
+    setShowModal(true);
   }
 
-  function handleClientChange(id: string) {
-    setClientId(id);
+  function closeModal() {
+    if (saving) return;
+    setShowModal(false);
+  }
 
-    const selectedClient = clients.find(
-      (client) => client.id === id
-    );
+  function handleClientChange(clientId: string) {
+    setSelectedClientId(clientId);
 
-    if (selectedClient) {
-      setClientName(selectedClient.nome);
-      setCity(selectedClient.cidade || "");
+    const client = clients.find((item) => item.id === clientId);
+
+    if (client) {
+      setCity(client.cidade || "");
     } else {
-      setClientName("");
       setCity("");
     }
   }
 
-  async function addAppointment(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+  async function saveAppointment() {
+    if (!selectedClientId) {
+      alert("Selecione um cliente.");
+      return;
+    }
 
-    if (
-      !clientId ||
-      !service.trim() ||
-      !technician.trim() ||
-      !date ||
-      !time
-    ) {
-      alert(
-        "Preencha todos os campos obrigatórios."
-      );
+    if (!service.trim()) {
+      alert("Informe o serviço.");
+      return;
+    }
+
+    if (!technician.trim()) {
+      alert("Informe o técnico.");
+      return;
+    }
+
+    if (!time) {
+      alert("Informe o horário.");
       return;
     }
 
     const selectedClient = clients.find(
-      (client) => client.id === clientId
+      (client) => client.id === selectedClientId
     );
 
     if (!selectedClient) {
-      alert("Selecione um cliente.");
+      alert("Cliente não encontrado.");
       return;
     }
 
@@ -228,41 +221,28 @@ export default function AgendaPage() {
       .insert({
         cliente_id: selectedClient.id,
         cliente_nome: selectedClient.nome,
-        cidade:
-          city ||
-          selectedClient.cidade ||
-          "",
+        cidade: city || selectedClient.cidade || "",
         servico: service.trim(),
         tecnico: technician.trim(),
-        data,
+        data: date,
         horario: time,
         status: "Agendado",
       })
       .select()
       .single();
 
-    const insertedAppointment =
-      insertResult.data;
-
-    const insertError =
-      insertResult.error;
+    const insertedAppointment = insertResult.data;
+    const insertError = insertResult.error;
 
     if (insertError) {
       console.error(insertError);
-
-      alert(
-        "Não foi possível salvar o atendimento."
-      );
-
+      alert("Não foi possível salvar o atendimento.");
       setSaving(false);
       return;
     }
 
     if (!insertedAppointment) {
-      alert(
-        "O atendimento foi enviado, mas não retornou os dados."
-      );
-
+      alert("O atendimento foi enviado, mas não retornou os dados.");
       setSaving(false);
       return;
     }
@@ -272,56 +252,39 @@ export default function AgendaPage() {
       insertedAppointment as Appointment,
     ]);
 
-    setSelectedDate(date);
-
-    setClientId("");
-    setClientName("");
-    setCity("");
-    setService("");
-    setTechnician("");
-    setDate(today);
-    setTime("08:00");
-
-    setShowForm(false);
+    setShowModal(false);
     setSaving(false);
   }
 
-  async function changeStatus(
-    id: string,
-    status: AppointmentStatus
+  async function updateStatus(
+    appointment: Appointment,
+    newStatus: AppointmentStatus
   ) {
     const { error } = await supabase
       .from("agenda")
-      .update({ status })
-      .eq("id", id);
+      .update({
+        status: newStatus,
+      })
+      .eq("id", appointment.id);
 
     if (error) {
       console.error(error);
-
-      alert(
-        "Não foi possível atualizar o status."
-      );
-
+      alert("Não foi possível atualizar o status.");
       return;
     }
 
     setAppointments((current) =>
-      current.map((appointment) =>
-        appointment.id === id
-          ? {
-              ...appointment,
-              status,
-            }
-          : appointment
+      current.map((item) =>
+        item.id === appointment.id
+          ? { ...item, status: newStatus }
+          : item
       )
     );
   }
 
-  async function deleteAppointment(
-    id: string
-  ) {
+  async function deleteAppointment(appointment: Appointment) {
     const confirmed = window.confirm(
-      "Deseja realmente excluir este atendimento?"
+      `Excluir o atendimento de ${appointment.cliente_nome}?`
     );
 
     if (!confirmed) return;
@@ -329,661 +292,472 @@ export default function AgendaPage() {
     const { error } = await supabase
       .from("agenda")
       .delete()
-      .eq("id", id);
+      .eq("id", appointment.id);
 
     if (error) {
       console.error(error);
-
-      alert(
-        "Não foi possível excluir o atendimento."
-      );
-
+      alert("Não foi possível excluir o atendimento.");
       return;
     }
 
     setAppointments((current) =>
-      current.filter(
-        (appointment) =>
-          appointment.id !== id
-      )
+      current.filter((item) => item.id !== appointment.id)
     );
   }
 
-  function openNewAppointment() {
-    setClientId("");
-    setClientName("");
-    setCity("");
-    setService("");
-    setTechnician("");
-    setDate(selectedDate);
-    setTime("08:00");
-    setShowForm(true);
+  function changeDate(days: number) {
+    const current = new Date(`${date}T12:00:00`);
+    current.setDate(current.getDate() + days);
+    setDate(formatDate(current));
   }
 
+  function goToday() {
+    setDate(getInitialDate());
+  }
+
+  const dailyAppointments = useMemo(() => {
+    return appointments
+      .filter((appointment) => appointment.data === date)
+      .filter((appointment) => {
+        if (statusFilter === "Todos") return true;
+        return appointment.status === statusFilter;
+      })
+      .filter((appointment) => {
+        const term = search.trim().toLowerCase();
+
+        if (!term) return true;
+
+        return (
+          appointment.cliente_nome.toLowerCase().includes(term) ||
+          appointment.cidade.toLowerCase().includes(term) ||
+          appointment.servico.toLowerCase().includes(term) ||
+          appointment.tecnico.toLowerCase().includes(term)
+        );
+      })
+      .sort((a, b) =>
+        a.horario.localeCompare(b.horario)
+      );
+  }, [appointments, date, search, statusFilter]);
+
+  const totalDay = appointments.filter(
+    (appointment) => appointment.data === date
+  ).length;
+
+  const confirmedDay = appointments.filter(
+    (appointment) =>
+      appointment.data === date &&
+      appointment.status === "Confirmado"
+  ).length;
+
+  const completedDay = appointments.filter(
+    (appointment) =>
+      appointment.data === date &&
+      appointment.status === "Concluído"
+  ).length;
+
+  const cancelledDay = appointments.filter(
+    (appointment) =>
+      appointment.data === date &&
+      appointment.status === "Cancelado"
+  ).length;
+
   return (
-    <main className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-cyan-500 p-3 text-white">
-              <CalendarDays size={22} />
-            </div>
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+        {/* CABEÇALHO */}
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-600 p-3 text-white">
+                <CalendarDays size={24} />
+              </div>
 
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                Agenda
-              </h1>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Agenda
+                </h1>
 
-              <p className="text-sm text-slate-500">
-                Organize os atendimentos da equipe
-              </p>
+                <p className="text-sm text-gray-500">
+                  Controle seus atendimentos e visitas técnicas
+                </p>
+              </div>
             </div>
           </div>
 
           <button
             onClick={openNewAppointment}
-            className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-cyan-600"
+            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
-            <Plus size={18} />
-
-            <span className="hidden sm:inline">
-              Novo atendimento
-            </span>
-
-            <span className="sm:hidden">
-              Novo
-            </span>
+            <Plus size={20} />
+            Novo atendimento
           </button>
         </div>
-      </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-cyan-600">
-                Agenda de atendimentos
+        {/* CONTROLES DE DATA */}
+        <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => changeDate(-1)}
+                className="rounded-lg border border-gray-200 p-2 text-gray-700 hover:bg-gray-50"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <button
+                onClick={goToday}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Hoje
+              </button>
+
+              <button
+                onClick={() => changeDate(1)}
+                className="rounded-lg border border-gray-200 p-2 text-gray-700 hover:bg-gray-50"
+              >
+                <ChevronRight size={20} />
+              </button>
+
+              <div className="ml-2 flex items-center gap-2">
+                <CalendarDays size={18} className="text-blue-600" />
+
+                <span className="font-semibold text-gray-900">
+                  {formatDateBR(date)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative">
+                <Search
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar atendimento..."
+                  className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 sm:w-64"
+                />
+              </div>
+
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(
+                    event.target.value as AppointmentStatus | "Todos"
+                  )
+                }
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+              >
+                <option value="Todos">Todos os status</option>
+
+                {STATUS.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* RESUMO */}
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Atendimentos
+            </p>
+
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {totalDay}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Confirmados
+            </p>
+
+            <p className="mt-1 text-2xl font-bold text-green-600">
+              {confirmedDay}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Concluídos
+            </p>
+
+            <p className="mt-1 text-2xl font-bold text-emerald-600">
+              {completedDay}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Cancelados
+            </p>
+
+            <p className="mt-1 text-2xl font-bold text-red-600">
+              {cancelledDay}
+            </p>
+          </div>
+        </div>
+
+        {/* LISTA */}
+        <div className="rounded-2xl bg-white shadow-sm">
+          <div className="border-b border-gray-100 p-5">
+            <h2 className="text-lg font-bold text-gray-900">
+              Atendimentos do dia
+            </h2>
+          </div>
+
+          {loading ? (
+            <div className="p-10 text-center text-gray-500">
+              Carregando agenda...
+            </div>
+          ) : dailyAppointments.length === 0 ? (
+            <div className="p-10 text-center">
+              <CalendarDays
+                size={42}
+                className="mx-auto mb-3 text-gray-300"
+              />
+
+              <p className="font-semibold text-gray-700">
+                Nenhum atendimento encontrado
               </p>
 
-              <h2 className="mt-1 text-xl font-bold capitalize text-slate-900">
-                {formatDate(selectedDate)}
-              </h2>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => moveDay(-1)}
-                className="rounded-xl border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
-              >
-                <ChevronLeft size={19} />
-              </button>
+              <p className="mt-1 text-sm text-gray-500">
+                Não há atendimentos para esta data.
+              </p>
 
               <button
-                onClick={() => moveDay(1)}
-                className="rounded-xl border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
+                onClick={openNewAppointment}
+                className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
               >
-                <ChevronRight size={19} />
+                <Plus size={18} />
+                Agendar atendimento
               </button>
             </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-7 gap-2 overflow-x-auto">
-            {visibleDates.map((dateItem) => {
-              const dateObject = new Date(
-                `${dateItem}T12:00:00`
-              );
-
-              const weekday =
-                dateObject.toLocaleDateString(
-                  "pt-BR",
-                  {
-                    weekday: "short",
-                  }
-                );
-
-              const day =
-                dateObject.getDate();
-
-              const count =
-                appointments.filter(
-                  (appointment) =>
-                    appointment.data ===
-                    dateItem
-                ).length;
-
-              const selected =
-                dateItem === selectedDate;
-
-              return (
-                <button
-                  key={dateItem}
-                  onClick={() =>
-                    setSelectedDate(dateItem)
-                  }
-                  className={`min-w-[58px] rounded-xl p-3 text-center transition ${
-                    selected
-                      ? "bg-cyan-500 text-white shadow-md"
-                      : "bg-slate-50 text-slate-600 hover:bg-slate-100"
-                  }`}
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {dailyAppointments.map((appointment) => (
+                <div
+                  key={appointment.id}
+                  className="p-5 transition hover:bg-gray-50"
                 >
-                  <p className="text-[11px] capitalize">
-                    {weekday.replace(".", "")}
-                  </p>
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                        <Clock size={24} />
+                      </div>
 
-                  <p className="mt-1 text-lg font-bold">
-                    {day}
-                  </p>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-bold text-gray-900">
+                            {appointment.horario.slice(0, 5)}
+                          </h3>
 
-                  <p
-                    className={`mt-1 text-[10px] ${
-                      selected
-                        ? "text-cyan-100"
-                        : "text-slate-400"
-                    }`}
-                  >
-                    {count} atendimento
-                    {count !== 1
-                      ? "s"
-                      : ""}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900">
-                    Atendimentos do dia
-                  </h3>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    {
-                      selectedAppointments.length
-                    }{" "}
-                    atendimento
-                    {selectedAppointments.length !==
-                    1
-                      ? "s"
-                      : ""}{" "}
-                    agendado
-                    {selectedAppointments.length !==
-                    1
-                      ? "s"
-                      : ""}
-                  </p>
-                </div>
-
-                <CalendarDays
-                  size={20}
-                  className="text-cyan-500"
-                />
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="p-10 text-center text-sm text-slate-400">
-                Carregando agenda...
-              </div>
-            ) : selectedAppointments.length ===
-              0 ? (
-              <div className="p-10 text-center">
-                <CalendarDays
-                  size={36}
-                  className="mx-auto text-slate-300"
-                />
-
-                <p className="mt-3 font-medium text-slate-700">
-                  Agenda livre
-                </p>
-
-                <p className="mt-1 text-sm text-slate-400">
-                  Não existem atendimentos
-                  para este dia.
-                </p>
-
-                <button
-                  onClick={
-                    openNewAppointment
-                  }
-                  className="mt-5 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white"
-                >
-                  Agendar atendimento
-                </button>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {selectedAppointments.map(
-                  (appointment) => (
-                    <div
-                      key={appointment.id}
-                      className="p-5"
-                    >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex gap-4">
-                          <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
-                            <div className="text-center">
-                              <Clock
-                                size={16}
-                                className="mx-auto"
-                              />
-
-                              <span className="mt-1 block text-sm font-bold">
-                                {appointment.horario.slice(
-                                  0,
-                                  5
-                                )}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h4 className="font-bold text-slate-900">
-                                {
-                                  appointment.cliente_nome
-                                }
-                              </h4>
-
-                              <span
-                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                                  statusStyles[
-                                    appointment
-                                      .status
-                                  ]
-                                }`}
-                              >
-                                {
-                                  appointment.status
-                                }
-                              </span>
-                            </div>
-
-                            <div className="mt-2 space-y-1.5 text-sm text-slate-500">
-                              <div className="flex items-center gap-2">
-                                <Wrench
-                                  size={15}
-                                />
-                                {
-                                  appointment.servico
-                                }
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <MapPin
-                                  size={15}
-                                />
-                                {
-                                  appointment.cidade
-                                }
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <User
-                                  size={15}
-                                />
-                                {
-                                  appointment.tecnico
-                                }
-                              </div>
-                            </div>
-                          </div>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(
+                              appointment.status
+                            )}`}
+                          >
+                            {appointment.status}
+                          </span>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 sm:justify-end">
-                          {appointment.status ===
-                            "Agendado" && (
-                            <button
-                              onClick={() =>
-                                changeStatus(
-                                  appointment.id,
-                                  "Confirmado"
-                                )
-                              }
-                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
-                            >
-                              Confirmar
-                            </button>
-                          )}
+                        <p className="mt-1 flex items-center gap-1 font-semibold text-gray-800">
+                          <User size={15} />
+                          {appointment.cliente_nome}
+                        </p>
 
-                          {appointment.status ===
-                            "Confirmado" && (
-                            <button
-                              onClick={() =>
-                                changeStatus(
-                                  appointment.id,
-                                  "Em atendimento"
-                                )
-                              }
-                              className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white"
-                            >
-                              Iniciar
-                            </button>
-                          )}
+                        <div className="mt-1 flex flex-wrap gap-4 text-sm text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <MapPin size={14} />
+                            {appointment.cidade}
+                          </span>
 
-                          {appointment.status ===
-                            "Em atendimento" && (
-                            <button
-                              onClick={() =>
-                                changeStatus(
-                                  appointment.id,
-                                  "Concluído"
-                                )
-                              }
-                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white"
-                            >
-                              Concluir
-                            </button>
-                          )}
+                          <span>
+                            Serviço:{" "}
+                            <strong className="text-gray-700">
+                              {appointment.servico}
+                            </strong>
+                          </span>
 
-                          {appointment.status !==
-                            "Concluído" &&
-                            appointment.status !==
-                              "Cancelado" && (
-                              <button
-                                onClick={() =>
-                                  changeStatus(
-                                    appointment.id,
-                                    "Cancelado"
-                                  )
-                                }
-                                className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600"
-                              >
-                                Cancelar
-                              </button>
-                            )}
-
-                          <button
-                            onClick={() =>
-                              deleteAppointment(
-                                appointment.id
-                              )
-                            }
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500"
-                          >
-                            Excluir
-                          </button>
+                          <span>
+                            Técnico:{" "}
+                            <strong className="text-gray-700">
+                              {appointment.tecnico}
+                            </strong>
+                          </span>
                         </div>
                       </div>
                     </div>
-                  )
-                )}
-              </div>
-            )}
-          </div>
 
-          <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="font-bold text-slate-900">
-              Resumo da agenda
-            </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={appointment.status}
+                        onChange={(event) =>
+                          updateStatus(
+                            appointment,
+                            event.target.value as AppointmentStatus
+                          )
+                        }
+                        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                      >
+                        {STATUS.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
 
-            <div className="mt-5 space-y-3">
-              <div className="rounded-xl bg-blue-50 p-4">
-                <p className="text-xs text-blue-600">
-                  Agendados
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-blue-700">
-                  {
-                    appointments.filter(
-                      (item) =>
-                        item.status ===
-                        "Agendado"
-                    ).length
-                  }
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-emerald-50 p-4">
-                <p className="text-xs text-emerald-600">
-                  Confirmados
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-emerald-700">
-                  {
-                    appointments.filter(
-                      (item) =>
-                        item.status ===
-                        "Confirmado"
-                    ).length
-                  }
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-amber-50 p-4">
-                <p className="text-xs text-amber-600">
-                  Em atendimento
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-amber-700">
-                  {
-                    appointments.filter(
-                      (item) =>
-                        item.status ===
-                        "Em atendimento"
-                    ).length
-                  }
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-100 p-4">
-                <p className="text-xs text-slate-500">
-                  Concluídos
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-slate-700">
-                  {
-                    appointments.filter(
-                      (item) =>
-                        item.status ===
-                        "Concluído"
-                    ).length
-                  }
-                </p>
-              </div>
+                      <button
+                        onClick={() =>
+                          deleteAppointment(appointment)
+                        }
+                        className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                        title="Excluir"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </aside>
-        </section>
+          )}
+        </div>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
-            <div className="mb-6 flex items-start justify-between">
+      {/* MODAL NOVO ATENDIMENTO */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 p-5">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">
+                <h2 className="text-xl font-bold text-gray-900">
                   Novo atendimento
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Agende um atendimento para sua equipe.
+                <p className="text-sm text-gray-500">
+                  Agendar atendimento para {formatDateBR(date)}
                 </p>
               </div>
 
               <button
-                onClick={() =>
-                  setShowForm(false)
-                }
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                onClick={closeModal}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <form
-              onSubmit={addAppointment}
-              className="space-y-4"
-            >
+            <div className="space-y-4 p-5">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                   Cliente
                 </label>
 
                 <select
-                  value={clientId}
+                  value={selectedClientId}
                   onChange={(event) =>
-                    handleClientChange(
-                      event.target.value
-                    )
+                    handleClientChange(event.target.value)
                   }
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500"
                 >
                   <option value="">
-                    Selecione um cliente
+                    Selecione o cliente
                   </option>
 
                   {clients.map((client) => (
-                    <option
-                      key={client.id}
-                      value={client.id}
-                    >
+                    <option key={client.id} value={client.id}>
                       {client.nome}
                     </option>
                   ))}
                 </select>
-
-                {clients.length === 0 && (
-                  <p className="mt-2 text-xs text-amber-600">
-                    Nenhum cliente ativo
-                    encontrado.
-                  </p>
-                )}
               </div>
 
-              {clientName && (
-                <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                  <p className="text-xs text-slate-400">
-                    Cliente selecionado
-                  </p>
-
-                  <p className="font-semibold text-slate-700">
-                    {clientName}
-                  </p>
-                </div>
-              )}
-
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                   Cidade
                 </label>
 
                 <input
                   value={city}
-                  onChange={(event) =>
-                    setCity(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Cidade do atendimento"
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  onChange={(event) => setCity(event.target.value)}
+                  placeholder="Cidade"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                   Serviço
                 </label>
 
                 <input
                   value={service}
-                  onChange={(event) =>
-                    setService(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Ex.: Manutenção preventiva"
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  onChange={(event) => setService(event.target.value)}
+                  placeholder="Ex.: Instalação, manutenção..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                 />
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Técnico
-                </label>
-
-                <input
-                  value={technician}
-                  onChange={(event) =>
-                    setTechnician(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Nome do técnico"
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Data
+                  <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                    Técnico
                   </label>
 
                   <input
-                    type="date"
-                    value={date}
+                    value={technician}
                     onChange={(event) =>
-                      setDate(
-                        event.target.value
-                      )
+                      setTechnician(event.target.value)
                     }
-                    required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    placeholder="Nome do técnico"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                     Horário
                   </label>
 
                   <input
                     type="time"
                     value={time}
-                    onChange={(event) =>
-                      setTime(
-                        event.target.value
-                      )
-                    }
-                    required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    onChange={(event) => setTime(event.target.value)}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
+            </div>
 
-              <div className="flex gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowForm(false)
-                  }
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
+              <button
+                onClick={closeModal}
+                disabled={saving}
+                className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving
-                    ? "Salvando..."
-                    : "Agendar"}
-                </button>
-              </div>
-            </form>
+              <button
+                onClick={saveAppointment}
+                disabled={saving}
+                className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Salvando..." : "Salvar atendimento"}
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
