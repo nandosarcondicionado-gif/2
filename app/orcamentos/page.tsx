@@ -4,14 +4,12 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
-  Clock,
   FileText,
   Plus,
   Search,
   User,
   Wrench,
   X,
-  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -82,23 +80,22 @@ export default function OrcamentosPage() {
   async function loadData() {
     setLoading(true);
 
-    const [budgetsResult, clientsResult] =
-      await Promise.all([
-        supabase
-          .from("orcamentos")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          }),
+    const [budgetsResult, clientsResult] = await Promise.all([
+      supabase
+        .from("orcamentos")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        }),
 
-        supabase
-          .from("clientes")
-          .select("id, nome, cidade")
-          .eq("status", "Ativo")
-          .order("nome", {
-            ascending: true,
-          }),
-      ]);
+      supabase
+        .from("clientes")
+        .select("id, nome, cidade")
+        .eq("status", "Ativo")
+        .order("nome", {
+          ascending: true,
+        }),
+    ]);
 
     if (budgetsResult.error) {
       console.error(
@@ -139,9 +136,9 @@ export default function OrcamentosPage() {
         equipment: item.equipamentos ?? "",
         value: Number(item.valor ?? 0),
         date: item.data
-          ? new Date(
-              `${item.data}T00:00:00`
-            ).toLocaleDateString("pt-BR")
+          ? new Date(`${item.data}T00:00:00`).toLocaleDateString(
+              "pt-BR"
+            )
           : "",
         status: item.status as BudgetStatus,
       }));
@@ -152,21 +149,24 @@ export default function OrcamentosPage() {
     setLoading(false);
   }
 
+  function clearForm() {
+    setClientId("");
+    setCity("");
+    setService("");
+    setEquipment("");
+    setValue("");
+    setDate("");
+  }
+
   useEffect(() => {
     loadData();
 
-    const params = new URLSearchParams(
-      window.location.search
-    );
+    const params = new URLSearchParams(window.location.search);
 
     if (params.get("novo") === "1") {
       clearForm();
 
-      setDate(
-        new Date()
-          .toISOString()
-          .split("T")[0]
-      );
+      setDate(new Date().toISOString().split("T")[0]);
 
       setShowForm(true);
 
@@ -179,61 +179,29 @@ export default function OrcamentosPage() {
   }, []);
 
   const filteredBudgets = useMemo(() => {
-    const term = search
-      .toLowerCase()
-      .trim();
+    const term = search.toLowerCase().trim();
 
     return budgets.filter((budget) => {
       const matchesSearch =
         !term ||
-        budget.number
-          .toLowerCase()
-          .includes(term) ||
-        budget.client
-          .toLowerCase()
-          .includes(term) ||
-        budget.city
-          .toLowerCase()
-          .includes(term) ||
-        budget.service
-          .toLowerCase()
-          .includes(term) ||
-        budget.equipment
-          .toLowerCase()
-          .includes(term);
+        budget.number.toLowerCase().includes(term) ||
+        budget.client.toLowerCase().includes(term) ||
+        budget.city.toLowerCase().includes(term) ||
+        budget.service.toLowerCase().includes(term) ||
+        budget.equipment.toLowerCase().includes(term);
 
       const matchesStatus =
         statusFilter === "Todos" ||
         budget.status === statusFilter;
 
-      return (
-        matchesSearch &&
-        matchesStatus
-      );
+      return matchesSearch && matchesStatus;
     });
-  }, [
-    budgets,
-    search,
-    statusFilter,
-  ]);
-
-  function clearForm() {
-    setClientId("");
-    setCity("");
-    setService("");
-    setEquipment("");
-    setValue("");
-    setDate("");
-  }
+  }, [budgets, search, statusFilter]);
 
   function openNewBudget() {
     clearForm();
 
-    setDate(
-      new Date()
-        .toISOString()
-        .split("T")[0]
-    );
+    setDate(new Date().toISOString().split("T")[0]);
 
     setShowForm(true);
   }
@@ -253,63 +221,49 @@ export default function OrcamentosPage() {
   }
 
   async function generateNumber() {
-    const { data: lastBudget } =
-      await supabase
-        .from("orcamentos")
-        .select("numero")
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
+    const { data: lastBudget } = await supabase
+      .from("orcamentos")
+      .select("numero")
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
     let nextNumber = 1;
 
     if (lastBudget?.numero) {
-      const match =
-        lastBudget.numero.match(
-          /(\d+)$/
-        );
+      const match = lastBudget.numero.match(/(\d+)$/);
 
       if (match) {
-        nextNumber =
-          Number(match[1]) + 1;
+        nextNumber = Number(match[1]) + 1;
       }
     }
 
-    return `ORC-${String(
-      nextNumber
-    ).padStart(4, "0")}`;
+    return `ORC-${String(nextNumber).padStart(4, "0")}`;
   }
 
   async function generateOrderNumber() {
-    const { data: lastOrder } =
-      await supabase
-        .from("ordens_servico")
-        .select("numero")
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
+    const { data: lastOrder } = await supabase
+      .from("ordens_servico")
+      .select("numero")
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
     let nextNumber = 1;
 
     if (lastOrder?.numero) {
-      const match =
-        lastOrder.numero.match(
-          /(\d+)$/
-        );
+      const match = lastOrder.numero.match(/(\d+)$/);
 
       if (match) {
-        nextNumber =
-          Number(match[1]) + 1;
+        nextNumber = Number(match[1]) + 1;
       }
     }
 
-    return `OS-${String(
-      nextNumber
-    ).padStart(4, "0")}`;
+    return `OS-${String(nextNumber).padStart(4, "0")}`;
   }
 
   function getServiceType(
@@ -320,45 +274,29 @@ export default function OrcamentosPage() {
     | "Instalação"
     | "Higienização"
     | "Visita técnica" {
-    const text =
-      serviceName
-        .toLowerCase()
-        .trim();
+    const text = serviceName.toLowerCase().trim();
 
-    if (
-      text.includes("instala")
-    ) {
+    if (text.includes("instala")) {
       return "Instalação";
     }
 
-    if (
-      text.includes("higien")
-    ) {
+    if (text.includes("higien")) {
       return "Higienização";
     }
 
-    if (
-      text.includes("corret")
-    ) {
+    if (text.includes("corret")) {
       return "Corretiva";
     }
 
-    if (
-      text.includes("prevent")
-    ) {
+    if (text.includes("prevent")) {
       return "Preventiva";
     }
 
     return "Visita técnica";
   }
 
-  async function generateServiceOrder(
-    budget: Budget
-  ) {
-    if (
-      budget.status !==
-      "Aprovado"
-    ) {
+  async function generateServiceOrder(budget: Budget) {
+    if (budget.status !== "Aprovado") {
       alert(
         "Somente orçamentos aprovados podem gerar uma Ordem de Serviço."
       );
@@ -372,39 +310,29 @@ export default function OrcamentosPage() {
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        `Deseja gerar uma Ordem de Serviço para o orçamento ${budget.number}?\n\nCliente: ${budget.client}\nServiço: ${budget.service}\nValor: ${budget.value.toLocaleString(
-          "pt-BR",
-          {
-            style: "currency",
-            currency: "BRL",
-          }
-        )}`
-      );
+    const confirmed = window.confirm(
+      `Deseja gerar uma Ordem de Serviço para o orçamento ${budget.number}?\n\nCliente: ${budget.client}\nServiço: ${budget.service}\nValor: ${budget.value.toLocaleString(
+        "pt-BR",
+        {
+          style: "currency",
+          currency: "BRL",
+        }
+      )}`
+    );
 
     if (!confirmed) {
       return;
     }
 
-    setGeneratingOrderId(
-      budget.id
-    );
+    setGeneratingOrderId(budget.id);
 
-    /*
-     * Antes de criar, verificamos se já existe
-     * uma OS originada deste orçamento.
-     */
     const {
       data: existingOrders,
       error: existingError,
     } = await supabase
       .from("ordens_servico")
       .select("id, numero")
-      .eq(
-        "cliente_id",
-        budget.clientId
-      )
+      .eq("cliente_id", budget.clientId)
       .ilike(
         "observacoes",
         `%${budget.number}%`
@@ -437,58 +365,35 @@ export default function OrcamentosPage() {
       return;
     }
 
-    const number =
-      await generateOrderNumber();
+    const number = await generateOrderNumber();
 
-    const today =
-      new Date()
-        .toISOString()
-        .split("T")[0];
+    const today = new Date()
+      .toISOString()
+      .split("T")[0];
 
-    const serviceType =
-      getServiceType(
-        budget.service
-      );
+    const serviceType = getServiceType(
+      budget.service
+    );
 
-    const { error } =
-      await supabase
-        .from("ordens_servico")
-        .insert({
-          numero: number,
-
-          cliente_id:
-            budget.clientId,
-
-          cliente_nome:
-            budget.client,
-
-          equipamento:
-            budget.equipment ||
-            "Não informado",
-
-          cidade:
-            budget.city,
-
-          tipo_servico:
-            serviceType,
-
-          descricao:
-            budget.service,
-
-          data:
-            today,
-
-          tecnico: null,
-
-          valor:
-            budget.value,
-
-          status:
-            "Aberta",
-
-          observacoes:
-            `Gerada automaticamente a partir do orçamento ${budget.number}.`,
-        });
+    const { error } = await supabase
+      .from("ordens_servico")
+      .insert({
+        numero: number,
+        cliente_id: budget.clientId,
+        cliente_nome: budget.client,
+        equipamento:
+          budget.equipment ||
+          "Não informado",
+        cidade: budget.city,
+        tipo_servico: serviceType,
+        descricao: budget.service,
+        data: today,
+        tecnico: null,
+        valor: budget.value,
+        status: "Aberta",
+        observacoes:
+          `Gerada automaticamente a partir do orçamento ${budget.number}.`,
+      });
 
     if (error) {
       console.error(
@@ -520,72 +425,50 @@ export default function OrcamentosPage() {
     event.preventDefault();
 
     if (!clientId) {
-      alert(
-        "Selecione um cliente."
-      );
+      alert("Selecione um cliente.");
       return;
     }
 
     if (!service.trim()) {
-      alert(
-        "Informe o serviço."
-      );
+      alert("Informe o serviço.");
       return;
     }
 
     if (!city.trim()) {
-      alert(
-        "Informe a cidade."
-      );
+      alert("Informe a cidade.");
       return;
     }
 
-    const selectedClient =
-      clients.find(
-        (client) =>
-          client.id === clientId
-      );
+    const selectedClient = clients.find(
+      (client) => client.id === clientId
+    );
 
     if (!selectedClient) {
-      alert(
-        "Cliente não encontrado."
-      );
+      alert("Cliente não encontrado.");
       return;
     }
 
     const numericValue =
-      Number(
-        value.replace(",", ".")
-      ) || 0;
+      Number(value.replace(",", ".")) || 0;
 
     setSaving(true);
 
-    const number =
-      await generateNumber();
+    const number = await generateNumber();
 
-    const { error } =
-      await supabase
-        .from("orcamentos")
-        .insert({
-          numero: number,
-          cliente_id:
-            selectedClient.id,
-          cliente_nome:
-            selectedClient.nome,
-          cidade:
-            city.trim(),
-          servico:
-            service.trim(),
-          equipamentos:
-            equipment.trim() ||
-            null,
-          valor:
-            numericValue,
-          data:
-            date || null,
-          status:
-            "Rascunho",
-        });
+    const { error } = await supabase
+      .from("orcamentos")
+      .insert({
+        numero: number,
+        cliente_id: selectedClient.id,
+        cliente_nome: selectedClient.nome,
+        cidade: city.trim(),
+        servico: service.trim(),
+        equipamentos:
+          equipment.trim() || null,
+        valor: numericValue,
+        data: date || null,
+        status: "Rascunho",
+      });
 
     if (error) {
       console.error(
@@ -613,13 +496,12 @@ export default function OrcamentosPage() {
     budget: Budget,
     newStatus: BudgetStatus
   ) {
-    const { error } =
-      await supabase
-        .from("orcamentos")
-        .update({
-          status: newStatus,
-        })
-        .eq("id", budget.id);
+    const { error } = await supabase
+      .from("orcamentos")
+      .update({
+        status: newStatus,
+      })
+      .eq("id", budget.id);
 
     if (error) {
       console.error(
@@ -639,36 +521,29 @@ export default function OrcamentosPage() {
         item.id === budget.id
           ? {
               ...item,
-              status:
-                newStatus,
+              status: newStatus,
             }
           : item
       )
     );
   }
 
-  const totalValue =
-    budgets.reduce(
-      (total, budget) =>
-        total + budget.value,
-      0
-    );
+  const totalValue = budgets.reduce(
+    (total, budget) =>
+      total + budget.value,
+    0
+  );
 
-  const approvedBudgets =
-    budgets.filter(
-      (budget) =>
-        budget.status ===
-        "Aprovado"
-    ).length;
+  const approvedBudgets = budgets.filter(
+    (budget) =>
+      budget.status === "Aprovado"
+  ).length;
 
-  const pendingBudgets =
-    budgets.filter(
-      (budget) =>
-        budget.status ===
-          "Rascunho" ||
-        budget.status ===
-          "Enviado"
-    ).length;
+  const pendingBudgets = budgets.filter(
+    (budget) =>
+      budget.status === "Rascunho" ||
+      budget.status === "Enviado"
+  ).length;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -685,16 +560,13 @@ export default function OrcamentosPage() {
               </h1>
 
               <p className="text-sm text-slate-500">
-                Controle de propostas e
-                orçamentos
+                Controle de propostas e orçamentos
               </p>
             </div>
           </div>
 
           <button
-            onClick={
-              openNewBudget
-            }
+            onClick={openNewBudget}
             className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-cyan-600"
           >
             <Plus size={18} />
@@ -751,10 +623,8 @@ export default function OrcamentosPage() {
               {totalValue.toLocaleString(
                 "pt-BR",
                 {
-                  style:
-                    "currency",
-                  currency:
-                    "BRL",
+                  style: "currency",
+                  currency: "BRL",
                 }
               )}
             </p>
@@ -784,21 +654,15 @@ export default function OrcamentosPage() {
 
               <div className="flex gap-2 overflow-x-auto">
                 {(
-                  [
-                    "Todos",
-                    ...statuses,
-                  ] as const
+                  ["Todos", ...statuses] as const
                 ).map((item) => (
                   <button
                     key={item}
                     onClick={() =>
-                      setStatusFilter(
-                        item
-                      )
+                      setStatusFilter(item)
                     }
                     className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold ${
-                      statusFilter ===
-                      item
+                      statusFilter === item
                         ? "bg-cyan-500 text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
@@ -812,11 +676,9 @@ export default function OrcamentosPage() {
 
           {loading ? (
             <div className="p-10 text-center text-sm text-slate-500">
-              Carregando
-              orçamentos...
+              Carregando orçamentos...
             </div>
-          ) : filteredBudgets.length ===
-            0 ? (
+          ) : filteredBudgets.length === 0 ? (
             <div className="p-10 text-center">
               <FileText
                 size={38}
@@ -824,14 +686,12 @@ export default function OrcamentosPage() {
               />
 
               <p className="mt-3 font-semibold text-slate-700">
-                Nenhum orçamento
-                encontrado
+                Nenhum orçamento encontrado
               </p>
 
               <p className="mt-1 text-sm text-slate-400">
-                Clique em "Novo
-                orçamento" para
-                cadastrar.
+                Clique em "Novo orçamento"
+                para cadastrar.
               </p>
             </div>
           ) : (
@@ -845,77 +705,47 @@ export default function OrcamentosPage() {
                     <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
                       <div className="flex items-start gap-4">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                          <FileText
-                            size={22}
-                          />
+                          <FileText size={22} />
                         </div>
 
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-bold text-cyan-600">
-                              {
-                                budget.number
-                              }
+                              {budget.number}
                             </span>
 
                             <span
                               className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[budget.status]}`}
                             >
-                              {
-                                budget.status
-                              }
+                              {budget.status}
                             </span>
                           </div>
 
                           <h3 className="mt-1 font-semibold text-slate-900">
-                            {
-                              budget.service
-                            }
+                            {budget.service}
                           </h3>
 
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
                             <span className="flex items-center gap-1">
-                              <User
-                                size={
-                                  14
-                                }
-                              />
-                              {
-                                budget.client
-                              }
+                              <User size={14} />
+                              {budget.client}
                             </span>
 
                             <span className="flex items-center gap-1">
-                              <Building2
-                                size={
-                                  14
-                                }
-                              />
-                              {
-                                budget.city
-                              }
+                              <Building2 size={14} />
+                              {budget.city}
                             </span>
 
                             <span className="flex items-center gap-1">
-                              <Wrench
-                                size={
-                                  14
-                                }
-                              />
+                              <Wrench size={14} />
                               {budget.equipment ||
                                 "Não informado"}
                             </span>
 
                             {budget.date && (
                               <span className="flex items-center gap-1">
-                                <CalendarDays
-                                  size={
-                                    14
-                                  }
-                                />
-                                {
-                                  budget.date
-                                }
+                                <CalendarDays size={14} />
+                                {budget.date}
                               </span>
                             )}
                           </div>
@@ -932,10 +762,8 @@ export default function OrcamentosPage() {
                             {budget.value.toLocaleString(
                               "pt-BR",
                               {
-                                style:
-                                  "currency",
-                                currency:
-                                  "BRL",
+                                style: "currency",
+                                currency: "BRL",
                               }
                             )}
                           </p>
@@ -943,36 +771,23 @@ export default function OrcamentosPage() {
 
                         <div className="flex flex-wrap gap-2">
                           <select
-                            value={
-                              budget.status
-                            }
-                            onChange={(
-                              event
-                            ) =>
+                            value={budget.status}
+                            onChange={(event) =>
                               changeStatus(
                                 budget,
-                                event
-                                  .target
+                                event.target
                                   .value as BudgetStatus
                               )
                             }
                             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
                           >
                             {statuses.map(
-                              (
-                                item
-                              ) => (
+                              (item) => (
                                 <option
-                                  key={
-                                    item
-                                  }
-                                  value={
-                                    item
-                                  }
+                                  key={item}
+                                  value={item}
                                 >
-                                  {
-                                    item
-                                  }
+                                  {item}
                                 </option>
                               )
                             )}
@@ -992,11 +807,7 @@ export default function OrcamentosPage() {
                               }
                               className="flex items-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              <Wrench
-                                size={
-                                  15
-                                }
-                              />
+                              <Wrench size={15} />
 
                               {generatingOrderId ===
                               budget.id
@@ -1019,10 +830,8 @@ export default function OrcamentosPage() {
           {totalValue.toLocaleString(
             "pt-BR",
             {
-              style:
-                "currency",
-              currency:
-                "BRL",
+              style: "currency",
+              currency: "BRL",
             }
           )}
         </div>
@@ -1038,8 +847,7 @@ export default function OrcamentosPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Preencha os dados da
-                  proposta.
+                  Preencha os dados da proposta.
                 </p>
               </div>
 
@@ -1089,11 +897,9 @@ export default function OrcamentosPage() {
                   )}
                 </select>
 
-                {clients.length ===
-                  0 && (
+                {clients.length === 0 && (
                   <p className="mt-2 text-xs text-amber-600">
-                    Cadastre um
-                    cliente ativo
+                    Cadastre um cliente ativo
                     primeiro.
                   </p>
                 )}
@@ -1141,15 +947,10 @@ export default function OrcamentosPage() {
                 </label>
 
                 <input
-                  value={
-                    equipment
-                  }
-                  onChange={(
-                    event
-                  ) =>
+                  value={equipment}
+                  onChange={(event) =>
                     setEquipment(
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   placeholder="Ex.: Split 12.000 BTUs"
@@ -1165,12 +966,9 @@ export default function OrcamentosPage() {
 
                   <input
                     value={value}
-                    onChange={(
-                      event
-                    ) =>
+                    onChange={(event) =>
                       setValue(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Ex.: 450"
@@ -1187,12 +985,9 @@ export default function OrcamentosPage() {
                   <input
                     type="date"
                     value={date}
-                    onChange={(
-                      event
-                    ) =>
+                    onChange={(event) =>
                       setDate(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
@@ -1206,19 +1001,12 @@ export default function OrcamentosPage() {
                 </p>
 
                 <p className="mt-1 text-sm text-blue-800">
-                  Depois que o orçamento
-                  for marcado como
-                  <strong>
-                    {" "}
-                    Aprovado
-                  </strong>
-                  , aparecerá o botão
-                  <strong>
-                    {" "}
-                    Gerar OS
-                  </strong>
-                  para criar
-                  automaticamente a Ordem
+                  Depois que o orçamento for
+                  marcado como
+                  <strong> Aprovado</strong>,
+                  aparecerá o botão
+                  <strong> Gerar OS</strong> para
+                  criar automaticamente a Ordem
                   de Serviço.
                 </p>
               </div>
@@ -1237,9 +1025,7 @@ export default function OrcamentosPage() {
 
                 <button
                   type="submit"
-                  disabled={
-                    saving
-                  }
+                  disabled={saving}
                   className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving
