@@ -14,7 +14,11 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type ServiceOrderStatus =
@@ -53,13 +57,13 @@ type Client = {
   cidade: string;
 };
 
-const statusStyles: Record<ServiceOrderStatus, string> = {
-  Aberta: "bg-blue-50 text-blue-700",
-  Agendada: "bg-purple-50 text-purple-700",
-  "Em andamento": "bg-amber-50 text-amber-700",
-  Concluída: "bg-emerald-50 text-emerald-700",
-  Cancelada: "bg-red-50 text-red-700",
-};
+const statuses: ServiceOrderStatus[] = [
+  "Aberta",
+  "Agendada",
+  "Em andamento",
+  "Concluída",
+  "Cancelada",
+];
 
 const serviceTypes: ServiceType[] = [
   "Preventiva",
@@ -69,78 +73,136 @@ const serviceTypes: ServiceType[] = [
   "Visita técnica",
 ];
 
-const statuses: ServiceOrderStatus[] = [
-  "Aberta",
-  "Agendada",
-  "Em andamento",
-  "Concluída",
-  "Cancelada",
-];
+const statusStyles: Record<
+  ServiceOrderStatus,
+  string
+> = {
+  Aberta:
+    "bg-blue-50 text-blue-700",
+  Agendada:
+    "bg-amber-50 text-amber-700",
+  "Em andamento":
+    "bg-cyan-50 text-cyan-700",
+  Concluída:
+    "bg-emerald-50 text-emerald-700",
+  Cancelada:
+    "bg-red-50 text-red-700",
+};
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 export default function OrdensServicoPage() {
   const supabase = createClient();
 
-  const [orders, setOrders] = useState<ServiceOrder[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [orders, setOrders] =
+    useState<ServiceOrder[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [clients, setClients] =
+    useState<Client[]>([]);
 
-  const [search, setSearch] = useState("");
+  const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [search, setSearch] =
+    useState("");
+
   const [statusFilter, setStatusFilter] =
-    useState<"Todos" | ServiceOrderStatus>("Todos");
+    useState<
+      "Todos" | ServiceOrderStatus
+    >("Todos");
 
-  const [showForm, setShowForm] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  const [showForm, setShowForm] =
+    useState(false);
 
-  const [editingOrder, setEditingOrder] =
-    useState<ServiceOrder | null>(null);
+  const [showDetails, setShowDetails] =
+    useState(false);
 
   const [selectedOrder, setSelectedOrder] =
-    useState<ServiceOrder | null>(null);
+    useState<ServiceOrder | null>(
+      null
+    );
 
-  const [clientId, setClientId] = useState("");
-  const [equipment, setEquipment] = useState("");
-  const [city, setCity] = useState("");
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
+
+  const [clientId, setClientId] =
+    useState("");
+
+  const [client, setClient] =
+    useState("");
+
+  const [equipment, setEquipment] =
+    useState("");
+
+  const [city, setCity] =
+    useState("");
+
   const [serviceType, setServiceType] =
-    useState<ServiceType>("Preventiva");
-  const [description, setDescription] = useState("");
-  const [date, setDate] = useState("");
-  const [technician, setTechnician] = useState("");
-  const [value, setValue] = useState("");
+    useState<ServiceType>(
+      "Preventiva"
+    );
+
+  const [description, setDescription] =
+    useState("");
+
+  const [date, setDate] =
+    useState("");
+
+  const [technician, setTechnician] =
+    useState("");
+
+  const [value, setValue] =
+    useState("");
+
   const [status, setStatus] =
-    useState<ServiceOrderStatus>("Aberta");
-  const [notes, setNotes] = useState("");
+    useState<ServiceOrderStatus>(
+      "Aberta"
+    );
+
+  const [notes, setNotes] =
+    useState("");
 
   async function loadData() {
     setLoading(true);
 
-    const [ordersResult, clientsResult] =
-      await Promise.all([
-        supabase
-          .from("ordens_servico")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          }),
+    const [
+      ordersResult,
+      clientsResult,
+    ] = await Promise.all([
+      supabase
+        .from("ordens_servico")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        }),
 
-        supabase
-          .from("clientes")
-          .select("id, nome, cidade")
-          .eq("status", "Ativo")
-          .order("nome", {
-            ascending: true,
-          }),
-      ]);
+      supabase
+        .from("clientes")
+        .select("id, nome, cidade")
+        .eq("status", "Ativo")
+        .order("nome", {
+          ascending: true,
+        }),
+    ]);
 
     if (ordersResult.error) {
       console.error(
-        "Erro ao carregar ordens:",
+        "Erro ao carregar ordens de serviço:",
         ordersResult.error
       );
 
       alert(
-        `Não foi possível carregar as Ordens de Serviço.\n\n${ordersResult.error.message}`
+        `Não foi possível carregar as ordens de serviço.\n\n${ordersResult.error.message}`
       );
 
       setLoading(false);
@@ -162,55 +224,83 @@ export default function OrdensServicoPage() {
     }
 
     const formattedOrders: ServiceOrder[] =
-      (ordersResult.data ?? []).map((item) => ({
-        id: item.id,
-        number: item.numero,
-        clientId: item.cliente_id,
-        client: item.cliente_nome,
-        equipment: item.equipamento ?? "",
-        city: item.cidade,
-        serviceType:
-          item.tipo_servico as ServiceType,
-        description: item.descricao,
-        date: item.data
-          ? new Date(
-              `${item.data}T00:00:00`
-            ).toLocaleDateString("pt-BR")
-          : "",
-        technician: item.tecnico ?? "",
-        value: Number(item.valor ?? 0),
-        status:
-          item.status as ServiceOrderStatus,
-        notes: item.observacoes ?? "",
-      }));
+      (ordersResult.data ?? []).map(
+        (item) => ({
+          id: item.id,
+          number: item.numero,
+          clientId:
+            item.cliente_id ?? null,
+          client:
+            item.cliente_nome ?? "",
+          equipment:
+            item.equipamento ?? "",
+          city:
+            item.cidade ?? "",
+          serviceType:
+            item.tipo_servico as ServiceType,
+          description:
+            item.descricao ?? "",
+          date: item.data
+            ? new Date(
+                `${item.data}T00:00:00`
+              ).toLocaleDateString(
+                "pt-BR"
+              )
+            : "",
+          technician:
+            item.tecnico ?? "",
+          value: Number(
+            item.valor ?? 0
+          ),
+          status:
+            item.status as ServiceOrderStatus,
+          notes:
+            item.observacoes ?? "",
+        })
+      );
 
     setOrders(formattedOrders);
-    setClients(clientsResult.data ?? []);
+    setClients(
+      clientsResult.data ?? []
+    );
 
     setLoading(false);
+  }
+
+  function clearForm() {
+    setEditingId(null);
+    setClientId("");
+    setClient("");
+    setEquipment("");
+    setCity("");
+    setServiceType("Preventiva");
+    setDescription("");
+    setDate("");
+    setTechnician("");
+    setValue("");
+    setStatus("Aberta");
+    setNotes("");
   }
 
   useEffect(() => {
     loadData();
 
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
-    if (params.get("novo") === "1") {
-      setEditingOrder(null);
-      setClientId("");
-      setEquipment("");
-      setCity("");
-      setServiceType("Preventiva");
-      setDescription("");
-      setDate(
-        new Date().toISOString().split("T")[0]
+    const params =
+      new URLSearchParams(
+        window.location.search
       );
-      setTechnician("");
-      setValue("");
-      setStatus("Aberta");
-      setNotes("");
+
+    if (
+      params.get("novo") === "1"
+    ) {
+      clearForm();
+
+      setDate(
+        new Date()
+          .toISOString()
+          .split("T")[0]
+      );
+
       setShowForm(true);
 
       window.history.replaceState(
@@ -222,7 +312,8 @@ export default function OrdensServicoPage() {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    const term = search.toLowerCase().trim();
+    const term =
+      search.toLowerCase().trim();
 
     return orders.filter((order) => {
       const matchesSearch =
@@ -233,118 +324,78 @@ export default function OrdensServicoPage() {
         order.client
           .toLowerCase()
           .includes(term) ||
-        order.equipment
-          .toLowerCase()
-          .includes(term) ||
         order.city
           .toLowerCase()
           .includes(term) ||
-        order.technician
-          .toLowerCase()
-          .includes(term) ||
-        order.serviceType
+        order.equipment
           .toLowerCase()
           .includes(term) ||
         order.description
+          .toLowerCase()
+          .includes(term) ||
+        order.technician
           .toLowerCase()
           .includes(term);
 
       const matchesStatus =
         statusFilter === "Todos" ||
-        order.status === statusFilter;
+        order.status ===
+          statusFilter;
 
-      return matchesSearch && matchesStatus;
+      return (
+        matchesSearch &&
+        matchesStatus
+      );
     });
-  }, [orders, search, statusFilter]);
+  }, [
+    orders,
+    search,
+    statusFilter,
+  ]);
 
-  function clearForm() {
-    setClientId("");
-    setEquipment("");
-    setCity("");
-    setServiceType("Preventiva");
-    setDescription("");
-    setDate("");
-    setTechnician("");
-    setValue("");
-    setStatus("Aberta");
-    setNotes("");
-    setEditingOrder(null);
-  }
-
-  function openNewOrder() {
-    clearForm();
-
-    const today = new Date()
-      .toISOString()
-      .split("T")[0];
-
-    setDate(today);
-    setShowForm(true);
-  }
-
-  function openEdit(order: ServiceOrder) {
-    setEditingOrder(order);
-
-    setClientId(order.clientId ?? "");
-    setEquipment(order.equipment);
-    setCity(order.city);
-    setServiceType(order.serviceType);
-    setDescription(order.description);
-
-    if (order.date) {
-      const parts = order.date.split("/");
-
-      if (parts.length === 3) {
-        setDate(
-          `${parts[2]}-${parts[1]}-${parts[0]}`
-        );
-      }
-    } else {
-      setDate("");
-    }
-
-    setTechnician(order.technician);
-    setValue(String(order.value));
-    setStatus(order.status);
-    setNotes(order.notes);
-
-    setShowForm(true);
-  }
-
-  function openDetails(order: ServiceOrder) {
-    setSelectedOrder(order);
-    setShowDetails(true);
-  }
-
-  function handleClientChange(id: string) {
+  function handleClientChange(
+    id: string
+  ) {
     setClientId(id);
 
-    const selected = clients.find(
-      (client) => client.id === id
-    );
+    const selected =
+      clients.find(
+        (item) =>
+          item.id === id
+      );
 
     if (selected) {
-      setCity(selected.cidade);
+      setClient(
+        selected.nome
+      );
+
+      setCity(
+        selected.cidade
+      );
     } else {
+      setClient("");
       setCity("");
     }
   }
 
   async function generateNumber() {
-    const { data: lastOrder } = await supabase
-      .from("ordens_servico")
-      .select("numero")
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
+    const { data: lastOrder } =
+      await supabase
+        .from("ordens_servico")
+        .select("numero")
+        .order("created_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
 
     let nextNumber = 1;
 
     if (lastOrder?.numero) {
       const match =
-        lastOrder.numero.match(/(\d+)$/);
+        lastOrder.numero.match(
+          /(\d+)$/
+        );
 
       if (match) {
         nextNumber =
@@ -352,10 +403,67 @@ export default function OrdensServicoPage() {
       }
     }
 
-    return `OS-${String(nextNumber).padStart(
-      4,
-      "0"
-    )}`;
+    return `OS-${String(
+      nextNumber
+    ).padStart(4, "0")}`;
+  }
+
+  function openNewOrder() {
+    clearForm();
+
+    setDate(
+      new Date()
+        .toISOString()
+        .split("T")[0]
+    );
+
+    setShowForm(true);
+  }
+
+  function openEditOrder(
+    order: ServiceOrder
+  ) {
+    setEditingId(order.id);
+    setClientId(
+      order.clientId ?? ""
+    );
+    setClient(order.client);
+    setEquipment(
+      order.equipment
+    );
+    setCity(order.city);
+    setServiceType(
+      order.serviceType
+    );
+    setDescription(
+      order.description
+    );
+    setDate(
+      order.date
+        ? order.date
+            .split("/")
+            .reverse()
+            .join("-")
+        : ""
+    );
+    setTechnician(
+      order.technician
+    );
+    setValue(
+      String(order.value)
+    );
+    setStatus(order.status);
+    setNotes(order.notes);
+
+    setShowDetails(false);
+    setShowForm(true);
+  }
+
+  function openDetails(
+    order: ServiceOrder
+  ) {
+    setSelectedOrder(order);
+    setShowDetails(true);
   }
 
   async function saveOrder(
@@ -364,31 +472,36 @@ export default function OrdensServicoPage() {
     event.preventDefault();
 
     if (!clientId) {
-      alert("Selecione um cliente.");
-      return;
-    }
-
-    if (!equipment.trim()) {
-      alert("Informe o equipamento.");
+      alert(
+        "Selecione um cliente."
+      );
       return;
     }
 
     if (!description.trim()) {
-      alert("Informe a descrição do serviço.");
+      alert(
+        "Informe a descrição do serviço."
+      );
       return;
     }
 
     if (!city.trim()) {
-      alert("Informe a cidade.");
+      alert(
+        "Informe a cidade."
+      );
       return;
     }
 
-    const selectedClient = clients.find(
-      (client) => client.id === clientId
-    );
+    const selectedClient =
+      clients.find(
+        (item) =>
+          item.id === clientId
+      );
 
     if (!selectedClient) {
-      alert("Cliente não encontrado.");
+      alert(
+        "Cliente não encontrado."
+      );
       return;
     }
 
@@ -399,24 +512,40 @@ export default function OrdensServicoPage() {
 
     setSaving(true);
 
-    if (editingOrder) {
-      const { error } = await supabase
-        .from("ordens_servico")
-        .update({
-          cliente_id: selectedClient.id,
-          cliente_nome: selectedClient.nome,
-          equipamento: equipment.trim(),
-          cidade: city.trim(),
-          tipo_servico: serviceType,
-          descricao: description.trim(),
-          data: date || null,
-          tecnico: technician.trim() || null,
-          valor: numericValue,
-          status,
-          observacoes:
-            notes.trim() || null,
-        })
-        .eq("id", editingOrder.id);
+    if (editingId) {
+      const { error } =
+        await supabase
+          .from("ordens_servico")
+          .update({
+            cliente_id:
+              selectedClient.id,
+            cliente_nome:
+              selectedClient.nome,
+            equipamento:
+              equipment.trim() ||
+              null,
+            cidade:
+              city.trim(),
+            tipo_servico:
+              serviceType,
+            descricao:
+              description.trim(),
+            data:
+              date || null,
+            tecnico:
+              technician.trim() ||
+              null,
+            valor:
+              numericValue,
+            status,
+            observacoes:
+              notes.trim() ||
+              null,
+          })
+          .eq(
+            "id",
+            editingId
+          );
 
       if (error) {
         console.error(
@@ -425,7 +554,7 @@ export default function OrdensServicoPage() {
         );
 
         alert(
-          `Não foi possível atualizar a OS.\n\n${error.message}`
+          `Não foi possível atualizar a Ordem de Serviço.\n\n${error.message}`
         );
 
         setSaving(false);
@@ -435,23 +564,36 @@ export default function OrdensServicoPage() {
       const number =
         await generateNumber();
 
-      const { error } = await supabase
-        .from("ordens_servico")
-        .insert({
-          numero: number,
-          cliente_id: selectedClient.id,
-          cliente_nome: selectedClient.nome,
-          equipamento: equipment.trim(),
-          cidade: city.trim(),
-          tipo_servico: serviceType,
-          descricao: description.trim(),
-          data: date || null,
-          tecnico: technician.trim() || null,
-          valor: numericValue,
-          status,
-          observacoes:
-            notes.trim() || null,
-        });
+      const { error } =
+        await supabase
+          .from("ordens_servico")
+          .insert({
+            numero: number,
+            cliente_id:
+              selectedClient.id,
+            cliente_nome:
+              selectedClient.nome,
+            equipamento:
+              equipment.trim() ||
+              null,
+            cidade:
+              city.trim(),
+            tipo_servico:
+              serviceType,
+            descricao:
+              description.trim(),
+            data:
+              date || null,
+            tecnico:
+              technician.trim() ||
+              null,
+            valor:
+              numericValue,
+            status,
+            observacoes:
+              notes.trim() ||
+              null,
+          });
 
       if (error) {
         console.error(
@@ -460,7 +602,7 @@ export default function OrdensServicoPage() {
         );
 
         alert(
-          `Não foi possível criar a OS.\n\n${error.message}`
+          `Não foi possível criar a Ordem de Serviço.\n\n${error.message}`
         );
 
         setSaving(false);
@@ -469,30 +611,32 @@ export default function OrdensServicoPage() {
     }
 
     setSaving(false);
-
     clearForm();
     setShowForm(false);
 
     await loadData();
   }
 
-  async function deleteOrder(id: string) {
-    const order = orders.find(
-      (item) => item.id === id
-    );
+  async function deleteOrder(
+    order: ServiceOrder
+  ) {
+    const confirmed =
+      window.confirm(
+        `Deseja realmente excluir a Ordem de Serviço ${order.number}?\n\nEssa ação não poderá ser desfeita.`
+      );
 
-    if (!order) return;
+    if (!confirmed) {
+      return;
+    }
 
-    const confirmed = window.confirm(
-      `Deseja realmente excluir a ${order.number}?`
-    );
-
-    if (!confirmed) return;
-
-    const { error } = await supabase
-      .from("ordens_servico")
-      .delete()
-      .eq("id", id);
+    const { error } =
+      await supabase
+        .from("ordens_servico")
+        .delete()
+        .eq(
+          "id",
+          order.id
+        );
 
     if (error) {
       console.error(
@@ -501,34 +645,33 @@ export default function OrdensServicoPage() {
       );
 
       alert(
-        `Não foi possível excluir a OS.\n\n${error.message}`
+        `Não foi possível excluir a Ordem de Serviço.\n\n${error.message}`
       );
 
       return;
     }
 
-    setOrders((current) =>
-      current.filter(
-        (item) => item.id !== id
-      )
-    );
+    setShowDetails(false);
+    setSelectedOrder(null);
 
-    if (selectedOrder?.id === id) {
-      setSelectedOrder(null);
-      setShowDetails(false);
-    }
+    await loadData();
   }
 
   async function changeStatus(
     order: ServiceOrder,
     newStatus: ServiceOrderStatus
   ) {
-    const { error } = await supabase
-      .from("ordens_servico")
-      .update({
-        status: newStatus,
-      })
-      .eq("id", order.id);
+    const { error } =
+      await supabase
+        .from("ordens_servico")
+        .update({
+          status:
+            newStatus,
+        })
+        .eq(
+          "id",
+          order.id
+        );
 
     if (error) {
       console.error(
@@ -543,50 +686,48 @@ export default function OrdensServicoPage() {
       return;
     }
 
-    const updatedOrder = {
-      ...order,
-      status: newStatus,
-    };
-
     setOrders((current) =>
       current.map((item) =>
         item.id === order.id
-          ? updatedOrder
+          ? {
+              ...item,
+              status:
+                newStatus,
+            }
           : item
       )
     );
 
-    if (selectedOrder?.id === order.id) {
-      setSelectedOrder(updatedOrder);
+    if (
+      selectedOrder?.id ===
+      order.id
+    ) {
+      setSelectedOrder({
+        ...selectedOrder,
+        status:
+          newStatus,
+      });
     }
-  }
-
-  function escapeHtml(value: string) {
-    return value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
   }
 
   function printServiceOrder(
     order: ServiceOrder
   ) {
-    const printWindow = window.open(
-      "",
-      "_blank",
-      "width=900,height=1100"
-    );
+    const printWindow =
+      window.open(
+        "",
+        "_blank",
+        "width=900,height=700"
+      );
 
     if (!printWindow) {
       alert(
-        "Não foi possível abrir a impressão. Verifique se o navegador bloqueou a janela."
+        "O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente novamente."
       );
       return;
     }
 
-    const formattedValue =
+    const valueFormatted =
       order.value.toLocaleString(
         "pt-BR",
         {
@@ -596,389 +737,416 @@ export default function OrdensServicoPage() {
       );
 
     const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8" />
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1.0"
-        />
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-        <title>
-          ${escapeHtml(order.number)} - Nando's Ar-Condicionado
-        </title>
+<title>Ordem de Serviço ${escapeHtml(
+      order.number
+    )}</title>
 
-        <style>
-          * {
-            box-sizing: border-box;
-          }
+<style>
+  * {
+    box-sizing: border-box;
+  }
 
-          body {
-            margin: 0;
-            padding: 0;
-            background: #e5e7eb;
-            color: #111827;
-            font-family: Arial, Helvetica, sans-serif;
-          }
+  body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #111827;
+    font-family: Arial, Helvetica, sans-serif;
+  }
 
-          .page {
-            width: 210mm;
-            min-height: 297mm;
-            margin: 10mm auto;
-            padding: 16mm;
-            background: white;
-          }
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 18mm;
+    background: white;
+  }
 
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 3px solid #06b6d4;
-            padding-bottom: 18px;
-            margin-bottom: 24px;
-          }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 3px solid #06b6d4;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+  }
 
-          .company {
-            font-size: 24px;
-            font-weight: 800;
-            color: #0f172a;
-          }
+  .brand {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0f172a;
+  }
 
-          .company-subtitle {
-            margin-top: 5px;
-            font-size: 12px;
-            color: #64748b;
-          }
+  .slogan {
+    margin-top: 5px;
+    font-size: 11px;
+    color: #64748b;
+  }
 
-          .os-number {
-            text-align: right;
-          }
+  .os-box {
+    text-align: right;
+  }
 
-          .os-label {
-            font-size: 11px;
-            color: #64748b;
-            text-transform: uppercase;
-          }
+  .os-label {
+    font-size: 11px;
+    color: #64748b;
+    text-transform: uppercase;
+  }
 
-          .os-value {
-            margin-top: 4px;
-            font-size: 21px;
-            font-weight: 800;
-            color: #0891b2;
-          }
+  .os-number {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 800;
+    color: #0891b2;
+  }
 
-          .status {
-            display: inline-block;
-            margin-top: 7px;
-            padding: 5px 10px;
-            border-radius: 999px;
-            background: #ecfeff;
-            color: #0e7490;
-            font-size: 11px;
-            font-weight: 700;
-          }
+  .status {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #ecfeff;
+    color: #0e7490;
+    font-size: 10px;
+    font-weight: 700;
+  }
 
-          .section {
-            margin-top: 22px;
-          }
+  .section {
+    margin-top: 18px;
+  }
 
-          .section-title {
-            margin-bottom: 10px;
-            padding-bottom: 7px;
-            border-bottom: 1px solid #e2e8f0;
-            font-size: 13px;
-            font-weight: 800;
-            color: #0f172a;
-            text-transform: uppercase;
-          }
+  .section-title {
+    margin-bottom: 9px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 12px;
+    font-weight: 800;
+    color: #334155;
+    text-transform: uppercase;
+  }
 
-          .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-          }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 18px;
+  }
 
-          .field {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 11px;
-          }
+  .field {
+    min-height: 42px;
+    padding: 9px 11px;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+  }
 
-          .field-label {
-            margin-bottom: 5px;
-            font-size: 10px;
-            color: #64748b;
-          }
+  .field.full {
+    grid-column: 1 / -1;
+  }
 
-          .field-value {
-            font-size: 13px;
-            font-weight: 600;
-            color: #1e293b;
-            white-space: pre-wrap;
-          }
+  .label {
+    margin-bottom: 4px;
+    font-size: 9px;
+    color: #64748b;
+    text-transform: uppercase;
+  }
 
-          .description,
-          .notes {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 13px;
-            font-size: 13px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-          }
+  .value {
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f172a;
+  }
 
-          .value-box {
-            margin-top: 22px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 2px solid #06b6d4;
-            border-radius: 9px;
-            padding: 14px;
-          }
+  .description {
+    min-height: 80px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
 
-          .value-label {
-            font-size: 13px;
-            font-weight: 700;
-            color: #475569;
-          }
+  .price {
+    margin-top: 18px;
+    padding: 14px;
+    border-radius: 8px;
+    background: #f0fdfa;
+    border: 1px solid #99f6e4;
+    text-align: right;
+  }
 
-          .value {
-            font-size: 21px;
-            font-weight: 800;
-            color: #0891b2;
-          }
+  .price-label {
+    font-size: 10px;
+    color: #64748b;
+  }
 
-          .signatures {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 35px;
-            margin-top: 65px;
-          }
+  .price-value {
+    margin-top: 3px;
+    font-size: 20px;
+    font-weight: 800;
+    color: #0f766e;
+  }
 
-          .signature {
-            padding-top: 8px;
-            border-top: 1px solid #334155;
-            text-align: center;
-            font-size: 11px;
-            color: #475569;
-          }
+  .signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-top: 65px;
+  }
 
-          .footer {
-            margin-top: 35px;
-            padding-top: 12px;
-            border-top: 1px solid #e2e8f0;
-            text-align: center;
-            font-size: 10px;
-            color: #94a3b8;
-          }
+  .signature {
+    padding-top: 8px;
+    border-top: 1px solid #334155;
+    text-align: center;
+    font-size: 10px;
+    color: #475569;
+  }
 
-          @page {
-            size: A4;
-            margin: 0;
-          }
+  .footer {
+    margin-top: 35px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+    font-size: 9px;
+    color: #94a3b8;
+  }
 
-          @media print {
-            body {
-              background: white;
-            }
+  @page {
+    size: A4;
+    margin: 0;
+  }
 
-            .page {
-              margin: 0;
-              width: 210mm;
-              min-height: 297mm;
-              box-shadow: none;
-            }
-          }
-        </style>
-      </head>
+  @media print {
+    body {
+      background: white;
+    }
 
-      <body>
-        <div class="page">
+    .page {
+      margin: 0;
+      width: 210mm;
+      min-height: 297mm;
+    }
+  }
+</style>
+</head>
 
-          <div class="header">
-            <div>
-              <div class="company">
-                Nando's Ar-Condicionado
-              </div>
+<body>
+  <div class="page">
 
-              <div class="company-subtitle">
-                Qualidade e confiança em todos os detalhes
-              </div>
-            </div>
-
-            <div class="os-number">
-              <div class="os-label">
-                Ordem de Serviço
-              </div>
-
-              <div class="os-value">
-                ${escapeHtml(order.number)}
-              </div>
-
-              <div class="status">
-                ${escapeHtml(order.status)}
-              </div>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">
-              Dados do atendimento
-            </div>
-
-            <div class="grid">
-              <div class="field">
-                <div class="field-label">
-                  Cliente
-                </div>
-
-                <div class="field-value">
-                  ${escapeHtml(order.client)}
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="field-label">
-                  Cidade
-                </div>
-
-                <div class="field-value">
-                  ${escapeHtml(order.city)}
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="field-label">
-                  Equipamento
-                </div>
-
-                <div class="field-value">
-                  ${escapeHtml(order.equipment)}
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="field-label">
-                  Tipo de serviço
-                </div>
-
-                <div class="field-value">
-                  ${escapeHtml(order.serviceType)}
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="field-label">
-                  Data
-                </div>
-
-                <div class="field-value">
-                  ${escapeHtml(
-                    order.date || "Não definida"
-                  )}
-                </div>
-              </div>
-
-              <div class="field">
-                <div class="field-label">
-                  Técnico
-                </div>
-
-                <div class="field-value">
-                  ${escapeHtml(
-                    order.technician || "Não definido"
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">
-              Descrição do serviço
-            </div>
-
-            <div class="description">
-              ${escapeHtml(order.description)}
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">
-              Observações
-            </div>
-
-            <div class="notes">
-              ${escapeHtml(
-                order.notes || "Nenhuma observação."
-              )}
-            </div>
-          </div>
-
-          <div class="value-box">
-            <div class="value-label">
-              Valor do serviço
-            </div>
-
-            <div class="value">
-              ${formattedValue}
-            </div>
-          </div>
-
-          <div class="signatures">
-            <div class="signature">
-              Assinatura do cliente
-            </div>
-
-            <div class="signature">
-              Nando's Ar-Condicionado
-            </div>
-          </div>
-
-          <div class="footer">
-            Nando's Ar-Condicionado — Qualidade e confiança em todos os detalhes
-          </div>
-
+    <div class="header">
+      <div>
+        <div class="brand">
+          Nando's Ar-Condicionado
         </div>
 
-        <script>
-          window.onload = function () {
-            setTimeout(function () {
-              window.print();
+        <div class="slogan">
+          Qualidade e confiança em todos os detalhes
+        </div>
+      </div>
 
-              setTimeout(function () {
-                window.close();
-              }, 800);
-            }, 300);
-          };
-        </script>
-      </body>
-      </html>
-    `;
+      <div class="os-box">
+        <div class="os-label">
+          Ordem de Serviço
+        </div>
+
+        <div class="os-number">
+          ${escapeHtml(
+            order.number
+          )}
+        </div>
+
+        <div class="status">
+          ${escapeHtml(
+            order.status
+          )}
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        Dados do atendimento
+      </div>
+
+      <div class="grid">
+
+        <div class="field">
+          <div class="label">
+            Cliente
+          </div>
+
+          <div class="value">
+            ${escapeHtml(
+              order.client ||
+                "Não informado"
+            )}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">
+            Cidade
+          </div>
+
+          <div class="value">
+            ${escapeHtml(
+              order.city ||
+                "Não informado"
+            )}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">
+            Equipamento
+          </div>
+
+          <div class="value">
+            ${escapeHtml(
+              order.equipment ||
+                "Não informado"
+            )}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">
+            Tipo de serviço
+          </div>
+
+          <div class="value">
+            ${escapeHtml(
+              order.serviceType
+            )}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">
+            Data
+          </div>
+
+          <div class="value">
+            ${escapeHtml(
+              order.date ||
+                "Não informada"
+            )}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">
+            Técnico responsável
+          </div>
+
+          <div class="value">
+            ${escapeHtml(
+              order.technician ||
+                "Não definido"
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        Descrição do serviço
+      </div>
+
+      <div class="description">
+        ${escapeHtml(
+          order.description ||
+            "Nenhuma descrição informada."
+        )}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        Observações
+      </div>
+
+      <div class="description">
+        ${escapeHtml(
+          order.notes ||
+            "Nenhuma observação informada."
+        )}
+      </div>
+    </div>
+
+    <div class="price">
+      <div class="price-label">
+        Valor do serviço
+      </div>
+
+      <div class="price-value">
+        ${valueFormatted}
+      </div>
+    </div>
+
+    <div class="signatures">
+
+      <div class="signature">
+        Assinatura do cliente
+      </div>
+
+      <div class="signature">
+        Assinatura do técnico
+      </div>
+
+    </div>
+
+    <div class="footer">
+      Nando's Ar-Condicionado — Qualidade e confiança em todos os detalhes
+    </div>
+
+  </div>
+</body>
+</html>
+`;
 
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
+
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
   }
 
-  const totalValue = orders.reduce(
-    (total, order) =>
-      total + order.value,
-    0
-  );
+  const totalValue =
+    orders.reduce(
+      (total, order) =>
+        total + order.value,
+      0
+    );
 
-  const openOrders = orders.filter(
-    (order) =>
-      order.status === "Aberta" ||
-      order.status === "Agendada"
-  ).length;
+  const openOrders =
+    orders.filter(
+      (order) =>
+        order.status ===
+          "Aberta" ||
+        order.status ===
+          "Agendada" ||
+        order.status ===
+          "Em andamento"
+    ).length;
 
   const completedOrders =
     orders.filter(
       (order) =>
-        order.status === "Concluída"
+        order.status ===
+        "Concluída"
     ).length;
 
   return (
@@ -996,7 +1164,7 @@ export default function OrdensServicoPage() {
               </h1>
 
               <p className="text-sm text-slate-500">
-                Controle dos serviços e atendimentos
+                Controle dos atendimentos
               </p>
             </div>
           </div>
@@ -1008,11 +1176,11 @@ export default function OrdensServicoPage() {
             <Plus size={18} />
 
             <span className="hidden sm:inline">
-              Nova ordem de serviço
+              Nova ordem
             </span>
 
             <span className="sm:hidden">
-              Nova OS
+              Nova
             </span>
           </button>
         </div>
@@ -1035,7 +1203,7 @@ export default function OrdensServicoPage() {
               Em aberto
             </p>
 
-            <p className="mt-2 text-2xl font-bold text-purple-600">
+            <p className="mt-2 text-2xl font-bold text-amber-600">
               {openOrders}
             </p>
           </div>
@@ -1083,7 +1251,7 @@ export default function OrdensServicoPage() {
                       event.target.value
                     )
                   }
-                  placeholder="Buscar OS, cliente, cidade, técnico..."
+                  placeholder="Buscar OS, cliente, cidade..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-cyan-400 focus:bg-white focus:ring-2 focus:ring-cyan-100"
                 />
               </div>
@@ -1098,10 +1266,13 @@ export default function OrdensServicoPage() {
                   <button
                     key={item}
                     onClick={() =>
-                      setStatusFilter(item)
+                      setStatusFilter(
+                        item
+                      )
                     }
                     className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold ${
-                      statusFilter === item
+                      statusFilter ===
+                      item
                         ? "bg-cyan-500 text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
@@ -1115,21 +1286,22 @@ export default function OrdensServicoPage() {
 
           {loading ? (
             <div className="p-10 text-center text-sm text-slate-500">
-              Carregando Ordens de Serviço...
+              Carregando ordens de serviço...
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : filteredOrders.length ===
+            0 ? (
             <div className="p-10 text-center">
               <ClipboardList
-                size={38}
+                size={40}
                 className="mx-auto text-slate-300"
               />
 
               <p className="mt-3 font-semibold text-slate-700">
-                Nenhuma OS encontrada
+                Nenhuma ordem encontrada
               </p>
 
               <p className="mt-1 text-sm text-slate-400">
-                Clique em "Nova OS" para cadastrar.
+                Clique em "Nova ordem" para cadastrar.
               </p>
             </div>
           ) : (
@@ -1143,9 +1315,7 @@ export default function OrdensServicoPage() {
                     <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
                       <div className="flex items-start gap-4">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                          <ClipboardList
-                            size={22}
-                          />
+                          <Wrench size={22} />
                         </div>
 
                         <div>
@@ -1162,7 +1332,7 @@ export default function OrdensServicoPage() {
                           </div>
 
                           <h3 className="mt-1 font-semibold text-slate-900">
-                            {order.serviceType}
+                            {order.description}
                           </h3>
 
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
@@ -1172,35 +1342,22 @@ export default function OrdensServicoPage() {
                             </span>
 
                             <span className="flex items-center gap-1">
-                              <Wrench size={14} />
-                              {order.equipment}
-                            </span>
-
-                            <span className="flex items-center gap-1">
                               <MapPin size={14} />
                               {order.city}
                             </span>
 
+                            <span className="flex items-center gap-1">
+                              <Wrench size={14} />
+                              {order.serviceType}
+                            </span>
+
                             {order.date && (
                               <span className="flex items-center gap-1">
-                                <CalendarDays
-                                  size={14}
-                                />
+                                <CalendarDays size={14} />
                                 {order.date}
                               </span>
                             )}
-
-                            {order.technician && (
-                              <span>
-                                Técnico:{" "}
-                                {order.technician}
-                              </span>
-                            )}
                           </div>
-
-                          <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                            {order.description}
-                          </p>
                         </div>
                       </div>
 
@@ -1214,10 +1371,8 @@ export default function OrdensServicoPage() {
                             {order.value.toLocaleString(
                               "pt-BR",
                               {
-                                style:
-                                  "currency",
-                                currency:
-                                  "BRL",
+                                style: "currency",
+                                currency: "BRL",
                               }
                             )}
                           </p>
@@ -1230,9 +1385,21 @@ export default function OrdensServicoPage() {
                                 order
                               )
                             }
-                            className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                           >
                             Detalhes
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              openEditOrder(
+                                order
+                              )
+                            }
+                            className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                          >
+                            <Edit size={14} />
+                            Editar
                           </button>
 
                           <button
@@ -1241,19 +1408,10 @@ export default function OrdensServicoPage() {
                                 order
                               )
                             }
-                            className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                            className="flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600"
                           >
                             <Printer size={14} />
                             PDF / Imprimir
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              openEdit(order)
-                            }
-                            className="rounded-xl bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-700 hover:bg-cyan-100"
-                          >
-                            Editar
                           </button>
                         </div>
                       </div>
@@ -1264,26 +1422,15 @@ export default function OrdensServicoPage() {
             </div>
           )}
         </section>
-
-        <div className="mt-6 text-xs text-slate-400">
-          Valor total das Ordens de Serviço:{" "}
-          {totalValue.toLocaleString(
-            "pt-BR",
-            {
-              style: "currency",
-              currency: "BRL",
-            }
-          )}
-        </div>
       </div>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
+          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
-                  {editingOrder
+                  {editingId
                     ? "Editar Ordem de Serviço"
                     : "Nova Ordem de Serviço"}
                 </h2>
@@ -1328,108 +1475,83 @@ export default function OrdensServicoPage() {
                   </option>
 
                   {clients.map(
-                    (client) => (
-                      <option
-                        key={client.id}
-                        value={client.id}
-                      >
-                        {client.nome}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                {clients.length === 0 && (
-                  <p className="mt-2 text-xs text-amber-600">
-                    Cadastre um cliente ativo primeiro.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Equipamento
-                </label>
-
-                <input
-                  value={equipment}
-                  onChange={(event) =>
-                    setEquipment(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Ex.: Split 12.000 BTUs"
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Cidade
-                </label>
-
-                <input
-                  value={city}
-                  onChange={(event) =>
-                    setCity(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Cidade do atendimento"
-                  required
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Tipo de serviço
-                </label>
-
-                <select
-                  value={serviceType}
-                  onChange={(event) =>
-                    setServiceType(
-                      event.target
-                        .value as ServiceType
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                >
-                  {serviceTypes.map(
                     (item) => (
                       <option
-                        key={item}
-                        value={item}
+                        key={item.id}
+                        value={item.id}
                       >
-                        {item}
+                        {item.nome}
                       </option>
                     )
                   )}
                 </select>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Descrição do serviço
-                </label>
-
-                <textarea
-                  value={description}
-                  onChange={(event) =>
-                    setDescription(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Descreva o serviço que será realizado..."
-                  required
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Cidade
+                  </label>
+
+                  <input
+                    value={city}
+                    onChange={(event) =>
+                      setCity(
+                        event.target.value
+                      )
+                    }
+                    required
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Equipamento
+                  </label>
+
+                  <input
+                    value={equipment}
+                    onChange={(event) =>
+                      setEquipment(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Ex.: Split 12.000 BTUs"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Tipo de serviço
+                  </label>
+
+                  <select
+                    value={serviceType}
+                    onChange={(event) =>
+                      setServiceType(
+                        event.target
+                          .value as ServiceType
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  >
+                    {serviceTypes.map(
+                      (item) => (
+                        <option
+                          key={item}
+                          value={item}
+                        >
+                          {item}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">
                     Data
@@ -1446,7 +1568,28 @@ export default function OrdensServicoPage() {
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
                 </div>
+              </div>
 
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Descrição do serviço
+                </label>
+
+                <textarea
+                  value={description}
+                  onChange={(event) =>
+                    setDescription(
+                      event.target.value
+                    )
+                  }
+                  required
+                  rows={4}
+                  placeholder="Descreva o serviço que será realizado..."
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">
                     Técnico
@@ -1459,13 +1602,11 @@ export default function OrdensServicoPage() {
                         event.target.value
                       )
                     }
-                    placeholder="Ex.: Nando"
+                    placeholder="Nome do técnico"
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
                 </div>
-              </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">
                     Valor
@@ -1478,28 +1619,35 @@ export default function OrdensServicoPage() {
                         event.target.value
                       )
                     }
-                    placeholder="Ex.: 250"
+                    placeholder="Ex.: 450"
                     inputMode="decimal"
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Status
-                  </label>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Status
+                </label>
 
-                  <select
-                    value={status}
-                    onChange={(event) =>
-                      setStatus(
-                        event.target
-                          .value as ServiceOrderStatus
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                  >
-                    {statuses.map(
+                <select
+                  value={status}
+                  onChange={(event) =>
+                    setStatus(
+                      event.target
+                        .value as ServiceOrderStatus
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                >
+                  {statuses
+                    .filter(
+                      (item) =>
+                        item !==
+                        "Todos"
+                    )
+                    .map(
                       (item) => (
                         <option
                           key={item}
@@ -1509,8 +1657,7 @@ export default function OrdensServicoPage() {
                         </option>
                       )
                     )}
-                  </select>
-                </div>
+                </select>
               </div>
 
               <div>
@@ -1525,9 +1672,9 @@ export default function OrdensServicoPage() {
                       event.target.value
                     )
                   }
-                  placeholder="Informações adicionais..."
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  placeholder="Observações adicionais..."
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
                 />
               </div>
 
@@ -1550,9 +1697,9 @@ export default function OrdensServicoPage() {
                 >
                   {saving
                     ? "Salvando..."
-                    : editingOrder
+                    : editingId
                     ? "Salvar alterações"
-                    : "Salvar OS"}
+                    : "Criar Ordem"}
                 </button>
               </div>
             </form>
@@ -1560,114 +1707,136 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {showDetails && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                  <ClipboardList size={23} />
+      {showDetails &&
+        selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+            <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-start justify-between border-b border-slate-100 p-5">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-bold text-slate-900">
+                      {selectedOrder.number}
+                    </h2>
+
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[selectedOrder.status]}`}
+                    >
+                      {selectedOrder.status}
+                    </span>
+                  </div>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Detalhes da Ordem de Serviço
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowDetails(false);
+                    setSelectedOrder(
+                      null
+                    );
+                  }}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-5 p-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Cliente
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedOrder.client}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Cidade
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedOrder.city}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Equipamento
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedOrder.equipment ||
+                        "Não informado"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Tipo de serviço
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedOrder.serviceType}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Data
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedOrder.date ||
+                        "Não informada"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Técnico
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedOrder.technician ||
+                        "Não definido"}
+                    </p>
+                  </div>
                 </div>
 
                 <div>
-                  <p className="text-xs font-bold text-cyan-600">
-                    {selectedOrder.number}
+                  <p className="mb-2 text-sm font-semibold text-slate-700">
+                    Descrição
                   </p>
 
-                  <h2 className="font-bold text-slate-900">
-                    {selectedOrder.serviceType}
-                  </h2>
-
-                  <span
-                    className={`mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[selectedOrder.status]}`}
-                  >
-                    {selectedOrder.status}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={() =>
-                  setShowDetails(false)
-                }
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-3">
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Cliente
-                </p>
-
-                <p className="mt-1 font-semibold text-slate-800">
-                  {selectedOrder.client}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Equipamento
-                </p>
-
-                <p className="mt-1 font-semibold text-slate-800">
-                  {selectedOrder.equipment}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-400">
-                    Cidade
-                  </p>
-
-                  <p className="mt-1 font-semibold text-slate-800">
-                    {selectedOrder.city}
-                  </p>
+                  <div className="rounded-xl border border-slate-200 p-4 text-sm leading-6 text-slate-600">
+                    {selectedOrder.description ||
+                      "Nenhuma descrição informada."}
+                  </div>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-400">
-                    Data
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-slate-700">
+                    Observações
                   </p>
 
-                  <p className="mt-1 font-semibold text-slate-800">
-                    {selectedOrder.date ||
-                      "Não definida"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-blue-50 p-4">
-                <p className="text-xs text-blue-500">
-                  Descrição
-                </p>
-
-                <p className="mt-1 text-sm font-medium text-blue-800">
-                  {selectedOrder.description}
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-xs text-slate-400">
-                    Técnico
-                  </p>
-
-                  <p className="mt-1 font-semibold text-slate-800">
-                    {selectedOrder.technician ||
-                      "Não definido"}
-                  </p>
+                  <div className="rounded-xl border border-slate-200 p-4 text-sm leading-6 text-slate-600">
+                    {selectedOrder.notes ||
+                      "Nenhuma observação informada."}
+                  </div>
                 </div>
 
-                <div className="rounded-xl bg-emerald-50 p-4">
-                  <p className="text-xs text-emerald-500">
-                    Valor
+                <div className="rounded-xl bg-cyan-50 p-4">
+                  <p className="text-xs text-cyan-600">
+                    Valor do serviço
                   </p>
 
-                  <p className="mt-1 font-semibold text-emerald-700">
+                  <p className="mt-1 text-2xl font-bold text-cyan-700">
                     {selectedOrder.value.toLocaleString(
                       "pt-BR",
                       {
@@ -1679,93 +1848,78 @@ export default function OrdensServicoPage() {
                     )}
                   </p>
                 </div>
-              </div>
 
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Observações
-                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() =>
+                      printServiceOrder(
+                        selectedOrder
+                      )
+                    }
+                    className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600"
+                  >
+                    <Printer size={17} />
+                    PDF / Imprimir
+                  </button>
 
-                <p className="mt-1 text-sm text-slate-700">
-                  {selectedOrder.notes ||
-                    "Nenhuma observação."}
-                </p>
-              </div>
-            </div>
+                  <button
+                    onClick={() =>
+                      openEditOrder(
+                        selectedOrder
+                      )
+                    }
+                    className="flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                  >
+                    <Edit size={17} />
+                    Editar
+                  </button>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <button
-                onClick={() =>
-                  printServiceOrder(
-                    selectedOrder
-                  )
-                }
-                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-600"
-              >
-                <Printer size={17} />
-                PDF / Imprimir
-              </button>
+                  <button
+                    onClick={() =>
+                      deleteOrder(
+                        selectedOrder
+                      )
+                    }
+                    className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100"
+                  >
+                    <Trash2 size={17} />
+                    Excluir
+                  </button>
+                </div>
 
-              <button
-                onClick={() => {
-                  setShowDetails(false);
-                  openEdit(
-                    selectedOrder
-                  );
-                }}
-                className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600"
-              >
-                <Edit size={16} />
-                Editar
-              </button>
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-slate-700">
+                    Alterar status
+                  </p>
 
-              <button
-                onClick={() =>
-                  deleteOrder(
-                    selectedOrder.id
-                  )
-                }
-                className="flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50"
-              >
-                <Trash2 size={16} />
-                Excluir
-              </button>
-            </div>
-
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium text-slate-500">
-                Alterar status
-              </p>
-
-              <div className="flex flex-wrap gap-2">
-                {statuses.map(
-                  (item) => (
-                    <button
-                      key={item}
-                      onClick={() =>
-                        changeStatus(
-                          selectedOrder,
-                          item
-                        )
-                      }
-                      className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                        selectedOrder.status ===
-                        item
-                          ? statusStyles[
+                  <div className="flex flex-wrap gap-2">
+                    {statuses.map(
+                      (item) => (
+                        <button
+                          key={item}
+                          onClick={() =>
+                            changeStatus(
+                              selectedOrder,
                               item
-                            ]
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  )
-                )}
+                            )
+                          }
+                          className={`rounded-xl px-3 py-2 text-xs font-semibold ${
+                            selectedOrder.status ===
+                            item
+                              ? "bg-cyan-500 text-white"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       <div className="fixed bottom-4 right-4 hidden items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-lg sm:flex">
         <CheckCircle2 size={15} />
