@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Edit,
   MapPin,
+  MessageCircle,
   Plus,
   Printer,
   Search,
@@ -14,11 +15,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type ServiceOrderStatus =
@@ -38,7 +35,7 @@ type ServiceType =
 type ServiceOrder = {
   id: string;
   number: string;
-  clientId: string | null;
+  clientId: string;
   client: string;
   equipment: string;
   city: string;
@@ -57,7 +54,7 @@ type Client = {
   cidade: string;
 };
 
-const statuses: ServiceOrderStatus[] = [
+const statusOptions: ServiceOrderStatus[] = [
   "Aberta",
   "Agendada",
   "Em andamento",
@@ -73,24 +70,41 @@ const serviceTypes: ServiceType[] = [
   "Visita técnica",
 ];
 
-const statusStyles: Record<
-  ServiceOrderStatus,
-  string
-> = {
-  Aberta:
-    "bg-blue-50 text-blue-700",
-  Agendada:
-    "bg-amber-50 text-amber-700",
-  "Em andamento":
-    "bg-cyan-50 text-cyan-700",
-  Concluída:
-    "bg-emerald-50 text-emerald-700",
-  Cancelada:
-    "bg-red-50 text-red-700",
+const emptyForm = {
+  clientId: "",
+  client: "",
+  equipment: "",
+  city: "",
+  serviceType: "Preventiva" as ServiceType,
+  description: "",
+  date: "",
+  technician: "",
+  value: "",
+  status: "Aberta" as ServiceOrderStatus,
+  notes: "",
 };
 
+function formatCurrency(value: number) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function formatDate(date: string) {
+  if (!date) return "Não definida";
+
+  const parts = date.split("-");
+
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+
+  return date;
+}
+
 function escapeHtml(value: string) {
-  return value
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -98,209 +112,389 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#039;");
 }
 
+function printServiceOrder(order: ServiceOrder) {
+  const printWindow = window.open("", "_blank", "width=900,height=1000");
+
+  if (!printWindow) {
+    alert("Não foi possível abrir a impressão. Verifique o bloqueador de pop-ups.");
+    return;
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>${escapeHtml(order.number)} - Nando's Ar-Condicionado</title>
+
+        <style>
+          @page {
+            size: A4;
+            margin: 15mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111827;
+            background: #ffffff;
+          }
+
+          .page {
+            width: 100%;
+            max-width: 794px;
+            margin: 0 auto;
+          }
+
+          .header {
+            border-bottom: 3px solid #111827;
+            padding-bottom: 18px;
+            margin-bottom: 20px;
+          }
+
+          .brand {
+            font-size: 25px;
+            font-weight: 800;
+            margin-bottom: 4px;
+          }
+
+          .slogan {
+            font-size: 12px;
+            color: #4b5563;
+          }
+
+          .title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 20px;
+            margin-bottom: 20px;
+          }
+
+          .title {
+            font-size: 22px;
+            font-weight: 800;
+          }
+
+          .number {
+            font-size: 14px;
+            font-weight: 700;
+            text-align: right;
+          }
+
+          .status {
+            display: inline-block;
+            margin-top: 5px;
+            padding: 6px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 11px;
+          }
+
+          .section {
+            margin-top: 18px;
+          }
+
+          .section-title {
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+          }
+
+          .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-left: 1px solid #d1d5db;
+            border-top: 1px solid #d1d5db;
+          }
+
+          .field {
+            min-height: 52px;
+            padding: 9px 10px;
+            border-right: 1px solid #d1d5db;
+            border-bottom: 1px solid #d1d5db;
+          }
+
+          .label {
+            font-size: 10px;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+          }
+
+          .value {
+            font-size: 12px;
+            font-weight: 600;
+          }
+
+          .full {
+            grid-column: 1 / -1;
+          }
+
+          .description {
+            min-height: 90px;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            white-space: pre-wrap;
+            font-size: 12px;
+          }
+
+          .money {
+            font-size: 17px;
+            font-weight: 800;
+          }
+
+          .signature-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            margin-top: 80px;
+          }
+
+          .signature {
+            text-align: center;
+            border-top: 1px solid #111827;
+            padding-top: 8px;
+            font-size: 11px;
+          }
+
+          .footer {
+            margin-top: 35px;
+            padding-top: 12px;
+            border-top: 1px solid #d1d5db;
+            text-align: center;
+            color: #6b7280;
+            font-size: 10px;
+          }
+
+          @media print {
+            body {
+              background: #ffffff;
+            }
+
+            .page {
+              max-width: none;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="page">
+
+          <div class="header">
+            <div class="brand">Nando's Ar-Condicionado</div>
+            <div class="slogan">
+              Qualidade e confiança em todos os detalhes.
+            </div>
+          </div>
+
+          <div class="title-row">
+            <div>
+              <div class="title">ORDEM DE SERVIÇO</div>
+            </div>
+
+            <div class="number">
+              Nº ${escapeHtml(order.number)}
+              <br />
+              <span class="status">${escapeHtml(order.status)}</span>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Dados do cliente</div>
+
+            <div class="grid">
+              <div class="field">
+                <div class="label">Cliente</div>
+                <div class="value">
+                  ${escapeHtml(order.client)}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label">Cidade</div>
+                <div class="value">
+                  ${escapeHtml(order.city)}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label">Equipamento</div>
+                <div class="value">
+                  ${escapeHtml(order.equipment || "Não informado")}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label">Tipo de serviço</div>
+                <div class="value">
+                  ${escapeHtml(order.serviceType)}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label">Data</div>
+                <div class="value">
+                  ${escapeHtml(formatDate(order.date))}
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label">Técnico</div>
+                <div class="value">
+                  ${escapeHtml(order.technician || "Não definido")}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Descrição do serviço</div>
+
+            <div class="description">
+              ${escapeHtml(order.description || "Não informado")}
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Observações</div>
+
+            <div class="description">
+              ${escapeHtml(order.notes || "Nenhuma observação registrada.")}
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Valor</div>
+
+            <div class="grid">
+              <div class="field full">
+                <div class="label">Valor do serviço</div>
+                <div class="money">
+                  ${escapeHtml(formatCurrency(order.value))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="signature-area">
+            <div class="signature">
+              Assinatura do cliente
+            </div>
+
+            <div class="signature">
+              Nando's Ar-Condicionado
+            </div>
+          </div>
+
+          <div class="footer">
+            Nando's Ar-Condicionado — Jaú, Bauru e Região
+            <br />
+            Qualidade e confiança em todos os detalhes.
+          </div>
+
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.print();
+
+            setTimeout(function () {
+              window.close();
+            }, 500);
+          };
+        </script>
+      </body>
+    </html>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+}
+
+function sendServiceOrderWhatsApp(order: ServiceOrder) {
+  const formattedValue = formatCurrency(order.value);
+
+  const message = `Olá! 👋
+
+Segue a Ordem de Serviço da Nando's Ar-Condicionado.
+
+🛠️ *ORDEM DE SERVIÇO*
+📋 Nº: ${order.number}
+
+👤 Cliente: ${order.client}
+📍 Cidade: ${order.city}
+❄️ Equipamento: ${order.equipment || "Não informado"}
+🔧 Serviço: ${order.serviceType}
+📅 Data: ${formatDate(order.date)}
+👨‍🔧 Técnico: ${order.technician || "Não definido"}
+
+📝 Descrição:
+${order.description || "Não informada"}
+
+💰 Valor: ${formattedValue}
+
+📌 Status: ${order.status}
+
+${
+  order.notes
+    ? `📄 Observações:
+${order.notes}
+
+`
+    : ""
+}Nando's Ar-Condicionado
+Qualidade e confiança em todos os detalhes.
+Jaú, Bauru e Região`;
+
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+  window.open(whatsappUrl, "_blank");
+}
+
 export default function OrdensServicoPage() {
   const supabase = createClient();
 
-  const [orders, setOrders] =
-    useState<ServiceOrder[]>([]);
+  const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [clients, setClients] =
-    useState<Client[]>([]);
+  const [search, setSearch] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [statusFilter, setStatusFilter] = useState<
+    "Todos" | ServiceOrderStatus
+  >("Todos");
 
-  const [saving, setSaving] =
-    useState(false);
-
-  const [search, setSearch] =
-    useState("");
-
-  const [statusFilter, setStatusFilter] =
-    useState<
-      "Todos" | ServiceOrderStatus
-    >("Todos");
-
-  const [showForm, setShowForm] =
-    useState(false);
-
-  const [showDetails, setShowDetails] =
-    useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [selectedOrder, setSelectedOrder] =
-    useState<ServiceOrder | null>(
-      null
-    );
+    useState<ServiceOrder | null>(null);
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
-
-  const [clientId, setClientId] =
-    useState("");
-
-  const [client, setClient] =
-    useState("");
-
-  const [equipment, setEquipment] =
-    useState("");
-
-  const [city, setCity] =
-    useState("");
-
-  const [serviceType, setServiceType] =
-    useState<ServiceType>(
-      "Preventiva"
-    );
-
-  const [description, setDescription] =
-    useState("");
-
-  const [date, setDate] =
-    useState("");
-
-  const [technician, setTechnician] =
-    useState("");
-
-  const [value, setValue] =
-    useState("");
-
-  const [status, setStatus] =
-    useState<ServiceOrderStatus>(
-      "Aberta"
-    );
-
-  const [notes, setNotes] =
-    useState("");
-
-  async function loadData() {
-    setLoading(true);
-
-    const [
-      ordersResult,
-      clientsResult,
-    ] = await Promise.all([
-      supabase
-        .from("ordens_servico")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        }),
-
-      supabase
-        .from("clientes")
-        .select("id, nome, cidade")
-        .eq("status", "Ativo")
-        .order("nome", {
-          ascending: true,
-        }),
-    ]);
-
-    if (ordersResult.error) {
-      console.error(
-        "Erro ao carregar ordens de serviço:",
-        ordersResult.error
-      );
-
-      alert(
-        `Não foi possível carregar as ordens de serviço.\n\n${ordersResult.error.message}`
-      );
-
-      setLoading(false);
-      return;
-    }
-
-    if (clientsResult.error) {
-      console.error(
-        "Erro ao carregar clientes:",
-        clientsResult.error
-      );
-
-      alert(
-        `Não foi possível carregar os clientes.\n\n${clientsResult.error.message}`
-      );
-
-      setLoading(false);
-      return;
-    }
-
-    const formattedOrders: ServiceOrder[] =
-      (ordersResult.data ?? []).map(
-        (item) => ({
-          id: item.id,
-          number: item.numero,
-          clientId:
-            item.cliente_id ?? null,
-          client:
-            item.cliente_nome ?? "",
-          equipment:
-            item.equipamento ?? "",
-          city:
-            item.cidade ?? "",
-          serviceType:
-            item.tipo_servico as ServiceType,
-          description:
-            item.descricao ?? "",
-          date: item.data
-            ? new Date(
-                `${item.data}T00:00:00`
-              ).toLocaleDateString(
-                "pt-BR"
-              )
-            : "",
-          technician:
-            item.tecnico ?? "",
-          value: Number(
-            item.valor ?? 0
-          ),
-          status:
-            item.status as ServiceOrderStatus,
-          notes:
-            item.observacoes ?? "",
-        })
-      );
-
-    setOrders(formattedOrders);
-    setClients(
-      clientsResult.data ?? []
-    );
-
-    setLoading(false);
-  }
-
-  function clearForm() {
-    setEditingId(null);
-    setClientId("");
-    setClient("");
-    setEquipment("");
-    setCity("");
-    setServiceType("Preventiva");
-    setDescription("");
-    setDate("");
-    setTechnician("");
-    setValue("");
-    setStatus("Aberta");
-    setNotes("");
-  }
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     loadData();
+  }, []);
 
-    const params =
-      new URLSearchParams(
-        window.location.search
-      );
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
 
-    if (
-      params.get("novo") === "1"
-    ) {
-      clearForm();
-
-      setDate(
-        new Date()
-          .toISOString()
-          .split("T")[0]
-      );
-
+    if (params.get("novo") === "1") {
+      setEditingId(null);
+      setForm({
+        ...emptyForm,
+        date: new Date().toISOString().split("T")[0],
+      });
       setShowForm(true);
 
       window.history.replaceState(
@@ -311,1620 +505,1214 @@ export default function OrdensServicoPage() {
     }
   }, []);
 
+  async function loadData() {
+    setLoading(true);
+
+    const [ordersResult, clientsResult] = await Promise.all([
+      supabase
+        .from("ordens_servico")
+        .select("*")
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("clientes")
+        .select("id,nome,cidade")
+        .eq("status", "Ativo")
+        .order("nome", { ascending: true }),
+    ]);
+
+    if (ordersResult.error) {
+      console.error(
+        "Erro ao carregar ordens de serviço:",
+        ordersResult.error
+      );
+      alert("Não foi possível carregar as ordens de serviço.");
+    }
+
+    if (clientsResult.error) {
+      console.error(
+        "Erro ao carregar clientes:",
+        clientsResult.error
+      );
+    }
+
+    const formattedOrders: ServiceOrder[] = (
+      ordersResult.data ?? []
+    ).map((item: any) => ({
+      id: item.id,
+      number: item.numero ?? "",
+      clientId: item.cliente_id ?? "",
+      client: item.cliente_nome ?? "",
+      equipment: item.equipamento ?? "",
+      city: item.cidade ?? "",
+      serviceType:
+        item.tipo_servico ?? "Preventiva",
+      description: item.descricao ?? "",
+      date: item.data ?? "",
+      technician: item.tecnico ?? "",
+      value: Number(item.valor ?? 0),
+      status:
+        item.status ?? "Aberta",
+      notes: item.observacoes ?? "",
+    }));
+
+    const formattedClients: Client[] = (
+      clientsResult.data ?? []
+    ).map((item: any) => ({
+      id: item.id,
+      nome: item.nome ?? "",
+      cidade: item.cidade ?? "",
+    }));
+
+    setOrders(formattedOrders);
+    setClients(formattedClients);
+    setLoading(false);
+  }
+
   const filteredOrders = useMemo(() => {
-    const term =
-      search.toLowerCase().trim();
+    const term = search.toLowerCase().trim();
 
     return orders.filter((order) => {
       const matchesSearch =
         !term ||
-        order.number
-          .toLowerCase()
-          .includes(term) ||
-        order.client
-          .toLowerCase()
-          .includes(term) ||
-        order.city
-          .toLowerCase()
-          .includes(term) ||
-        order.equipment
-          .toLowerCase()
-          .includes(term) ||
-        order.description
-          .toLowerCase()
-          .includes(term) ||
-        order.technician
-          .toLowerCase()
-          .includes(term);
+        order.number.toLowerCase().includes(term) ||
+        order.client.toLowerCase().includes(term) ||
+        order.city.toLowerCase().includes(term) ||
+        order.equipment.toLowerCase().includes(term) ||
+        order.serviceType.toLowerCase().includes(term) ||
+        order.technician.toLowerCase().includes(term);
 
       const matchesStatus =
         statusFilter === "Todos" ||
-        order.status ===
-          statusFilter;
+        order.status === statusFilter;
 
-      return (
-        matchesSearch &&
-        matchesStatus
-      );
+      return matchesSearch && matchesStatus;
     });
-  }, [
-    orders,
-    search,
-    statusFilter,
-  ]);
+  }, [orders, search, statusFilter]);
 
-  function handleClientChange(
-    id: string
-  ) {
-    setClientId(id);
+  const stats = useMemo(() => {
+    return {
+      total: orders.length,
+      abertas: orders.filter(
+        (item) => item.status === "Aberta"
+      ).length,
+      andamento: orders.filter(
+        (item) => item.status === "Em andamento"
+      ).length,
+      concluidas: orders.filter(
+        (item) => item.status === "Concluída"
+      ).length,
+    };
+  }, [orders]);
 
-    const selected =
-      clients.find(
-        (item) =>
-          item.id === id
-      );
+  function resetForm() {
+    setForm({
+      ...emptyForm,
+      date: new Date().toISOString().split("T")[0],
+    });
 
-    if (selected) {
-      setClient(
-        selected.nome
-      );
-
-      setCity(
-        selected.cidade
-      );
-    } else {
-      setClient("");
-      setCity("");
-    }
+    setEditingId(null);
   }
 
-  async function generateNumber() {
-    const { data: lastOrder } =
-      await supabase
-        .from("ordens_servico")
-        .select("numero")
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
-
-    let nextNumber = 1;
-
-    if (lastOrder?.numero) {
-      const match =
-        lastOrder.numero.match(
-          /(\d+)$/
-        );
-
-      if (match) {
-        nextNumber =
-          Number(match[1]) + 1;
-      }
-    }
-
-    return `OS-${String(
-      nextNumber
-    ).padStart(4, "0")}`;
+  function closeForm() {
+    setShowForm(false);
+    resetForm();
   }
 
   function openNewOrder() {
-    clearForm();
-
-    setDate(
-      new Date()
-        .toISOString()
-        .split("T")[0]
-    );
-
+    resetForm();
     setShowForm(true);
   }
 
-  function openEditOrder(
-    order: ServiceOrder
-  ) {
+  function openEditOrder(order: ServiceOrder) {
     setEditingId(order.id);
-    setClientId(
-      order.clientId ?? ""
-    );
-    setClient(order.client);
-    setEquipment(
-      order.equipment
-    );
-    setCity(order.city);
-    setServiceType(
-      order.serviceType
-    );
-    setDescription(
-      order.description
-    );
-    setDate(
-      order.date
-        ? order.date
-            .split("/")
-            .reverse()
-            .join("-")
-        : ""
-    );
-    setTechnician(
-      order.technician
-    );
-    setValue(
-      String(order.value)
-    );
-    setStatus(order.status);
-    setNotes(order.notes);
 
-    setShowDetails(false);
+    setForm({
+      clientId: order.clientId,
+      client: order.client,
+      equipment: order.equipment,
+      city: order.city,
+      serviceType: order.serviceType,
+      description: order.description,
+      date: order.date,
+      technician: order.technician,
+      value: String(order.value),
+      status: order.status,
+      notes: order.notes,
+    });
+
     setShowForm(true);
   }
 
-  function openDetails(
-    order: ServiceOrder
-  ) {
-    setSelectedOrder(order);
-    setShowDetails(true);
+  function handleClientChange(clientId: string) {
+    const client = clients.find(
+      (item) => item.id === clientId
+    );
+
+    setForm((current) => ({
+      ...current,
+      clientId,
+      client: client?.nome ?? "",
+      city: client?.cidade ?? "",
+    }));
   }
 
-  async function saveOrder(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+  async function generateNumber() {
+    const { data, error } = await supabase
+      .from("ordens_servico")
+      .select("numero")
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (!clientId) {
-      alert(
-        "Selecione um cliente."
+    if (error) {
+      console.error(
+        "Erro ao gerar número da OS:",
+        error
       );
+      return `OS-${String(orders.length + 1).padStart(
+        4,
+        "0"
+      )}`;
+    }
+
+    const lastNumber =
+      data?.[0]?.numero ?? "";
+
+    const match =
+      String(lastNumber).match(/(\d+)$/);
+
+    const nextNumber = match
+      ? Number(match[1]) + 1
+      : 1;
+
+    return `OS-${String(nextNumber).padStart(4, "0")}`;
+  }
+
+  async function saveOrder() {
+    if (!form.clientId) {
+      alert("Selecione um cliente.");
       return;
     }
 
-    if (!description.trim()) {
-      alert(
-        "Informe a descrição do serviço."
-      );
-      return;
-    }
-
-    if (!city.trim()) {
-      alert(
-        "Informe a cidade."
-      );
-      return;
-    }
-
-    const selectedClient =
-      clients.find(
-        (item) =>
-          item.id === clientId
-      );
-
-    if (!selectedClient) {
-      alert(
-        "Cliente não encontrado."
-      );
+    if (!form.description.trim()) {
+      alert("Informe a descrição do serviço.");
       return;
     }
 
     const numericValue =
       Number(
-        value.replace(",", ".")
+        String(form.value)
+          .replace(/\./g, "")
+          .replace(",", ".")
       ) || 0;
 
-    setSaving(true);
+    const client = clients.find(
+      (item) => item.id === form.clientId
+    );
 
     if (editingId) {
-      const { error } =
-        await supabase
-          .from("ordens_servico")
-          .update({
-            cliente_id:
-              selectedClient.id,
-            cliente_nome:
-              selectedClient.nome,
-            equipamento:
-              equipment.trim() ||
-              null,
-            cidade:
-              city.trim(),
-            tipo_servico:
-              serviceType,
-            descricao:
-              description.trim(),
-            data:
-              date || null,
-            tecnico:
-              technician.trim() ||
-              null,
-            valor:
-              numericValue,
-            status,
-            observacoes:
-              notes.trim() ||
-              null,
-          })
-          .eq(
-            "id",
-            editingId
-          );
+      const { error } = await supabase
+        .from("ordens_servico")
+        .update({
+          cliente_id: form.clientId,
+          cliente_nome:
+            client?.nome ?? form.client,
+          equipamento: form.equipment,
+          cidade:
+            client?.cidade ?? form.city,
+          tipo_servico: form.serviceType,
+          descricao: form.description,
+          data: form.date || null,
+          tecnico:
+            form.technician || null,
+          valor: numericValue,
+          status: form.status,
+          observacoes:
+            form.notes || null,
+        })
+        .eq("id", editingId);
 
       if (error) {
         console.error(
           "Erro ao atualizar OS:",
           error
         );
-
         alert(
-          `Não foi possível atualizar a Ordem de Serviço.\n\n${error.message}`
+          `Não foi possível atualizar a ordem de serviço.\n\n${error.message}`
         );
-
-        setSaving(false);
         return;
       }
     } else {
-      const number =
-        await generateNumber();
+      const number = await generateNumber();
 
-      const { error } =
-        await supabase
-          .from("ordens_servico")
-          .insert({
-            numero: number,
-            cliente_id:
-              selectedClient.id,
-            cliente_nome:
-              selectedClient.nome,
-            equipamento:
-              equipment.trim() ||
-              null,
-            cidade:
-              city.trim(),
-            tipo_servico:
-              serviceType,
-            descricao:
-              description.trim(),
-            data:
-              date || null,
-            tecnico:
-              technician.trim() ||
-              null,
-            valor:
-              numericValue,
-            status,
-            observacoes:
-              notes.trim() ||
-              null,
-          });
+      const { error } = await supabase
+        .from("ordens_servico")
+        .insert({
+          numero: number,
+          cliente_id: form.clientId,
+          cliente_nome:
+            client?.nome ?? form.client,
+          equipamento: form.equipment,
+          cidade:
+            client?.cidade ?? form.city,
+          tipo_servico: form.serviceType,
+          descricao: form.description,
+          data: form.date || null,
+          tecnico:
+            form.technician || null,
+          valor: numericValue,
+          status: form.status,
+          observacoes:
+            form.notes || null,
+        });
 
       if (error) {
         console.error(
           "Erro ao criar OS:",
           error
         );
-
         alert(
-          `Não foi possível criar a Ordem de Serviço.\n\n${error.message}`
+          `Não foi possível criar a ordem de serviço.\n\n${error.message}`
         );
-
-        setSaving(false);
         return;
       }
     }
 
-    setSaving(false);
-    clearForm();
-    setShowForm(false);
-
+    closeForm();
     await loadData();
   }
 
-  async function deleteOrder(
-    order: ServiceOrder
-  ) {
-    const confirmed =
-      window.confirm(
-        `Deseja realmente excluir a Ordem de Serviço ${order.number}?\n\nEssa ação não poderá ser desfeita.`
-      );
+  async function deleteOrder(id: string) {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja excluir esta ordem de serviço?"
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
-    const { error } =
-      await supabase
-        .from("ordens_servico")
-        .delete()
-        .eq(
-          "id",
-          order.id
-        );
+    const { error } = await supabase
+      .from("ordens_servico")
+      .delete()
+      .eq("id", id);
 
     if (error) {
       console.error(
         "Erro ao excluir OS:",
         error
       );
-
       alert(
-        `Não foi possível excluir a Ordem de Serviço.\n\n${error.message}`
+        `Não foi possível excluir a ordem de serviço.\n\n${error.message}`
       );
-
       return;
     }
 
-    setShowDetails(false);
     setSelectedOrder(null);
-
     await loadData();
   }
 
   async function changeStatus(
     order: ServiceOrder,
-    newStatus: ServiceOrderStatus
+    status: ServiceOrderStatus
   ) {
-    const { error } =
-      await supabase
-        .from("ordens_servico")
-        .update({
-          status:
-            newStatus,
-        })
-        .eq(
-          "id",
-          order.id
-        );
+    const { error } = await supabase
+      .from("ordens_servico")
+      .update({
+        status,
+      })
+      .eq("id", order.id);
 
     if (error) {
       console.error(
         "Erro ao alterar status:",
         error
       );
-
       alert(
         `Não foi possível alterar o status.\n\n${error.message}`
       );
-
       return;
     }
+
+    setSelectedOrder({
+      ...order,
+      status,
+    });
 
     setOrders((current) =>
       current.map((item) =>
         item.id === order.id
           ? {
               ...item,
-              status:
-                newStatus,
+              status,
             }
           : item
       )
     );
-
-    if (
-      selectedOrder?.id ===
-      order.id
-    ) {
-      setSelectedOrder({
-        ...selectedOrder,
-        status:
-          newStatus,
-      });
-    }
   }
-
-  function printServiceOrder(
-    order: ServiceOrder
-  ) {
-    const printWindow =
-      window.open(
-        "",
-        "_blank",
-        "width=900,height=700"
-      );
-
-    if (!printWindow) {
-      alert(
-        "O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente novamente."
-      );
-      return;
-    }
-
-    const valueFormatted =
-      order.value.toLocaleString(
-        "pt-BR",
-        {
-          style: "currency",
-          currency: "BRL",
-        }
-      );
-
-    const html = `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-<title>Ordem de Serviço ${escapeHtml(
-      order.number
-    )}</title>
-
-<style>
-  * {
-    box-sizing: border-box;
-  }
-
-  body {
-    margin: 0;
-    padding: 0;
-    background: #ffffff;
-    color: #111827;
-    font-family: Arial, Helvetica, sans-serif;
-  }
-
-  .page {
-    width: 210mm;
-    min-height: 297mm;
-    margin: 0 auto;
-    padding: 18mm;
-    background: white;
-  }
-
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    border-bottom: 3px solid #06b6d4;
-    padding-bottom: 15px;
-    margin-bottom: 20px;
-  }
-
-  .brand {
-    font-size: 24px;
-    font-weight: 800;
-    color: #0f172a;
-  }
-
-  .slogan {
-    margin-top: 5px;
-    font-size: 11px;
-    color: #64748b;
-  }
-
-  .os-box {
-    text-align: right;
-  }
-
-  .os-label {
-    font-size: 11px;
-    color: #64748b;
-    text-transform: uppercase;
-  }
-
-  .os-number {
-    margin-top: 4px;
-    font-size: 22px;
-    font-weight: 800;
-    color: #0891b2;
-  }
-
-  .status {
-    display: inline-block;
-    margin-top: 6px;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: #ecfeff;
-    color: #0e7490;
-    font-size: 10px;
-    font-weight: 700;
-  }
-
-  .section {
-    margin-top: 18px;
-  }
-
-  .section-title {
-    margin-bottom: 9px;
-    padding-bottom: 5px;
-    border-bottom: 1px solid #e2e8f0;
-    font-size: 12px;
-    font-weight: 800;
-    color: #334155;
-    text-transform: uppercase;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px 18px;
-  }
-
-  .field {
-    min-height: 42px;
-    padding: 9px 11px;
-    border: 1px solid #e2e8f0;
-    border-radius: 7px;
-  }
-
-  .field.full {
-    grid-column: 1 / -1;
-  }
-
-  .label {
-    margin-bottom: 4px;
-    font-size: 9px;
-    color: #64748b;
-    text-transform: uppercase;
-  }
-
-  .value {
-    font-size: 12px;
-    font-weight: 600;
-    color: #0f172a;
-  }
-
-  .description {
-    min-height: 80px;
-    padding: 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 7px;
-    font-size: 12px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-  }
-
-  .price {
-    margin-top: 18px;
-    padding: 14px;
-    border-radius: 8px;
-    background: #f0fdfa;
-    border: 1px solid #99f6e4;
-    text-align: right;
-  }
-
-  .price-label {
-    font-size: 10px;
-    color: #64748b;
-  }
-
-  .price-value {
-    margin-top: 3px;
-    font-size: 20px;
-    font-weight: 800;
-    color: #0f766e;
-  }
-
-  .signatures {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 40px;
-    margin-top: 65px;
-  }
-
-  .signature {
-    padding-top: 8px;
-    border-top: 1px solid #334155;
-    text-align: center;
-    font-size: 10px;
-    color: #475569;
-  }
-
-  .footer {
-    margin-top: 35px;
-    padding-top: 10px;
-    border-top: 1px solid #e2e8f0;
-    text-align: center;
-    font-size: 9px;
-    color: #94a3b8;
-  }
-
-  @page {
-    size: A4;
-    margin: 0;
-  }
-
-  @media print {
-    body {
-      background: white;
-    }
-
-    .page {
-      margin: 0;
-      width: 210mm;
-      min-height: 297mm;
-    }
-  }
-</style>
-</head>
-
-<body>
-  <div class="page">
-
-    <div class="header">
-      <div>
-        <div class="brand">
-          Nando's Ar-Condicionado
-        </div>
-
-        <div class="slogan">
-          Qualidade e confiança em todos os detalhes
-        </div>
-      </div>
-
-      <div class="os-box">
-        <div class="os-label">
-          Ordem de Serviço
-        </div>
-
-        <div class="os-number">
-          ${escapeHtml(
-            order.number
-          )}
-        </div>
-
-        <div class="status">
-          ${escapeHtml(
-            order.status
-          )}
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        Dados do atendimento
-      </div>
-
-      <div class="grid">
-
-        <div class="field">
-          <div class="label">
-            Cliente
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              order.client ||
-                "Não informado"
-            )}
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="label">
-            Cidade
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              order.city ||
-                "Não informado"
-            )}
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="label">
-            Equipamento
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              order.equipment ||
-                "Não informado"
-            )}
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="label">
-            Tipo de serviço
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              order.serviceType
-            )}
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="label">
-            Data
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              order.date ||
-                "Não informada"
-            )}
-          </div>
-        </div>
-
-        <div class="field">
-          <div class="label">
-            Técnico responsável
-          </div>
-
-          <div class="value">
-            ${escapeHtml(
-              order.technician ||
-                "Não definido"
-            )}
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        Descrição do serviço
-      </div>
-
-      <div class="description">
-        ${escapeHtml(
-          order.description ||
-            "Nenhuma descrição informada."
-        )}
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        Observações
-      </div>
-
-      <div class="description">
-        ${escapeHtml(
-          order.notes ||
-            "Nenhuma observação informada."
-        )}
-      </div>
-    </div>
-
-    <div class="price">
-      <div class="price-label">
-        Valor do serviço
-      </div>
-
-      <div class="price-value">
-        ${valueFormatted}
-      </div>
-    </div>
-
-    <div class="signatures">
-
-      <div class="signature">
-        Assinatura do cliente
-      </div>
-
-      <div class="signature">
-        Assinatura do técnico
-      </div>
-
-    </div>
-
-    <div class="footer">
-      Nando's Ar-Condicionado — Qualidade e confiança em todos os detalhes
-    </div>
-
-  </div>
-</body>
-</html>
-`;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-
-    printWindow.focus();
-
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
-  }
-
-  const totalValue =
-    orders.reduce(
-      (total, order) =>
-        total + order.value,
-      0
-    );
-
-  const openOrders =
-    orders.filter(
-      (order) =>
-        order.status ===
-          "Aberta" ||
-        order.status ===
-          "Agendada" ||
-        order.status ===
-          "Em andamento"
-    ).length;
-
-  const completedOrders =
-    orders.filter(
-      (order) =>
-        order.status ===
-        "Concluída"
-    ).length;
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-cyan-500 p-3 text-white">
-              <ClipboardList size={22} />
-            </div>
+    <main className="min-h-screen bg-slate-950 p-4 text-white sm:p-6">
+      <div className="mx-auto max-w-7xl">
 
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                Ordens de Serviço
-              </h1>
+        {/* CABEÇALHO */}
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-cyan-500/10 p-3">
+                <ClipboardList className="h-7 w-7 text-cyan-400" />
+              </div>
 
-              <p className="text-sm text-slate-500">
-                Controle dos atendimentos
-              </p>
+              <div>
+                <h1 className="text-2xl font-bold">
+                  Ordens de serviço
+                </h1>
+
+                <p className="text-sm text-slate-400">
+                  Controle completo dos serviços realizados
+                </p>
+              </div>
             </div>
           </div>
 
           <button
             onClick={openNewOrder}
-            className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-cyan-600"
+            className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400"
           >
-            <Plus size={18} />
-
-            <span className="hidden sm:inline">
-              Nova ordem
-            </span>
-
-            <span className="sm:hidden">
-              Nova
-            </span>
+            <Plus className="h-5 w-5" />
+            Nova ordem de serviço
           </button>
         </div>
-      </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <section className="grid gap-4 sm:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Total de OS
-            </p>
+        {/* ESTATÍSTICAS */}
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
 
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {orders.length}
-            </p>
-          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-400">
+                Total
+              </p>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Em aberto
-            </p>
-
-            <p className="mt-2 text-2xl font-bold text-amber-600">
-              {openOrders}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Concluídas
-            </p>
-
-            <p className="mt-2 text-2xl font-bold text-emerald-600">
-              {completedOrders}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Valor total
-            </p>
-
-            <p className="mt-2 text-2xl font-bold text-cyan-600">
-              {totalValue.toLocaleString(
-                "pt-BR",
-                {
-                  style: "currency",
-                  currency: "BRL",
-                }
-              )}
-            </p>
-          </div>
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-4 sm:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative flex-1">
-                <Search
-                  size={19}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Buscar OS, cliente, cidade..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-cyan-400 focus:bg-white focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto">
-                {(
-                  [
-                    "Todos",
-                    ...statuses,
-                  ] as const
-                ).map((item) => (
-                  <button
-                    key={item}
-                    onClick={() =>
-                      setStatusFilter(
-                        item
-                      )
-                    }
-                    className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold ${
-                      statusFilter ===
-                      item
-                        ? "bg-cyan-500 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
+              <ClipboardList className="h-5 w-5 text-cyan-400" />
             </div>
+
+            <p className="mt-2 text-2xl font-bold">
+              {stats.total}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-400">
+                Abertas
+              </p>
+
+              <Wrench className="h-5 w-5 text-yellow-400" />
+            </div>
+
+            <p className="mt-2 text-2xl font-bold">
+              {stats.abertas}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-400">
+                Em andamento
+              </p>
+
+              <CalendarDays className="h-5 w-5 text-blue-400" />
+            </div>
+
+            <p className="mt-2 text-2xl font-bold">
+              {stats.andamento}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-400">
+                Concluídas
+              </p>
+
+              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+            </div>
+
+            <p className="mt-2 text-2xl font-bold">
+              {stats.concluidas}
+            </p>
+          </div>
+
+        </div>
+
+        {/* BUSCA E FILTROS */}
+        <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row">
+
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Buscar por OS, cliente, cidade, equipamento ou técnico..."
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-cyan-500"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value as
+                    | "Todos"
+                    | ServiceOrderStatus
+                )
+              }
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+            >
+              <option value="Todos">
+                Todos os status
+              </option>
+
+              {statusOptions.map((status) => (
+                <option
+                  key={status}
+                  value={status}
+                >
+                  {status}
+                </option>
+              ))}
+            </select>
+
+          </div>
+        </div>
+
+        {/* LISTA */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900">
+
+          <div className="border-b border-slate-800 px-5 py-4">
+            <h2 className="font-semibold">
+              Ordens de serviço
+            </h2>
+
+            <p className="text-xs text-slate-500">
+              {filteredOrders.length} registro(s)
+            </p>
           </div>
 
           {loading ? (
-            <div className="p-10 text-center text-sm text-slate-500">
+            <div className="p-10 text-center text-slate-400">
               Carregando ordens de serviço...
             </div>
-          ) : filteredOrders.length ===
-            0 ? (
+          ) : filteredOrders.length === 0 ? (
             <div className="p-10 text-center">
-              <ClipboardList
-                size={40}
-                className="mx-auto text-slate-300"
-              />
+              <ClipboardList className="mx-auto h-12 w-12 text-slate-700" />
 
-              <p className="mt-3 font-semibold text-slate-700">
-                Nenhuma ordem encontrada
+              <p className="mt-4 font-semibold">
+                Nenhuma ordem de serviço encontrada
               </p>
 
-              <p className="mt-1 text-sm text-slate-400">
-                Clique em "Nova ordem" para cadastrar.
+              <p className="mt-1 text-sm text-slate-500">
+                Cadastre uma nova ordem de serviço para começar.
               </p>
+
+              <button
+                onClick={openNewOrder}
+                className="mt-5 rounded-xl bg-cyan-500 px-5 py-2.5 font-semibold text-slate-950 hover:bg-cyan-400"
+              >
+                Nova ordem de serviço
+              </button>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredOrders.map(
-                (order) => (
-                  <div
-                    key={order.id}
-                    className="p-5 hover:bg-slate-50"
-                  >
-                    <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                      <div className="flex items-start gap-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                          <Wrench size={22} />
-                        </div>
+            <div className="divide-y divide-slate-800">
 
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold text-cyan-600">
-                              {order.number}
-                            </span>
+              {filteredOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="p-5 transition hover:bg-slate-800/30"
+                >
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
 
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[order.status]}`}
-                            >
-                              {order.status}
-                            </span>
-                          </div>
+                    <div className="min-w-0 flex-1">
 
-                          <h3 className="mt-1 font-semibold text-slate-900">
-                            {order.description}
-                          </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-cyan-400">
+                          {order.number}
+                        </span>
 
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500">
-                            <span className="flex items-center gap-1">
-                              <User size={14} />
-                              {order.client}
-                            </span>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            order.status === "Concluída"
+                              ? "bg-emerald-500/10 text-emerald-400"
+                              : order.status === "Cancelada"
+                              ? "bg-red-500/10 text-red-400"
+                              : order.status === "Em andamento"
+                              ? "bg-blue-500/10 text-blue-400"
+                              : order.status === "Agendada"
+                              ? "bg-purple-500/10 text-purple-400"
+                              : "bg-yellow-500/10 text-yellow-400"
+                          }`}
+                        >
+                          {order.status}
+                        </span>
 
-                            <span className="flex items-center gap-1">
-                              <MapPin size={14} />
-                              {order.city}
-                            </span>
-
-                            <span className="flex items-center gap-1">
-                              <Wrench size={14} />
-                              {order.serviceType}
-                            </span>
-
-                            {order.date && (
-                              <span className="flex items-center gap-1">
-                                <CalendarDays size={14} />
-                                {order.date}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300">
+                          {order.serviceType}
+                        </span>
                       </div>
 
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <div className="sm:text-right">
-                          <p className="text-xs text-slate-400">
-                            Valor
-                          </p>
+                      <h3 className="mt-2 text-lg font-semibold">
+                        {order.client}
+                      </h3>
 
-                          <p className="text-lg font-bold text-slate-900">
-                            {order.value.toLocaleString(
-                              "pt-BR",
-                              {
-                                style: "currency",
-                                currency: "BRL",
-                              }
-                            )}
-                          </p>
-                        </div>
+                      <div className="mt-2 flex flex-col gap-1 text-sm text-slate-400 sm:flex-row sm:flex-wrap sm:gap-x-5">
+                        <span className="flex items-center gap-1.5">
+                          <MapPin className="h-4 w-4" />
+                          {order.city || "Cidade não informada"}
+                        </span>
 
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() =>
-                              openDetails(
-                                order
-                              )
-                            }
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            Detalhes
-                          </button>
+                        <span className="flex items-center gap-1.5">
+                          <Wrench className="h-4 w-4" />
+                          {order.equipment || "Equipamento não informado"}
+                        </span>
 
-                          <button
-                            onClick={() =>
-                              openEditOrder(
-                                order
-                              )
-                            }
-                            className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                          >
-                            <Edit size={14} />
-                            Editar
-                          </button>
+                        <span className="flex items-center gap-1.5">
+                          <CalendarDays className="h-4 w-4" />
+                          {formatDate(order.date)}
+                        </span>
 
-                          <button
-                            onClick={() =>
-                              printServiceOrder(
-                                order
-                              )
-                            }
-                            className="flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600"
-                          >
-                            <Printer size={14} />
-                            PDF / Imprimir
-                          </button>
-                        </div>
+                        {order.technician && (
+                          <span className="flex items-center gap-1.5">
+                            <User className="h-4 w-4" />
+                            {order.technician}
+                          </span>
+                        )}
                       </div>
+
+                      <p className="mt-2 line-clamp-2 text-sm text-slate-500">
+                        {order.description}
+                      </p>
+
                     </div>
+
+                    <div className="flex flex-wrap gap-2">
+
+                      <button
+                        onClick={() =>
+                          setSelectedOrder(order)
+                        }
+                        className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
+                      >
+                        Detalhes
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          printServiceOrder(order)
+                        }
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
+                      >
+                        <Printer className="h-4 w-4" />
+                        PDF / Imprimir
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          sendServiceOrderWhatsApp(order)
+                        }
+                        className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-2 text-sm text-emerald-400 transition hover:bg-emerald-500/10"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        WhatsApp
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          openEditOrder(order)
+                        }
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
+                      >
+                        <Edit className="h-4 w-4" />
+                        Editar
+                      </button>
+
+                    </div>
+
                   </div>
-                )
-              )}
+                </div>
+              ))}
+
             </div>
           )}
-        </section>
+
+        </div>
+
       </div>
 
+      {/* MODAL NOVA / EDITAR OS */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
-            <div className="mb-6 flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+
+          <div className="max-h-[95vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-5 py-4">
+
               <div>
-                <h2 className="text-xl font-bold text-slate-900">
+                <h2 className="text-lg font-bold">
                   {editingId
-                    ? "Editar Ordem de Serviço"
-                    : "Nova Ordem de Serviço"}
+                    ? "Editar ordem de serviço"
+                    : "Nova ordem de serviço"}
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Preencha os dados do atendimento.
+                <p className="text-xs text-slate-500">
+                  Preencha os dados do serviço
                 </p>
               </div>
 
               <button
-                onClick={() => {
-                  clearForm();
-                  setShowForm(false);
-                }}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                onClick={closeForm}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
               >
-                <X size={20} />
+                <X className="h-5 w-5" />
               </button>
+
             </div>
 
-            <form
-              onSubmit={saveOrder}
-              className="space-y-4"
-            >
+            <div className="space-y-5 p-5">
+
+              {/* CLIENTE */}
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label className="mb-2 block text-sm font-medium">
                   Cliente
                 </label>
 
                 <select
-                  value={clientId}
+                  value={form.clientId}
                   onChange={(event) =>
                     handleClientChange(
                       event.target.value
                     )
                   }
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                 >
                   <option value="">
                     Selecione um cliente
                   </option>
 
-                  {clients.map(
-                    (item) => (
-                      <option
-                        key={item.id}
-                        value={item.id}
-                      >
-                        {item.nome}
-                      </option>
-                    )
-                  )}
+                  {clients.map((client) => (
+                    <option
+                      key={client.id}
+                      value={client.id}
+                    >
+                      {client.nome}
+                      {client.cidade
+                        ? ` — ${client.cidade}`
+                        : ""}
+                    </option>
+                  ))}
                 </select>
+
+                {clients.length === 0 && (
+                  <p className="mt-2 text-xs text-yellow-400">
+                    Nenhum cliente ativo encontrado.
+                  </p>
+                )}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-5 md:grid-cols-2">
+
+                {/* CIDADE */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-medium">
                     Cidade
                   </label>
 
                   <input
-                    value={city}
+                    value={form.city}
                     onChange={(event) =>
-                      setCity(
-                        event.target.value
-                      )
+                      setForm({
+                        ...form,
+                        city: event.target.value,
+                      })
                     }
-                    required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    placeholder="Cidade"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   />
                 </div>
 
+                {/* EQUIPAMENTO */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-medium">
                     Equipamento
                   </label>
 
                   <input
-                    value={equipment}
+                    value={form.equipment}
                     onChange={(event) =>
-                      setEquipment(
-                        event.target.value
-                      )
+                      setForm({
+                        ...form,
+                        equipment:
+                          event.target.value,
+                      })
                     }
                     placeholder="Ex.: Split 12.000 BTUs"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   />
                 </div>
-              </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+                {/* TIPO */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-medium">
                     Tipo de serviço
                   </label>
 
                   <select
-                    value={serviceType}
+                    value={form.serviceType}
                     onChange={(event) =>
-                      setServiceType(
-                        event.target
-                          .value as ServiceType
-                      )
+                      setForm({
+                        ...form,
+                        serviceType:
+                          event.target.value as ServiceType,
+                      })
                     }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   >
                     {serviceTypes.map(
-                      (item) => (
+                      (serviceType) => (
                         <option
-                          key={item}
-                          value={item}
+                          key={serviceType}
+                          value={serviceType}
                         >
-                          {item}
+                          {serviceType}
                         </option>
                       )
                     )}
                   </select>
                 </div>
 
+                {/* DATA */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-medium">
                     Data
                   </label>
 
                   <input
                     type="date"
-                    value={date}
+                    value={form.date}
                     onChange={(event) =>
-                      setDate(
-                        event.target.value
-                      )
+                      setForm({
+                        ...form,
+                        date: event.target.value,
+                      })
                     }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Descrição do serviço
-                </label>
-
-                <textarea
-                  value={description}
-                  onChange={(event) =>
-                    setDescription(
-                      event.target.value
-                    )
-                  }
-                  required
-                  rows={4}
-                  placeholder="Descreva o serviço que será realizado..."
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
+                {/* TÉCNICO */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-medium">
                     Técnico
                   </label>
 
                   <input
-                    value={technician}
+                    value={form.technician}
                     onChange={(event) =>
-                      setTechnician(
-                        event.target.value
-                      )
+                      setForm({
+                        ...form,
+                        technician:
+                          event.target.value,
+                      })
                     }
                     placeholder="Nome do técnico"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   />
                 </div>
 
+                {/* VALOR */}
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label className="mb-2 block text-sm font-medium">
                     Valor
                   </label>
 
                   <input
-                    value={value}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.value}
                     onChange={(event) =>
-                      setValue(
-                        event.target.value
-                      )
+                      setForm({
+                        ...form,
+                        value: event.target.value,
+                      })
                     }
-                    placeholder="Ex.: 450"
-                    inputMode="decimal"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    placeholder="0,00"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Status
-                </label>
+                {/* STATUS */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Status
+                  </label>
 
-                <select
-                  value={status}
-                  onChange={(event) =>
-                    setStatus(
-                      event.target
-                        .value as ServiceOrderStatus
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                >
-                  {statuses
-                    .filter(
-                      (item) =>
-                        item !==
-                        "Todos"
-                    )
-                    .map(
-                      (item) => (
+                  <select
+                    value={form.status}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        status:
+                          event.target.value as ServiceOrderStatus,
+                      })
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                  >
+                    {statusOptions.map(
+                      (status) => (
                         <option
-                          key={item}
-                          value={item}
+                          key={status}
+                          value={status}
                         >
-                          {item}
+                          {status}
                         </option>
                       )
                     )}
-                </select>
+                  </select>
+                </div>
+
               </div>
 
+              {/* DESCRIÇÃO */}
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label className="mb-2 block text-sm font-medium">
+                  Descrição do serviço
+                </label>
+
+                <textarea
+                  value={form.description}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      description:
+                        event.target.value,
+                    })
+                  }
+                  rows={4}
+                  placeholder="Descreva o serviço que será realizado..."
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              {/* OBSERVAÇÕES */}
+              <div>
+                <label className="mb-2 block text-sm font-medium">
                   Observações
                 </label>
 
                 <textarea
-                  value={notes}
+                  value={form.notes}
                   onChange={(event) =>
-                    setNotes(
-                      event.target.value
-                    )
+                    setForm({
+                      ...form,
+                      notes: event.target.value,
+                    })
                   }
                   rows={3}
                   placeholder="Observações adicionais..."
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                 />
               </div>
 
-              <div className="flex gap-3 pt-3">
+              {/* BOTÕES */}
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-800 pt-5 sm:flex-row sm:justify-end">
+
                 <button
-                  type="button"
-                  onClick={() => {
-                    clearForm();
-                    setShowForm(false);
-                  }}
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={closeForm}
+                  className="rounded-xl border border-slate-700 px-5 py-3 font-semibold text-slate-300 hover:bg-slate-800"
                 >
                   Cancelar
                 </button>
 
                 <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={saveOrder}
+                  className="rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-400"
                 >
-                  {saving
-                    ? "Salvando..."
-                    : editingId
+                  {editingId
                     ? "Salvar alterações"
-                    : "Criar Ordem"}
+                    : "Criar ordem de serviço"}
                 </button>
+
               </div>
-            </form>
+
+            </div>
+
           </div>
         </div>
       )}
 
-      {showDetails &&
-        selectedOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-            <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-              <div className="flex items-start justify-between border-b border-slate-100 p-5">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-bold text-slate-900">
-                      {selectedOrder.number}
-                    </h2>
+      {/* MODAL DETALHES */}
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
 
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[selectedOrder.status]}`}
-                    >
-                      {selectedOrder.status}
-                    </span>
-                  </div>
+          <div className="max-h-[95vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    Detalhes da Ordem de Serviço
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+
+                  <h2 className="text-lg font-bold">
+                    {selectedOrder.number}
+                  </h2>
+
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      selectedOrder.status === "Concluída"
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : selectedOrder.status === "Cancelada"
+                        ? "bg-red-500/10 text-red-400"
+                        : selectedOrder.status === "Em andamento"
+                        ? "bg-blue-500/10 text-blue-400"
+                        : selectedOrder.status === "Agendada"
+                        ? "bg-purple-500/10 text-purple-400"
+                        : "bg-yellow-500/10 text-yellow-400"
+                    }`}
+                  >
+                    {selectedOrder.status}
+                  </span>
+
+                </div>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Detalhes da ordem de serviço
+                </p>
+              </div>
+
+              <button
+                onClick={() =>
+                  setSelectedOrder(null)
+                }
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+            </div>
+
+            <div className="space-y-5 p-5">
+
+              {/* DADOS PRINCIPAIS */}
+              <div className="grid gap-4 sm:grid-cols-2">
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Cliente
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {selectedOrder.client}
                   </p>
                 </div>
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Cidade
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {selectedOrder.city ||
+                      "Não informada"}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Equipamento
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {selectedOrder.equipment ||
+                      "Não informado"}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Tipo de serviço
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {selectedOrder.serviceType}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Data
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {formatDate(
+                      selectedOrder.date
+                    )}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Técnico
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {selectedOrder.technician ||
+                      "Não definido"}
+                  </p>
+                </div>
+
+              </div>
+
+              {/* DESCRIÇÃO */}
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="mb-2 text-xs text-slate-500">
+                  Descrição do serviço
+                </p>
+
+                <p className="whitespace-pre-wrap text-sm text-slate-300">
+                  {selectedOrder.description ||
+                    "Não informada"}
+                </p>
+              </div>
+
+              {/* OBSERVAÇÕES */}
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="mb-2 text-xs text-slate-500">
+                  Observações
+                </p>
+
+                <p className="whitespace-pre-wrap text-sm text-slate-300">
+                  {selectedOrder.notes ||
+                    "Nenhuma observação registrada."}
+                </p>
+              </div>
+
+              {/* VALOR */}
+              <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                <p className="text-xs text-slate-500">
+                  Valor
+                </p>
+
+                <p className="mt-1 text-2xl font-bold text-cyan-400">
+                  {formatCurrency(
+                    selectedOrder.value
+                  )}
+                </p>
+              </div>
+
+              {/* ALTERAR STATUS */}
+              <div className="rounded-xl border border-slate-800 p-4">
+
+                <p className="mb-3 text-sm font-semibold">
+                  Alterar status
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+
+                  {statusOptions.map(
+                    (status) => (
+                      <button
+                        key={status}
+                        onClick={() =>
+                          changeStatus(
+                            selectedOrder,
+                            status
+                          )
+                        }
+                        className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                          selectedOrder.status ===
+                          status
+                            ? "bg-cyan-500 text-slate-950"
+                            : "border border-slate-700 text-slate-300 hover:bg-slate-800"
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    )
+                  )}
+
+                </div>
+
+              </div>
+
+              {/* AÇÕES */}
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 pt-5">
+
+                <button
+                  onClick={() =>
+                    printServiceOrder(
+                      selectedOrder
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800"
+                >
+                  <Printer className="h-4 w-4" />
+                  PDF / Imprimir
+                </button>
+
+                <button
+                  onClick={() =>
+                    sendServiceOrderWhatsApp(
+                      selectedOrder
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-xl border border-emerald-500/30 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/10"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Enviar pelo WhatsApp
+                </button>
 
                 <button
                   onClick={() => {
-                    setShowDetails(false);
-                    setSelectedOrder(
-                      null
+                    openEditOrder(
+                      selectedOrder
                     );
+                    setSelectedOrder(null);
                   }}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                  className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800"
                 >
-                  <X size={20} />
+                  <Edit className="h-4 w-4" />
+                  Editar
                 </button>
+
+                <button
+                  onClick={() =>
+                    deleteOrder(
+                      selectedOrder.id
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Excluir
+                </button>
+
+                <button
+                  onClick={() =>
+                    setSelectedOrder(null)
+                  }
+                  className="rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+                >
+                  Fechar
+                </button>
+
               </div>
 
-              <div className="space-y-5 p-5">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-400">
-                      Cliente
-                    </p>
-
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {selectedOrder.client}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-400">
-                      Cidade
-                    </p>
-
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {selectedOrder.city}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-400">
-                      Equipamento
-                    </p>
-
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {selectedOrder.equipment ||
-                        "Não informado"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-400">
-                      Tipo de serviço
-                    </p>
-
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {selectedOrder.serviceType}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-400">
-                      Data
-                    </p>
-
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {selectedOrder.date ||
-                        "Não informada"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-400">
-                      Técnico
-                    </p>
-
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {selectedOrder.technician ||
-                        "Não definido"}
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-slate-700">
-                    Descrição
-                  </p>
-
-                  <div className="rounded-xl border border-slate-200 p-4 text-sm leading-6 text-slate-600">
-                    {selectedOrder.description ||
-                      "Nenhuma descrição informada."}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-slate-700">
-                    Observações
-                  </p>
-
-                  <div className="rounded-xl border border-slate-200 p-4 text-sm leading-6 text-slate-600">
-                    {selectedOrder.notes ||
-                      "Nenhuma observação informada."}
-                  </div>
-                </div>
-
-                <div className="rounded-xl bg-cyan-50 p-4">
-                  <p className="text-xs text-cyan-600">
-                    Valor do serviço
-                  </p>
-
-                  <p className="mt-1 text-2xl font-bold text-cyan-700">
-                    {selectedOrder.value.toLocaleString(
-                      "pt-BR",
-                      {
-                        style:
-                          "currency",
-                        currency:
-                          "BRL",
-                      }
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() =>
-                      printServiceOrder(
-                        selectedOrder
-                      )
-                    }
-                    className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600"
-                  >
-                    <Printer size={17} />
-                    PDF / Imprimir
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      openEditOrder(
-                        selectedOrder
-                      )
-                    }
-                    className="flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-                  >
-                    <Edit size={17} />
-                    Editar
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      deleteOrder(
-                        selectedOrder
-                      )
-                    }
-                    className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100"
-                  >
-                    <Trash2 size={17} />
-                    Excluir
-                  </button>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-slate-700">
-                    Alterar status
-                  </p>
-
-                  <div className="flex flex-wrap gap-2">
-                    {statuses.map(
-                      (item) => (
-                        <button
-                          key={item}
-                          onClick={() =>
-                            changeStatus(
-                              selectedOrder,
-                              item
-                            )
-                          }
-                          className={`rounded-xl px-3 py-2 text-xs font-semibold ${
-                            selectedOrder.status ===
-                            item
-                              ? "bg-cyan-500 text-white"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      )
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
-          </div>
-        )}
 
-      <div className="fixed bottom-4 right-4 hidden items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-lg sm:flex">
-        <CheckCircle2 size={15} />
-        Sistema conectado
-      </div>
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
