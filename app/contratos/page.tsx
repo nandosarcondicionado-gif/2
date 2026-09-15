@@ -1,1059 +1,1154 @@
 "use client";
 
-import {
-FileText,
-Plus,
-Search,
-User,
-X,
-Pencil,
-Trash2,
-} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  Plus,
+  Search,
+  FileText,
+  Edit,
+  Trash2,
+  X,
+  Eye,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Ban,
+} from "lucide-react";
 import { createClient } from "../../lib/supabase/client";
 
 type Plan = "Residencial" | "Comercial" | "Empresarial";
-
-type ContractStatus =
-| "Ativo"
-| "Pendente"
-| "Vencido"
-| "Cancelado";
+type ContractStatus = "Ativo" | "Pendente" | "Vencido" | "Cancelado";
 
 type Client = {
-id: string;
-nome: string;
-cidade: string;
-ativo?: boolean;
+  id: string;
+  nome: string;
+  cidade: string | null;
+  ativo?: boolean;
 };
 
 type Contract = {
-id: string;
-numero: string;
-cliente_id: string | null;
-cliente_nome: string;
-cidade: string;
-plano: Plan;
-quantidade_equipamentos: number;
-valor_mensal: number;
-data_inicio: string;
-proxima_visita: string | null;
-status: ContractStatus;
+  id: string;
+  numero: string;
+  cliente_id: string | null;
+  cliente_nome: string;
+  cidade: string;
+  plano: Plan;
+  equipamentos: number;
+  valor_mensal: number;
+  data_inicio: string;
+  proxima_visita: string | null;
+  status: ContractStatus;
+  observacoes: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
-const plans: Record<
-Plan,
-{
-price: number;
-color: string;
-description: string;
-}
+type PlanInfo = {
+  price: number;
+  description: string;
+};
 
-«= {
-Residencial: {
-price: 149,
-color: "bg-blue-500/10 text-blue-400",
-description: "Para casas e apartamentos",
-},
-Comercial: {
-price: 299,
-color: "bg-purple-500/10 text-purple-400",
-description: "Para lojas e pequenos comércios",
-},
-Empresarial: {
-price: 599,
-color: "bg-cyan-500/10 text-cyan-400",
-description: "Para empresas e instalações maiores",
-},
-};»
+const plans = {
+  Residencial: {
+    price: 149,
+    description: "Ideal para residências e pequenos ambientes.",
+  },
+  Comercial: {
+    price: 299,
+    description: "Para lojas, escritórios e pequenos comércios.",
+  },
+  Empresarial: {
+    price: 599,
+    description: "Para empresas e instalações com vários equipamentos.",
+  },
+};
+
+const statusOptions: ContractStatus[] = [
+  "Ativo",
+  "Pendente",
+  "Vencido",
+  "Cancelado",
+];
 
 const emptyForm = {
-clienteId: "",
-cidade: "",
-plano: "Residencial" as Plan,
-equipamentos: "1",
-valorMensal: "149",
-dataInicio: new Date().toISOString().slice(0, 10),
-proximaVisita: "",
-status: "Ativo" as ContractStatus,
+  cliente_id: "",
+  cidade: "",
+  plano: "Residencial" as Plan,
+  equipamentos: "1",
+  valor_mensal: "149",
+  data_inicio: new Date().toISOString().slice(0, 10),
+  proxima_visita: "",
+  status: "Ativo" as ContractStatus,
+  observacoes: "",
 };
 
-function formatDate(value: string | null) {
-if (!value) return "-";
-
-const parts = value.split("-");
-
-if (parts.length !== 3) return value;
-
-return "${parts[2]}/${parts[1]}/${parts[0]}";
-}
-
-function formatMoney(value: number) {
-return value.toLocaleString("pt-BR", {
-style: "currency",
-currency: "BRL",
-});
-}
-
 export default function ContratosPage() {
-const supabase = createClient();
+  const supabase = createClient();
 
-const [contracts, setContracts] = useState<Contract[]>([]);
-const [clients, setClients] = useState<Client[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
 
-const [search, setSearch] = useState("");
-const [statusFilter, setStatusFilter] =
-useState<"Todos" | ContractStatus>("Todos");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Todos");
 
-const [showForm, setShowForm] = useState(false);
-const [editingId, setEditingId] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
-const [selectedContract, setSelectedContract] =
-useState<Contract | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedContract, setSelectedContract] =
+    useState<Contract | null>(null);
 
-const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
-const [loading, setLoading] = useState(true);
-const [saving, setSaving] = useState(false);
+  async function loadData() {
+    setLoading(true);
 
-useEffect(() => {
-loadData();
-}, []);
+    const [contractsResult, clientsResult] = await Promise.all([
+      supabase
+        .from("contratos")
+        .select("*")
+        .order("created_at", { ascending: false }),
 
-async function loadData() {
-setLoading(true);
+      supabase
+        .from("clientes")
+        .select("id,nome,cidade,ativo")
+        .eq("ativo", true)
+        .order("nome"),
+    ]);
 
-const [contractsResult, clientsResult] = await Promise.all([
-  supabase
-    .from("contratos")
-    .select("*")
-    .order("created_at", { ascending: false }),
+    if (contractsResult.error) {
+      console.error("Erro ao carregar contratos:", contractsResult.error);
+      alert("Não foi possível carregar os contratos.");
+    } else {
+      setContracts((contractsResult.data || []) as Contract[]);
+    }
 
-  supabase
-    .from("clientes")
-    .select("id,nome,cidade,ativo")
-    .eq("ativo", true)
-    .order("nome"),
-]);
+    if (clientsResult.error) {
+      console.error("Erro ao carregar clientes:", clientsResult.error);
+    } else {
+      setClients((clientsResult.data || []) as Client[]);
+    }
 
-if (contractsResult.error) {
-  console.error(contractsResult.error);
-  alert("Não foi possível carregar os contratos.");
-} else {
-  setContracts(
-    (contractsResult.data || []) as Contract[]
-  );
-}
+    setLoading(false);
+  }
 
-if (clientsResult.error) {
-  console.error(clientsResult.error);
-  alert("Não foi possível carregar os clientes.");
-} else {
-  setClients((clientsResult.data || []) as Client[]);
-}
+  useEffect(() => {
+    loadData();
+  }, []);
 
-setLoading(false);
+  function openNew() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setModalOpen(true);
+  }
 
-}
+  function openEdit(contract: Contract) {
+    setEditingId(contract.id);
 
-const filteredContracts = useMemo(() => {
-const term = search.toLowerCase().trim();
+    setForm({
+      cliente_id: contract.cliente_id || "",
+      cidade: contract.cidade || "",
+      plano: contract.plano,
+      equipamentos: String(contract.equipamentos || 1),
+      valor_mensal: String(contract.valor_mensal || 0),
+      data_inicio: contract.data_inicio || "",
+      proxima_visita: contract.proxima_visita || "",
+      status: contract.status,
+      observacoes: contract.observacoes || "",
+    });
 
-return contracts.filter((contract) => {
-  const matchesSearch =
-    !term ||
-    contract.numero.toLowerCase().includes(term) ||
-    contract.cliente_nome.toLowerCase().includes(term) ||
-    contract.cidade.toLowerCase().includes(term) ||
-    contract.plano.toLowerCase().includes(term);
+    setModalOpen(true);
+  }
 
-  const matchesStatus =
-    statusFilter === "Todos" ||
-    contract.status === statusFilter;
+  function openDetails(contract: Contract) {
+    setSelectedContract(contract);
+    setDetailsOpen(true);
+  }
 
-  return matchesSearch && matchesStatus;
-});
+  function closeModal() {
+    if (saving) return;
 
-}, [contracts, search, statusFilter]);
+    setModalOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  }
 
-const activeContracts = contracts.filter(
-(item) => item.status === "Ativo"
-).length;
+  function handleClientChange(clientId: string) {
+    const client = clients.find((item) => item.id === clientId);
 
-const monthlyTotal = contracts
-.filter((item) => item.status === "Ativo")
-.reduce(
-(total, item) => total + Number(item.valor_mensal || 0),
-0
-);
+    setForm((previous) => ({
+      ...previous,
+      cliente_id: clientId,
+      cidade: client?.cidade || "",
+    }));
+  }
 
-function openNewForm() {
-setEditingId(null);
-setForm(emptyForm);
-setShowForm(true);
-}
+  function handlePlanChange(plan: Plan) {
+    const planInfo = plans[plan] as PlanInfo;
 
-function openEditForm(contract: Contract) {
-setEditingId(contract.id);
+    setForm((previous) => ({
+      ...previous,
+      plano: plan,
+      valor_mensal: String(planInfo.price),
+    }));
+  }
 
-setForm({
-  clienteId: contract.cliente_id || "",
-  cidade: contract.cidade || "",
-  plano: contract.plano,
-  equipamentos: String(
-    contract.quantidade_equipamentos || 1
-  ),
-  valorMensal: String(contract.valor_mensal || 0),
-  dataInicio:
-    contract.data_inicio ||
-    new Date().toISOString().slice(0, 10),
-  proximaVisita: contract.proxima_visita || "",
-  status: contract.status,
-});
-
-setSelectedContract(null);
-setShowForm(true);
-
-}
-
-function selectClient(clientId: string) {
-const client = clients.find(
-(item) => item.id === clientId
-);
-
-setForm((current) => ({
-  ...current,
-  clienteId,
-  cidade: client?.cidade || "",
-}));
-
-}
-
-function selectPlan(plan: Plan) {
-setForm((current) => ({
-...current,
-plano: plan,
-valorMensal: String(plans[plan].price),
-}));
-}
-
-async function saveContract() {
-if (!form.clienteId) {
-alert("Selecione um cliente.");
-return;
-}
-
-if (!form.cidade.trim()) {
-  alert("Informe a cidade.");
-  return;
-}
-
-if (!form.dataInicio) {
-  alert("Informe a data de início.");
-  return;
-}
-
-const client = clients.find(
-  (item) => item.id === form.clienteId
-);
-
-if (!client) {
-  alert("Cliente não encontrado.");
-  return;
-}
-
-const equipmentCount = Number(form.equipamentos);
-const monthlyValue = Number(
-  form.valorMensal.replace(",", ".")
-);
-
-if (!equipmentCount || equipmentCount < 1) {
-  alert("Informe a quantidade de equipamentos.");
-  return;
-}
-
-if (Number.isNaN(monthlyValue) || monthlyValue < 0) {
-  alert("Informe um valor mensal válido.");
-  return;
-}
-
-setSaving(true);
-
-try {
-  if (editingId) {
-    const updateResult = await supabase
+  async function generateNumber() {
+    const { data, error } = await supabase
       .from("contratos")
-      .update({
-        cliente_id: client.id,
-        cliente_nome: client.nome,
-        cidade: form.cidade.trim(),
-        plano: form.plano,
-        quantidade_equipamentos: equipmentCount,
-        valor_mensal: monthlyValue,
-        data_inicio: form.dataInicio,
-        proxima_visita:
-          form.proximaVisita || null,
-        status: form.status,
-      })
-      .eq("id", editingId)
-      .select()
-      .single();
+      .select("numero")
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (updateResult.error) {
-      console.error(updateResult.error);
-      alert("Não foi possível atualizar o contrato.");
+    if (error || !data || data.length === 0) {
+      return "CTR-0001";
+    }
+
+    const lastNumber = String(data[0].numero || "CTR-0000");
+    const match = lastNumber.match(/(\d+)$/);
+
+    if (!match) {
+      return "CTR-0001";
+    }
+
+    const next = Number(match[1]) + 1;
+
+    return `CTR-${String(next).padStart(4, "0")}`;
+  }
+
+  async function saveContract(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!form.cliente_id) {
+      alert("Selecione um cliente.");
       return;
     }
 
-    setContracts((current) =>
-      current.map((item) =>
-        item.id === editingId
-          ? (updateResult.data as Contract)
+    const client = clients.find(
+      (item) => item.id === form.cliente_id
+    );
+
+    if (!client) {
+      alert("Cliente não encontrado.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const baseData = {
+        cliente_id: client.id,
+        cliente_nome: client.nome,
+        cidade: form.cidade || client.cidade || "",
+        plano: form.plano,
+        equipamentos: Number(form.equipamentos) || 1,
+        valor_mensal: Number(form.valor_mensal) || 0,
+        data_inicio: form.data_inicio,
+        proxima_visita: form.proxima_visita || null,
+        status: form.status,
+        observacoes: form.observacoes.trim() || null,
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("contratos")
+          .update(baseData)
+          .eq("id", editingId);
+
+        if (error) {
+          console.error(error);
+          alert(`Erro ao atualizar contrato: ${error.message}`);
+          return;
+        }
+
+        alert("Contrato atualizado com sucesso.");
+      } else {
+        const numero = await generateNumber();
+
+        const { error } = await supabase
+          .from("contratos")
+          .insert({
+            numero,
+            ...baseData,
+          });
+
+        if (error) {
+          console.error(error);
+          alert(`Erro ao criar contrato: ${error.message}`);
+          return;
+        }
+
+        alert("Contrato criado com sucesso.");
+      }
+
+      closeModal();
+      await loadData();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteContract(id: string) {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja excluir este contrato?"
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("contratos")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error(error);
+      alert(`Erro ao excluir contrato: ${error.message}`);
+      return;
+    }
+
+    setContracts((previous) =>
+      previous.filter((contract) => contract.id !== id)
+    );
+
+    if (selectedContract?.id === id) {
+      setSelectedContract(null);
+      setDetailsOpen(false);
+    }
+
+    alert("Contrato excluído.");
+  }
+
+  async function changeStatus(
+    contract: Contract,
+    status: ContractStatus
+  ) {
+    const { error } = await supabase
+      .from("contratos")
+      .update({ status })
+      .eq("id", contract.id);
+
+    if (error) {
+      console.error(error);
+      alert(`Erro ao alterar status: ${error.message}`);
+      return;
+    }
+
+    setContracts((previous) =>
+      previous.map((item) =>
+        item.id === contract.id
+          ? { ...item, status }
           : item
       )
     );
 
-    alert("Contrato atualizado com sucesso.");
-  } else {
-    const nextNumber =
-      contracts.reduce((highest, contract) => {
-        const number = Number(
-          contract.numero.replace("CTR-", "")
-        );
-
-        return Number.isNaN(number)
-          ? highest
-          : Math.max(highest, number);
-      }, 0) + 1;
-
-    const numero = `CTR-${String(nextNumber).padStart(
-      4,
-      "0"
-    )}`;
-
-    const insertResult = await supabase
-      .from("contratos")
-      .insert({
-        numero,
-        cliente_id: client.id,
-        cliente_nome: client.nome,
-        cidade: form.cidade.trim(),
-        plano: form.plano,
-        quantidade_equipamentos: equipmentCount,
-        valor_mensal: monthlyValue,
-        data_inicio: form.dataInicio,
-        proxima_visita:
-          form.proximaVisita || null,
-        status: form.status,
-      })
-      .select()
-      .single();
-
-    if (insertResult.error) {
-      console.error(insertResult.error);
-      alert("Não foi possível salvar o contrato.");
-      return;
+    if (selectedContract?.id === contract.id) {
+      setSelectedContract({
+        ...selectedContract,
+        status,
+      });
     }
-
-    setContracts((current) => [
-      insertResult.data as Contract,
-      ...current,
-    ]);
-
-    alert("Contrato criado com sucesso.");
   }
 
-  setShowForm(false);
-  setEditingId(null);
-  setForm(emptyForm);
-} finally {
-  setSaving(false);
-}
+  const filteredContracts = useMemo(() => {
+    const term = search.trim().toLowerCase();
 
-}
+    return contracts.filter((contract) => {
+      const matchesSearch =
+        !term ||
+        contract.numero.toLowerCase().includes(term) ||
+        contract.cliente_nome.toLowerCase().includes(term) ||
+        contract.cidade.toLowerCase().includes(term) ||
+        contract.plano.toLowerCase().includes(term);
 
-async function changeStatus(
-contract: Contract,
-status: ContractStatus
-) {
-const result = await supabase
-.from("contratos")
-.update({ status })
-.eq("id", contract.id)
-.select()
-.single();
+      const matchesStatus =
+        statusFilter === "Todos" ||
+        contract.status === statusFilter;
 
-if (result.error) {
-  console.error(result.error);
-  alert("Não foi possível alterar o status.");
-  return;
-}
+      return matchesSearch && matchesStatus;
+    });
+  }, [contracts, search, statusFilter]);
 
-const updatedContract = result.data as Contract;
+  const totalContracts = contracts.length;
 
-setContracts((current) =>
-  current.map((item) =>
-    item.id === contract.id ? updatedContract : item
-  )
-);
+  const activeContracts = contracts.filter(
+    (item) => item.status === "Ativo"
+  ).length;
 
-setSelectedContract(updatedContract);
+  const pendingContracts = contracts.filter(
+    (item) => item.status === "Pendente"
+  ).length;
 
-}
+  const monthlyTotal = contracts
+    .filter((item) => item.status === "Ativo")
+    .reduce(
+      (total, item) => total + Number(item.valor_mensal || 0),
+      0
+    );
 
-async function deleteContract(id: string) {
-if (!confirm("Deseja realmente excluir este contrato?")) {
-return;
-}
+  function formatCurrency(value: number) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value);
+  }
 
-const result = await supabase
-  .from("contratos")
-  .delete()
-  .eq("id", id);
+  function formatDate(value: string | null) {
+    if (!value) return "-";
 
-if (result.error) {
-  console.error(result.error);
-  alert("Não foi possível excluir o contrato.");
-  return;
-}
+    const date = new Date(`${value}T00:00:00`);
 
-setContracts((current) =>
-  current.filter((item) => item.id !== id)
-);
+    if (Number.isNaN(date.getTime())) return value;
 
-setSelectedContract(null);
+    return date.toLocaleDateString("pt-BR");
+  }
 
-alert("Contrato excluído.");
+  function statusClass(status: ContractStatus) {
+    if (status === "Ativo") {
+      return "bg-green-100 text-green-700";
+    }
 
-}
+    if (status === "Pendente") {
+      return "bg-yellow-100 text-yellow-700";
+    }
 
-return (
-<main className="min-h-screen bg-slate-950 p-4 text-white sm:p-6 lg:p-8">
-<div className="mx-auto max-w-7xl">
+    if (status === "Vencido") {
+      return "bg-red-100 text-red-700";
+    }
 
-    <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-cyan-500/10 p-3">
-          <FileText className="h-7 w-7 text-cyan-400" />
-        </div>
+    return "bg-gray-100 text-gray-700";
+  }
 
-        <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">
-            Contratos
-          </h1>
+  function statusIcon(status: ContractStatus) {
+    if (status === "Ativo") {
+      return <CheckCircle size={15} />;
+    }
 
-          <p className="text-sm text-slate-400">
-            Gerencie contratos e planos de manutenção
-          </p>
-        </div>
-      </div>
+    if (status === "Pendente") {
+      return <Clock size={15} />;
+    }
 
-      <button
-        type="button"
-        onClick={openNewForm}
-        className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400"
-      >
-        <Plus className="h-5 w-5" />
-        Novo contrato
-      </button>
-    </header>
+    if (status === "Vencido") {
+      return <AlertCircle size={15} />;
+    }
 
-    <div className="mb-6 grid gap-4 md:grid-cols-3">
+    return <Ban size={15} />;
+  }
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Contratos ativos
-        </p>
+  return (
+    <main className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Contratos
+            </h1>
 
-        <p className="mt-2 text-3xl font-bold text-emerald-400">
-          {activeContracts}
-        </p>
-      </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Gerencie os contratos de manutenção dos clientes.
+            </p>
+          </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Receita mensal
-        </p>
-
-        <p className="mt-2 text-3xl font-bold">
-          {formatMoney(monthlyTotal)}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Total de contratos
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-cyan-400">
-          {contracts.length}
-        </p>
-      </div>
-
-    </div>
-
-    <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900 p-4">
-      <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
-
-          <input
-            value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
-            placeholder="Buscar contrato, cliente ou cidade..."
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 outline-none focus:border-cyan-500"
-          />
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(e) =>
-            setStatusFilter(
-              e.target.value as
-                | "Todos"
-                | ContractStatus
-            )
-          }
-          className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-        >
-          <option value="Todos">
-            Todos os status
-          </option>
-          <option value="Ativo">Ativo</option>
-          <option value="Pendente">Pendente</option>
-          <option value="Vencido">Vencido</option>
-          <option value="Cancelado">Cancelado</option>
-        </select>
-
-      </div>
-    </div>
-
-    {loading ? (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center text-slate-400">
-        Carregando contratos...
-      </div>
-    ) : filteredContracts.length === 0 ? (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center">
-        <FileText className="mx-auto mb-4 h-10 w-10 text-slate-600" />
-
-        <h2 className="font-semibold">
-          Nenhum contrato encontrado
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-500">
-          Crie seu primeiro contrato usando o botão acima.
-        </p>
-      </div>
-    ) : (
-      <div className="grid gap-4">
-
-        {filteredContracts.map((contract) => (
-          <div
-            key={contract.id}
-            className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
+          <button
+            onClick={openNew}
+            className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700"
           >
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <Plus size={19} />
+            Novo contrato
+          </button>
+        </div>
 
-              <div className="flex gap-4">
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">
+                  Total de contratos
+                </p>
+                <p className="mt-1 text-2xl font-bold text-gray-900">
+                  {totalContracts}
+                </p>
+              </div>
 
-                <div className="hidden rounded-2xl bg-cyan-500/10 p-3 sm:block">
-                  <FileText className="h-7 w-7 text-cyan-400" />
+              <div className="rounded-lg bg-blue-100 p-3 text-blue-600">
+                <FileText size={22} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">
+                  Contratos ativos
+                </p>
+                <p className="mt-1 text-2xl font-bold text-green-600">
+                  {activeContracts}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-green-100 p-3 text-green-600">
+                <CheckCircle size={22} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">
+                  Pendentes
+                </p>
+                <p className="mt-1 text-2xl font-bold text-yellow-600">
+                  {pendingContracts}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-yellow-100 p-3 text-yellow-600">
+                <Clock size={22} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">
+                  Receita mensal
+                </p>
+                <p className="mt-1 text-2xl font-bold text-blue-600">
+                  {formatCurrency(monthlyTotal)}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-blue-100 p-3 text-blue-600">
+                <FileText size={22} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-5 rounded-xl bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row">
+            <div className="relative flex-1">
+              <Search
+                size={19}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Buscar contrato, cliente ou cidade..."
+                className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-4 outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value)
+              }
+              className="rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+            >
+              <option value="Todos">Todos os status</option>
+
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+          {loading ? (
+            <div className="p-10 text-center text-gray-500">
+              Carregando contratos...
+            </div>
+          ) : filteredContracts.length === 0 ? (
+            <div className="p-10 text-center">
+              <FileText
+                size={45}
+                className="mx-auto mb-3 text-gray-300"
+              />
+
+              <p className="font-semibold text-gray-700">
+                Nenhum contrato encontrado
+              </p>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Crie o primeiro contrato para começar.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead className="border-b bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Contrato
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Cliente
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Plano
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Equipamentos
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Valor mensal
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Próxima visita
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Status
+                    </th>
+
+                    <th className="px-4 py-4 text-right text-sm font-semibold text-gray-600">
+                      Ações
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y">
+                  {filteredContracts.map((contract) => (
+                    <tr
+                      key={contract.id}
+                      className="hover:bg-gray-50"
+                    >
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-gray-900">
+                          {contract.numero}
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          Início:{" "}
+                          {formatDate(contract.data_inicio)}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="font-medium text-gray-900">
+                          {contract.cliente_nome}
+                        </div>
+
+                        <div className="text-sm text-gray-500">
+                          {contract.cidade}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                          {contract.plano}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4 text-gray-700">
+                        {contract.equipamentos}
+                      </td>
+
+                      <td className="px-4 py-4 font-semibold text-gray-900">
+                        {formatCurrency(
+                          Number(contract.valor_mensal || 0)
+                        )}
+                      </td>
+
+                      <td className="px-4 py-4 text-gray-700">
+                        {formatDate(contract.proxima_visita)}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(
+                            contract.status
+                          )}`}
+                        >
+                          {statusIcon(contract.status)}
+                          {contract.status}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() =>
+                              openDetails(contract)
+                            }
+                            title="Visualizar"
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
+                          >
+                            <Eye size={17} />
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              openEdit(contract)
+                            }
+                            title="Editar"
+                            className="rounded-lg border border-blue-200 p-2 text-blue-600 hover:bg-blue-50"
+                          >
+                            <Edit size={17} />
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              deleteContract(contract.id)
+                            }
+                            title="Excluir"
+                            className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b p-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {editingId
+                    ? "Editar contrato"
+                    : "Novo contrato"}
+                </h2>
+
+                <p className="text-sm text-gray-500">
+                  Preencha os dados do contrato.
+                </p>
+              </div>
+
+              <button
+                onClick={closeModal}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={21} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={saveContract}
+              className="space-y-5 p-5"
+            >
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-gray-700">
+                  Cliente
+                </label>
+
+                <select
+                  required
+                  value={form.cliente_id}
+                  onChange={(event) =>
+                    handleClientChange(event.target.value)
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                >
+                  <option value="">
+                    Selecione um cliente
+                  </option>
+
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Cidade
+                  </label>
+
+                  <input
+                    value={form.cidade}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        cidade: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                  />
                 </div>
 
                 <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-bold">
-                      {contract.numero}
-                    </h2>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Plano
+                  </label>
 
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        contract.status === "Ativo"
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : contract.status === "Cancelado"
-                          ? "bg-red-500/10 text-red-400"
-                          : contract.status === "Vencido"
-                          ? "bg-orange-500/10 text-orange-400"
-                          : "bg-yellow-500/10 text-yellow-400"
-                      }`}
-                    >
-                      {contract.status}
-                    </span>
-                  </div>
+                  <select
+                    value={form.plano}
+                    onChange={(event) =>
+                      handlePlanChange(
+                        event.target.value as Plan
+                      )
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                  >
+                    <option value="Residencial">
+                      Residencial - R$ 149
+                    </option>
 
-                  <p className="mt-2 flex items-center gap-2 font-semibold">
-                    <User className="h-4 w-4 text-cyan-400" />
-                    {contract.cliente_nome}
-                  </p>
+                    <option value="Comercial">
+                      Comercial - R$ 299
+                    </option>
 
-                  <p className="mt-1 text-sm text-slate-400">
-                    {contract.cidade} • {contract.plano} •{" "}
-                    {contract.quantidade_equipamentos} equipamento(s)
-                  </p>
-
-                  <p className="mt-2 text-sm text-slate-500">
-                    Início: {formatDate(contract.data_inicio)}
-                    {" • "}
-                    Próxima visita:{" "}
-                    {formatDate(contract.proxima_visita)}
-                  </p>
+                    <option value="Empresarial">
+                      Empresarial - R$ 599
+                    </option>
+                  </select>
                 </div>
-
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                {plans[form.plano].description}
+              </div>
 
-                <div className="text-left sm:text-right">
-                  <p className="text-sm text-slate-400">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Quantidade de equipamentos
+                  </label>
+
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.equipamentos}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        equipamentos: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
                     Valor mensal
-                  </p>
+                  </label>
 
-                  <p className="text-xl font-bold text-emerald-400">
-                    {formatMoney(Number(contract.valor_mensal))}
-                  </p>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.valor_mensal}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        valor_mensal: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Data de início
+                  </label>
+
+                  <input
+                    type="date"
+                    required
+                    value={form.data_inicio}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        data_inicio: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                  />
                 </div>
 
-                <div className="flex gap-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">
+                    Próxima visita
+                  </label>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedContract(contract)
+                  <input
+                    type="date"
+                    value={form.proxima_visita}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        proxima_visita: event.target.value,
+                      })
                     }
-                    className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold transition hover:border-cyan-500"
-                  >
-                    Detalhes
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openEditForm(contract)
-                    }
-                    className="rounded-xl border border-slate-700 p-2 transition hover:border-cyan-500"
-                    title="Editar"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-
+                    className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                  />
                 </div>
-
-              </div>
-
-            </div>
-          </div>
-        ))}
-
-      </div>
-    )}
-
-    {showForm && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4">
-        <div className="my-8 w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900">
-
-          <div className="flex items-center justify-between border-b border-slate-800 p-5">
-            <div>
-              <h2 className="text-xl font-bold">
-                {editingId ? "Editar contrato" : "Novo contrato"}
-              </h2>
-
-              <p className="text-sm text-slate-400">
-                Preencha os dados do contrato
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-xl p-2 hover:bg-slate-800"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="space-y-4 p-5">
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">
-                Cliente
-              </label>
-
-              <select
-                value={form.clienteId}
-                onChange={(e) =>
-                  selectClient(e.target.value)
-                }
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-              >
-                <option value="">
-                  Selecione um cliente
-                </option>
-
-                {clients.map((client) => (
-                  <option
-                    key={client.id}
-                    value={client.id}
-                  >
-                    {client.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
-                  Cidade
-                </label>
-
-                <input
-                  value={form.cidade}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      cidade: e.target.value,
-                    })
-                  }
-                  placeholder="Cidade"
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-                />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
-                  Equipamentos
-                </label>
-
-                <input
-                  type="number"
-                  min="1"
-                  value={form.equipamentos}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      equipamentos: e.target.value,
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-                />
-              </div>
-
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">
-                Plano
-              </label>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-
-                {(Object.keys(plans) as Plan[]).map((plan) => (
-                  <button
-                    key={plan}
-                    type="button"
-                    onClick={() => selectPlan(plan)}
-                    className={`rounded-xl border p-4 text-left transition ${
-                      form.plano === plan
-                        ? "border-cyan-500 bg-cyan-500/10"
-                        : "border-slate-700 bg-slate-950 hover:border-slate-500"
-                    }`}
-                  >
-                    <p className="font-bold">
-                      {plan}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      {plans[plan].description}
-                    </p>
-
-                    <p className="mt-2 font-semibold text-cyan-400">
-                      {formatMoney(plans[plan].price)}/mês
-                    </p>
-                  </button>
-                ))}
-
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
-                  Valor mensal
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.valorMensal}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      valorMensal: e.target.value,
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
+                <label className="mb-1 block text-sm font-semibold text-gray-700">
                   Status
                 </label>
 
                 <select
                   value={form.status}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setForm({
                       ...form,
                       status:
-                        e.target.value as ContractStatus,
+                        event.target.value as ContractStatus,
                     })
                   }
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
                 >
-                  <option value="Ativo">Ativo</option>
-                  <option value="Pendente">Pendente</option>
-                  <option value="Vencido">Vencido</option>
-                  <option value="Cancelado">Cancelado</option>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
-                  Data de início
+                <label className="mb-1 block text-sm font-semibold text-gray-700">
+                  Observações
                 </label>
 
-                <input
-                  type="date"
-                  value={form.dataInicio}
-                  onChange={(e) =>
+                <textarea
+                  rows={4}
+                  value={form.observacoes}
+                  onChange={(event) =>
                     setForm({
                       ...form,
-                      dataInicio: e.target.value,
+                      observacoes: event.target.value,
                     })
                   }
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                  placeholder="Observações do contrato..."
+                  className="w-full resize-none rounded-lg border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
-                  Próxima visita
-                </label>
+              <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded-lg border border-gray-300 px-5 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
 
-                <input
-                  type="date"
-                  value={form.proximaVisita}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      proximaVisita: e.target.value,
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
-                />
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving
+                    ? "Salvando..."
+                    : editingId
+                    ? "Salvar alterações"
+                    : "Criar contrato"}
+                </button>
               </div>
-
-            </div>
-
-            <div className="flex flex-col-reverse gap-3 pt-3 sm:flex-row sm:justify-end">
-
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="rounded-xl border border-slate-700 px-5 py-3 font-semibold hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="button"
-                disabled={saving}
-                onClick={saveContract}
-                className="rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving
-                  ? "Salvando..."
-                  : editingId
-                  ? "Salvar alterações"
-                  : "Criar contrato"}
-              </button>
-
-            </div>
-
+            </form>
           </div>
         </div>
-      </div>
-    )}
+      )}
 
-    {selectedContract && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-        <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900">
+      {detailsOpen && selectedContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b p-5">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {selectedContract.numero}
+                </h2>
 
-          <div className="flex items-center justify-between border-b border-slate-800 p-5">
-            <div>
-              <p className="text-sm text-slate-400">
-                Contrato
-              </p>
+                <p className="text-sm text-gray-500">
+                  Detalhes do contrato
+                </p>
+              </div>
 
-              <h2 className="text-xl font-bold">
-                {selectedContract.numero}
-              </h2>
+              <button
+                onClick={() => setDetailsOpen(false)}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={21} />
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedContract(null)}
-              className="rounded-xl p-2 hover:bg-slate-800"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="space-y-4 p-5">
-
-            <div className="rounded-xl bg-slate-950 p-4">
-              <p className="text-sm text-slate-400">
-                Cliente
-              </p>
-
-              <p className="mt-1 font-semibold">
-                {selectedContract.cliente_nome}
-              </p>
-
-              <p className="text-sm text-slate-500">
-                {selectedContract.cidade}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-
-              <div className="rounded-xl bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Plano
+            <div className="space-y-4 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-500">
+                  Cliente
                 </p>
 
-                <p className="mt-1 font-semibold">
-                  {selectedContract.plano}
+                <p className="font-semibold text-gray-900">
+                  {selectedContract.cliente_nome}
+                </p>
+
+                <p className="text-sm text-gray-500">
+                  {selectedContract.cidade}
                 </p>
               </div>
 
-              <div className="rounded-xl bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Equipamentos
-                </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Plano
+                  </p>
 
-                <p className="mt-1 font-semibold">
-                  {selectedContract.quantidade_equipamentos}
-                </p>
-              </div>
+                  <p className="font-semibold">
+                    {selectedContract.plano}
+                  </p>
+                </div>
 
-              <div className="rounded-xl bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Mensalidade
-                </p>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Equipamentos
+                  </p>
 
-                <p className="mt-1 font-semibold text-emerald-400">
-                  {formatMoney(
-                    Number(selectedContract.valor_mensal)
-                  )}
-                </p>
-              </div>
+                  <p className="font-semibold">
+                    {selectedContract.equipamentos}
+                  </p>
+                </div>
 
-              <div className="rounded-xl bg-slate-950 p-4">
-                <p className="text-xs text-slate-500">
-                  Próxima visita
-                </p>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Valor mensal
+                  </p>
 
-                <p className="mt-1 font-semibold">
-                  {formatDate(
-                    selectedContract.proxima_visita
-                  )}
-                </p>
-              </div>
+                  <p className="font-semibold text-blue-600">
+                    {formatCurrency(
+                      Number(selectedContract.valor_mensal || 0)
+                    )}
+                  </p>
+                </div>
 
-            </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Status
+                  </p>
 
-            <div>
-              <p className="mb-2 text-sm font-semibold">
-                Alterar status
-              </p>
-
-              <div className="grid grid-cols-2 gap-2">
-
-                {(
-                  [
-                    "Ativo",
-                    "Pendente",
-                    "Vencido",
-                    "Cancelado",
-                  ] as ContractStatus[]
-                ).map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() =>
-                      changeStatus(
-                        selectedContract,
-                        status
-                      )
-                    }
-                    className={`rounded-xl border px-3 py-2 text-sm ${
-                      selectedContract.status === status
-                        ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
-                        : "border-slate-700 hover:border-slate-500"
-                    }`}
+                  <span
+                    className={`mt-1 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(
+                      selectedContract.status
+                    )}`}
                   >
-                    {status}
-                  </button>
-                ))}
+                    {statusIcon(selectedContract.status)}
+                    {selectedContract.status}
+                  </span>
+                </div>
 
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Início
+                  </p>
+
+                  <p className="font-semibold">
+                    {formatDate(selectedContract.data_inicio)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Próxima visita
+                  </p>
+
+                  <p className="font-semibold">
+                    {formatDate(
+                      selectedContract.proxima_visita
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {selectedContract.observacoes && (
+                <div>
+                  <p className="text-xs font-semibold uppercase text-gray-500">
+                    Observações
+                  </p>
+
+                  <div className="mt-1 rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                    {selectedContract.observacoes}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t pt-4">
+                <p className="mb-2 text-sm font-semibold text-gray-700">
+                  Alterar status
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  {statusOptions.map((status) => (
+                    <button
+                      key={status}
+                      onClick={() =>
+                        changeStatus(
+                          selectedContract,
+                          status
+                        )
+                      }
+                      className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                        selectedContract.status === status
+                          ? statusClass(status)
+                          : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t pt-4">
+                <button
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    openEdit(selectedContract);
+                  }}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700"
+                >
+                  <Edit size={17} />
+                  Editar
+                </button>
+
+                <button
+                  onClick={() =>
+                    setDetailsOpen(false)
+                  }
+                  className="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Fechar
+                </button>
               </div>
             </div>
-
-            <div className="flex gap-2">
-
-              <button
-                type="button"
-                onClick={() =>
-                  openEditForm(selectedContract)
-                }
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-3 font-semibold hover:border-cyan-500"
-              >
-                <Pencil className="h-4 w-4" />
-                Editar
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  deleteContract(selectedContract.id)
-                }
-                className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-4 py-3 font-semibold text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-4 w-4" />
-                Excluir
-              </button>
-
-            </div>
-
           </div>
         </div>
-      </div>
-    )}
-
-  </div>
-</main>
-
-);
+      )}
+    </main>
+  );
 }
