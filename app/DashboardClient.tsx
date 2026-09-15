@@ -137,6 +137,13 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+type DashboardStats = {
+  clientes: number;
+  equipamentos: number;
+  servicos: number;
+  faturamento: number;
+};
+
 export default function Dashboard() {
   const router = useRouter();
   const supabase = createClient();
@@ -147,8 +154,17 @@ export default function Dashboard() {
   const [loadingPermissions, setLoadingPermissions] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  const [stats, setStats] = useState<DashboardStats>({
+    clientes: 0,
+    equipamentos: 0,
+    servicos: 0,
+    faturamento: 0,
+  });
+
+  const [loadingStats, setLoadingStats] = useState(true);
+
   useEffect(() => {
-    async function loadPermissions() {
+    async function loadDashboard() {
       try {
         const {
           data: { user },
@@ -178,43 +194,221 @@ export default function Dashboard() {
 
         if (funcionario.funcao === "administrador") {
           setIsAdmin(true);
-          setLoadingPermissions(false);
-          return;
-        }
-
-        const { data: permissionData, error: permissionError } =
-          await supabase
+        } else {
+          const {
+            data: permissionData,
+            error: permissionError,
+          } = await supabase
             .from("permissoes_funcionarios")
             .select(
               "modulo, visualizar, criar, editar, excluir"
             )
             .eq("funcionario_id", user.id);
 
-        if (permissionError) {
-          console.error(
-            "Erro ao carregar permissões:",
-            permissionError
-          );
+          if (permissionError) {
+            console.error(
+              "Erro ao carregar permissões:",
+              permissionError
+            );
 
-          setPermissions([]);
-          setLoadingPermissions(false);
-          return;
+            setPermissions([]);
+          } else {
+            setPermissions(
+              (permissionData ?? []) as Permission[]
+            );
+          }
         }
 
-        setPermissions(
-          (permissionData ?? []) as Permission[]
-        );
+        setLoadingPermissions(false);
+
+        await loadStats();
       } catch (error) {
         console.error(
-          "Erro ao carregar permissões:",
+          "Erro ao carregar Dashboard:",
           error
         );
-      } finally {
+
         setLoadingPermissions(false);
+        setLoadingStats(false);
       }
     }
 
-    loadPermissions();
+    async function loadStats() {
+      try {
+        setLoadingStats(true);
+
+        let clientes = 0;
+        let equipamentos = 0;
+        let servicos = 0;
+        let faturamento = 0;
+
+        /*
+         * CLIENTES
+         */
+        const clientesResult = await supabase
+          .from("clientes")
+          .select("*", { count: "exact", head: true });
+
+        if (!clientesResult.error) {
+          clientes = clientesResult.count ?? 0;
+        }
+
+        /*
+         * EQUIPAMENTOS
+         */
+        const equipamentosResult = await supabase
+          .from("equipamentos")
+          .select("*", { count: "exact", head: true });
+
+        if (!equipamentosResult.error) {
+          equipamentos = equipamentosResult.count ?? 0;
+        }
+
+        /*
+         * DATA DO PRIMEIRO E ÚLTIMO DIA DO MÊS
+         */
+        const agora = new Date();
+
+        const inicioMes = new Date(
+          agora.getFullYear(),
+          agora.getMonth(),
+          1
+        );
+
+        const inicioProximoMes = new Date(
+          agora.getFullYear(),
+          agora.getMonth() + 1,
+          1
+        );
+
+        const inicioMesISO = inicioMes.toISOString();
+        const inicioProximoMesISO =
+          inicioProximoMes.toISOString();
+
+        /*
+         * ORDENS DE SERVIÇO
+         *
+         * Usamos created_at, que é o campo padrão
+         * utilizado no sistema.
+         */
+        const osResult = await supabase
+          .from("ordens_servico")
+          .select("id, created_at")
+          .gte("created_at", inicioMesISO)
+          .lt("created_at", inicioProximoMesISO);
+
+        if (!osResult.error) {
+          servicos = osResult.data?.length ?? 0;
+        } else {
+          /*
+           * Caso a tabela ainda não possua created_at,
+           * tentamos carregar somente os registros.
+           */
+          const osFallback = await supabase
+            .from("ordens_servico")
+            .select("id");
+
+          if (!osFallback.error) {
+            servicos = osFallback.data?.length ?? 0;
+          }
+        }
+
+        /*
+         * FINANCEIRO
+         *
+         * Busca os lançamentos do mês.
+         *
+         * O código aceita os nomes mais comuns
+         * utilizados pelo sistema:
+         * valor, valor_total, total ou amount.
+         */
+        const financeiroResult = await supabase
+          .from("lancamentos_financeiros")
+          .select("*");
+
+        if (!financeiroResult.error) {
+          const registros =
+            financeiroResult.data ?? [];
+
+          faturamento = registros.reduce(
+            (total: number, item: any) => {
+              const dataRegistro =
+                item.created_at ??
+                item.data ??
+                item.data_lancamento ??
+                item.data_pagamento;
+
+              if (dataRegistro) {
+                const data = new Date(dataRegistro);
+
+                if (
+                  data >= inicioMes &&
+                  data < inicioProximoMes
+                ) {
+                  const valor =
+                    Number(
+                      item.valor ??
+                        item.valor_total ??
+                        item.total ??
+                        item.amount ??
+                        0
+                    ) || 0;
+
+                  /*
+                   * Se existir tipo/movimento e for
+                   * uma saída, não somamos ao faturamento.
+                   */
+                  const tipo = String(
+                    item.tipo ??
+                      item.tipo_lancamento ??
+                      item.movimento ??
+                      ""
+                  ).toLowerCase();
+
+                  const categoria = String(
+                    item.categoria ?? ""
+                  ).toLowerCase();
+
+                  const descricao = String(
+                    item.descricao ?? ""
+                  ).toLowerCase();
+
+                  const ehSaida =
+                    tipo.includes("saída") ||
+                    tipo.includes("saida") ||
+                    tipo.includes("despesa") ||
+                    categoria.includes("despesa") ||
+                    descricao.includes("despesa");
+
+                  if (!ehSaida) {
+                    return total + valor;
+                  }
+                }
+              }
+
+              return total;
+            },
+            0
+          );
+        }
+
+        setStats({
+          clientes,
+          equipamentos,
+          servicos,
+          faturamento,
+        });
+      } catch (error) {
+        console.error(
+          "Erro ao carregar estatísticas:",
+          error
+        );
+      } finally {
+        setLoadingStats(false);
+      }
+    }
+
+    loadDashboard();
   }, [router, supabase]);
 
   function hasVisualPermission(
@@ -254,6 +448,13 @@ export default function Dashboard() {
     router.refresh();
   }
 
+  function formatCurrency(value: number) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value);
+  }
+
   if (loadingPermissions) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
@@ -279,7 +480,9 @@ export default function Dashboard() {
 
       <aside
         className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-800 bg-slate-900 transition-transform ${
-          open ? "translate-x-0" : "-translate-x-full"
+          open
+            ? "translate-x-0"
+            : "-translate-x-full"
         } lg:translate-x-0`}
       >
         {/* CABEÇALHO */}
@@ -321,7 +524,7 @@ export default function Dashboard() {
           })}
         </nav>
 
-        {/* BOTÃO SAIR DA LATERAL */}
+        {/* BOTÃO SAIR */}
         <div className="shrink-0 border-t border-slate-700 bg-slate-900 p-3">
           <button
             type="button"
@@ -349,7 +552,6 @@ export default function Dashboard() {
             <Menu />
           </button>
 
-          {/* TÍTULO + BOTÃO SAIR */}
           <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-xl font-bold">
@@ -371,46 +573,76 @@ export default function Dashboard() {
               <LogOut className="h-4 w-4" />
 
               <span className="hidden sm:inline">
-                {loggingOut ? "Saindo..." : "Sair"}
+                {loggingOut
+                  ? "Saindo..."
+                  : "Sair"}
               </span>
             </button>
           </div>
         </header>
 
         <section className="p-4 sm:p-6 lg:p-8">
+          {/* CARDS PRINCIPAIS */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {hasVisualPermission("financeiro") && (
               <Card
                 title="Faturamento"
-                value="R$ 0,00"
+                value={
+                  loadingStats
+                    ? "..."
+                    : formatCurrency(
+                        stats.faturamento
+                      )
+                }
                 description="Este mês"
                 icon={<DollarSign />}
               />
             )}
 
-            {hasVisualPermission("ordens-servico") && (
+            {hasVisualPermission(
+              "ordens-servico"
+            ) && (
               <Card
                 title="Serviços"
-                value="0"
+                value={
+                  loadingStats
+                    ? "..."
+                    : String(stats.servicos)
+                }
                 description="Este mês"
                 icon={<Wrench />}
+                onClick={() =>
+                  navigate("/ordens-servico")
+                }
               />
             )}
 
             {hasVisualPermission("clientes") && (
               <Card
                 title="Clientes"
-                value="0"
+                value={
+                  loadingStats
+                    ? "..."
+                    : String(stats.clientes)
+                }
                 description="Cadastrados"
                 icon={<Users />}
-                onClick={() => navigate("/clientes")}
+                onClick={() =>
+                  navigate("/clientes")
+                }
               />
             )}
 
-            {hasVisualPermission("equipamentos") && (
+            {hasVisualPermission(
+              "equipamentos"
+            ) && (
               <Card
                 title="Equipamentos"
-                value="0"
+                value={
+                  loadingStats
+                    ? "..."
+                    : String(stats.equipamentos)
+                }
                 description="Cadastrados"
                 icon={<Snowflake />}
                 onClick={() =>
@@ -420,6 +652,7 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* ACESSO RÁPIDO */}
           <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
             <h2 className="mb-5 text-lg font-bold">
               Acesso rápido
@@ -435,7 +668,9 @@ export default function Dashboard() {
                 />
               )}
 
-              {hasVisualPermission("orcamentos") && (
+              {hasVisualPermission(
+                "orcamentos"
+              ) && (
                 <QuickButton
                   text="Novo orçamento"
                   onClick={() =>
@@ -464,6 +699,44 @@ export default function Dashboard() {
                 />
               )}
             </div>
+          </div>
+
+          {/* RESUMO */}
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {hasVisualPermission("financeiro") && (
+              <InfoCard
+                title="Financeiro"
+                description="Acompanhe receitas e despesas do mês."
+                button="Abrir financeiro"
+                onClick={() =>
+                  navigate("/financeiro")
+                }
+              />
+            )}
+
+            {hasVisualPermission(
+              "relatorios"
+            ) && (
+              <InfoCard
+                title="Relatórios"
+                description="Consulte os indicadores e relatórios do sistema."
+                button="Abrir relatórios"
+                onClick={() =>
+                  navigate("/relatorios")
+                }
+              />
+            )}
+
+            {hasVisualPermission("agenda") && (
+              <InfoCard
+                title="Agenda"
+                description="Visualize os próximos atendimentos."
+                button="Abrir agenda"
+                onClick={() =>
+                  navigate("/agenda")
+                }
+              />
+            )}
           </div>
         </section>
       </div>
@@ -524,5 +797,37 @@ function QuickButton({
     >
       {text}
     </button>
+  );
+}
+
+function InfoCard({
+  title,
+  description,
+  button,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  button: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+      <h3 className="text-base font-bold">
+        {title}
+      </h3>
+
+      <p className="mt-2 min-h-[40px] text-sm text-slate-400">
+        {description}
+      </p>
+
+      <button
+        type="button"
+        onClick={onClick}
+        className="mt-4 rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold transition hover:border-cyan-500 hover:bg-slate-800"
+      >
+        {button}
+      </button>
+    </div>
   );
 }
