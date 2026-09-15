@@ -63,62 +63,20 @@ const permissionModules: {
   id: PermissionModule;
   label: string;
 }[] = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-  },
-  {
-    id: "clientes",
-    label: "Clientes",
-  },
-  {
-    id: "equipamentos",
-    label: "Equipamentos",
-  },
-  {
-    id: "orcamentos",
-    label: "Orçamentos",
-  },
-  {
-    id: "ordens-servico",
-    label: "Ordens de Serviço",
-  },
-  {
-    id: "agenda",
-    label: "Agenda",
-  },
-  {
-    id: "contratos",
-    label: "Contratos",
-  },
-  {
-    id: "financeiro",
-    label: "Financeiro",
-  },
-  {
-    id: "estoque",
-    label: "Estoque",
-  },
-  {
-    id: "relatorios",
-    label: "Relatórios",
-  },
-  {
-    id: "tecnicos",
-    label: "Técnicos",
-  },
-  {
-    id: "tecnico",
-    label: "Área do Técnico",
-  },
-  {
-    id: "area-cliente",
-    label: "Área do Cliente",
-  },
-  {
-    id: "configuracoes",
-    label: "Configurações",
-  },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "clientes", label: "Clientes" },
+  { id: "equipamentos", label: "Equipamentos" },
+  { id: "orcamentos", label: "Orçamentos" },
+  { id: "ordens-servico", label: "Ordens de Serviço" },
+  { id: "agenda", label: "Agenda" },
+  { id: "contratos", label: "Contratos" },
+  { id: "financeiro", label: "Financeiro" },
+  { id: "estoque", label: "Estoque" },
+  { id: "relatorios", label: "Relatórios" },
+  { id: "tecnicos", label: "Técnicos" },
+  { id: "tecnico", label: "Área do Técnico" },
+  { id: "area-cliente", label: "Área do Cliente" },
+  { id: "configuracoes", label: "Configurações" },
 ];
 
 function createEmptyPermissions(): Permission[] {
@@ -188,7 +146,7 @@ export default function FuncionariosPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("Técnico");
+  const [role, setRole] = useState<Role>("Técnico");
   const [city, setCity] = useState("Araraquara");
 
   const [permissions, setPermissions] = useState<Permission[]>(
@@ -226,8 +184,7 @@ export default function FuncionariosPage() {
             name: employee.nome,
             email: employee.email,
             phone: employee.telefone ?? "",
-            role:
-              databaseToRole[employee.funcao] ?? "Técnico",
+            role: databaseToRole[employee.funcao] ?? "Técnico",
             city: employee.cidade ?? "Não informado",
             status:
               employee.status === "ativo"
@@ -319,7 +276,6 @@ export default function FuncionariosPage() {
     setPhone(employee.phone);
     setRole(employee.role);
     setCity(employee.city);
-
     setPassword("");
     setPermissions(createEmptyPermissions());
     setFormError("");
@@ -388,7 +344,9 @@ export default function FuncionariosPage() {
     }
 
     if (!password || password.length < 6) {
-      setFormError("A senha deve ter pelo menos 6 caracteres.");
+      setFormError(
+        "A senha deve ter pelo menos 6 caracteres."
+      );
       return;
     }
 
@@ -406,7 +364,7 @@ export default function FuncionariosPage() {
           password,
           phone: phone.trim(),
           city: city.trim(),
-          role: roleToDatabase[role as Role],
+          role: roleToDatabase[role],
         }),
       });
 
@@ -417,7 +375,6 @@ export default function FuncionariosPage() {
           data.error ||
             "Não foi possível cadastrar o funcionário."
         );
-        setLoading(false);
         return;
       }
 
@@ -425,10 +382,12 @@ export default function FuncionariosPage() {
         id: data.employee.id,
         name: data.employee.nome,
         email: data.employee.email,
-        phone: data.employee.telefone ?? phone.trim(),
+        phone:
+          data.employee.telefone ??
+          phone.trim(),
         role:
           databaseToRole[data.employee.funcao] ??
-          (role as Role),
+          role,
         city:
           data.employee.cidade ??
           city.trim(),
@@ -501,7 +460,7 @@ export default function FuncionariosPage() {
             email: email.trim(),
             phone: phone.trim(),
             city: city.trim(),
-            role: roleToDatabase[role as Role],
+            role: roleToDatabase[role],
           }),
         }
       );
@@ -513,7 +472,6 @@ export default function FuncionariosPage() {
           data.error ||
             "Não foi possível atualizar o funcionário."
         );
-        setLoading(false);
         return;
       }
 
@@ -521,10 +479,12 @@ export default function FuncionariosPage() {
         id: data.employee.id,
         name: data.employee.nome,
         email: data.employee.email,
-        phone: data.employee.telefone ?? phone.trim(),
+        phone:
+          data.employee.telefone ??
+          phone.trim(),
         role:
           databaseToRole[data.employee.funcao] ??
-          (role as Role),
+          role,
         city:
           data.employee.cidade ??
           city.trim(),
@@ -657,7 +617,6 @@ export default function FuncionariosPage() {
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="mx-auto max-w-7xl">
-
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -699,14 +658,20 @@ export default function FuncionariosPage() {
                 </p>
               </div>
 
-              <UserCog className="text-slate-400" size={24} />
+              <UserCog
+                className="text-slate-400"
+                size={24}
+              />
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-500">Ativos</p>
+                <p className="text-sm text-slate-500">
+                  Ativos
+                </p>
+
                 <p className="mt-1 text-2xl font-bold text-green-600">
                   {activeEmployees}
                 </p>
@@ -796,7 +761,6 @@ export default function FuncionariosPage() {
                 className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
               >
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-
                   <div className="flex min-w-0 items-start gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
                       {employee.role === "Técnico" ? (
@@ -894,7 +858,6 @@ export default function FuncionariosPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-
             <div className="flex items-center justify-between border-b border-slate-200 p-5">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
@@ -1021,7 +984,7 @@ export default function FuncionariosPage() {
                 <select
                   value={role}
                   onChange={(event) =>
-                    setRole(event.target.value)
+                    setRole(event.target.value as Role)
                   }
                   className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                 >
@@ -1047,7 +1010,7 @@ export default function FuncionariosPage() {
                 </select>
 
                 <p className="mt-2 text-xs text-slate-500">
-                  {roleDescriptions[role as Role]}
+                  {roleDescriptions[role]}
                 </p>
               </div>
 
@@ -1067,7 +1030,6 @@ export default function FuncionariosPage() {
                 />
               </div>
 
-              {/* PERMISSÕES */}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-4">
                   <h3 className="text-base font-bold text-slate-900">
@@ -1089,19 +1051,15 @@ export default function FuncionariosPage() {
                     <div className="min-w-[650px]">
                       <div className="grid grid-cols-[1fr_90px_90px_90px_90px] border-b border-slate-200 bg-slate-100 px-3 py-3 text-xs font-bold text-slate-600">
                         <div>Módulo</div>
-
                         <div className="text-center">
                           Visualizar
                         </div>
-
                         <div className="text-center">
                           Criar
                         </div>
-
                         <div className="text-center">
                           Editar
                         </div>
-
                         <div className="text-center">
                           Excluir
                         </div>
@@ -1222,7 +1180,10 @@ export default function FuncionariosPage() {
 
                 <button
                   type="submit"
-                  disabled={loading || permissionsLoading}
+                  disabled={
+                    loading ||
+                    permissionsLoading
+                  }
                   className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading
