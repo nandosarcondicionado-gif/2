@@ -1,9 +1,6 @@
 "use client";
 
 import {
-ArrowLeft,
-CalendarDays,
-CheckCircle2,
 FileText,
 Plus,
 Search,
@@ -392,15 +389,15 @@ if (result.error) {
   return;
 }
 
+const updatedContract = result.data as Contract;
+
 setContracts((current) =>
   current.map((item) =>
-    item.id === contract.id
-      ? (result.data as Contract)
-      : item
+    item.id === contract.id ? updatedContract : item
   )
 );
 
-setSelectedContract(result.data as Contract);
+setSelectedContract(updatedContract);
 
 }
 
@@ -547,8 +544,7 @@ return (
         </h2>
 
         <p className="mt-1 text-sm text-slate-500">
-          Crie seu primeiro contrato usando o botão
-          acima.
+          Crie seu primeiro contrato usando o botão acima.
         </p>
       </div>
     ) : (
@@ -577,11 +573,9 @@ return (
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         contract.status === "Ativo"
                           ? "bg-emerald-500/10 text-emerald-400"
-                          : contract.status ===
-                            "Cancelado"
+                          : contract.status === "Cancelado"
                           ? "bg-red-500/10 text-red-400"
-                          : contract.status ===
-                            "Vencido"
+                          : contract.status === "Vencido"
                           ? "bg-orange-500/10 text-orange-400"
                           : "bg-yellow-500/10 text-yellow-400"
                       }`}
@@ -596,20 +590,15 @@ return (
                   </p>
 
                   <p className="mt-1 text-sm text-slate-400">
-                    {contract.cidade} •{" "}
-                    {contract.plano} •{" "}
-                    {contract.quantidade_equipamentos}{" "}
-                    equipamento(s)
+                    {contract.cidade} • {contract.plano} •{" "}
+                    {contract.quantidade_equipamentos} equipamento(s)
                   </p>
 
                   <p className="mt-2 text-sm text-slate-500">
-                    Início:{" "}
-                    {formatDate(contract.data_inicio)}
+                    Início: {formatDate(contract.data_inicio)}
                     {" • "}
                     Próxima visita:{" "}
-                    {formatDate(
-                      contract.proxima_visita
-                    )}
+                    {formatDate(contract.proxima_visita)}
                   </p>
                 </div>
 
@@ -623,9 +612,7 @@ return (
                   </p>
 
                   <p className="text-xl font-bold text-emerald-400">
-                    {formatMoney(
-                      Number(contract.valor_mensal)
-                    )}
+                    {formatMoney(Number(contract.valor_mensal))}
                   </p>
                 </div>
 
@@ -670,9 +657,7 @@ return (
           <div className="flex items-center justify-between border-b border-slate-800 p-5">
             <div>
               <h2 className="text-xl font-bold">
-                {editingId
-                  ? "Editar contrato"
-                  : "Novo contrato"}
+                {editingId ? "Editar contrato" : "Novo contrato"}
               </h2>
 
               <p className="text-sm text-slate-400">
@@ -750,8 +735,7 @@ return (
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      equipamentos:
-                        e.target.value,
+                      equipamentos: e.target.value,
                     })
                   }
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
@@ -767,15 +751,11 @@ return (
 
               <div className="grid gap-3 sm:grid-cols-3">
 
-                {(
-                  Object.keys(plans) as Plan[]
-                ).map((plan) => (
+                {(Object.keys(plans) as Plan[]).map((plan) => (
                   <button
                     key={plan}
                     type="button"
-                    onClick={() =>
-                      selectPlan(plan)
-                    }
+                    onClick={() => selectPlan(plan)}
                     className={`rounded-xl border p-4 text-left transition ${
                       form.plano === plan
                         ? "border-cyan-500 bg-cyan-500/10"
@@ -791,9 +771,7 @@ return (
                     </p>
 
                     <p className="mt-2 font-semibold text-cyan-400">
-                      {formatMoney(
-                        plans[plan].price
-                      )}/mês
+                      {formatMoney(plans[plan].price)}/mês
                     </p>
                   </button>
                 ))}
@@ -816,8 +794,7 @@ return (
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      valorMensal:
-                        e.target.value,
+                      valorMensal: e.target.value,
                     })
                   }
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
@@ -840,18 +817,10 @@ return (
                   }
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                 >
-                  <option value="Ativo">
-                    Ativo
-                  </option>
-                  <option value="Pendente">
-                    Pendente
-                  </option>
-                  <option value="Vencido">
-                    Vencido
-                  </option>
-                  <option value="Cancelado">
-                    Cancelado
-                  </option>
+                  <option value="Ativo">Ativo</option>
+                  <option value="Pendente">Pendente</option>
+                  <option value="Vencido">Vencido</option>
+                  <option value="Cancelado">Cancelado</option>
                 </select>
               </div>
 
@@ -870,8 +839,7 @@ return (
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      dataInicio:
-                        e.target.value,
+                      dataInicio: e.target.value,
                     })
                   }
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
@@ -889,8 +857,7 @@ return (
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      proximaVisita:
-                        e.target.value,
+                      proximaVisita: e.target.value,
                     })
                   }
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
@@ -903,9 +870,7 @@ return (
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowForm(false)
-                }
+                onClick={() => setShowForm(false)}
                 className="rounded-xl border border-slate-700 px-5 py-3 font-semibold hover:bg-slate-800"
               >
                 Cancelar
@@ -948,9 +913,7 @@ return (
 
             <button
               type="button"
-              onClick={() =>
-                setSelectedContract(null)
-              }
+              onClick={() => setSelectedContract(null)}
               className="rounded-xl p-2 hover:bg-slate-800"
             >
               <X className="h-5 w-5" />
@@ -991,9 +954,7 @@ return (
                 </p>
 
                 <p className="mt-1 font-semibold">
-                  {
-                    selectedContract.quantidade_equipamentos
-                  }
+                  {selectedContract.quantidade_equipamentos}
                 </p>
               </div>
 
@@ -1004,9 +965,7 @@ return (
 
                 <p className="mt-1 font-semibold text-emerald-400">
                   {formatMoney(
-                    Number(
-                      selectedContract.valor_mensal
-                    )
+                    Number(selectedContract.valor_mensal)
                   )}
                 </p>
               </div>
@@ -1050,8 +1009,7 @@ return (
                       )
                     }
                     className={`rounded-xl border px-3 py-2 text-sm ${
-                      selectedContract.status ===
-                      status
+                      selectedContract.status === status
                         ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
                         : "border-slate-700 hover:border-slate-500"
                     }`}
@@ -1079,9 +1037,7 @@ return (
               <button
                 type="button"
                 onClick={() =>
-                  deleteContract(
-                    selectedContract.id
-                  )
+                  deleteContract(selectedContract.id)
                 }
                 className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 px-4 py-3 font-semibold text-red-400 hover:bg-red-500/10"
               >
