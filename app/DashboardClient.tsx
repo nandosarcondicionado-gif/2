@@ -242,9 +242,6 @@ export default function Dashboard() {
         let servicos = 0;
         let faturamento = 0;
 
-        /*
-         * CLIENTES
-         */
         const clientesResult = await supabase
           .from("clientes")
           .select("*", { count: "exact", head: true });
@@ -253,9 +250,6 @@ export default function Dashboard() {
           clientes = clientesResult.count ?? 0;
         }
 
-        /*
-         * EQUIPAMENTOS
-         */
         const equipamentosResult = await supabase
           .from("equipamentos")
           .select("*", { count: "exact", head: true });
@@ -264,9 +258,6 @@ export default function Dashboard() {
           equipamentos = equipamentosResult.count ?? 0;
         }
 
-        /*
-         * DATA DO PRIMEIRO E ÚLTIMO DIA DO MÊS
-         */
         const agora = new Date();
 
         const inicioMes = new Date(
@@ -285,12 +276,6 @@ export default function Dashboard() {
         const inicioProximoMesISO =
           inicioProximoMes.toISOString();
 
-        /*
-         * ORDENS DE SERVIÇO
-         *
-         * Usamos created_at, que é o campo padrão
-         * utilizado no sistema.
-         */
         const osResult = await supabase
           .from("ordens_servico")
           .select("id, created_at")
@@ -300,10 +285,6 @@ export default function Dashboard() {
         if (!osResult.error) {
           servicos = osResult.data?.length ?? 0;
         } else {
-          /*
-           * Caso a tabela ainda não possua created_at,
-           * tentamos carregar somente os registros.
-           */
           const osFallback = await supabase
             .from("ordens_servico")
             .select("id");
@@ -313,15 +294,6 @@ export default function Dashboard() {
           }
         }
 
-        /*
-         * FINANCEIRO
-         *
-         * Busca os lançamentos do mês.
-         *
-         * O código aceita os nomes mais comuns
-         * utilizados pelo sistema:
-         * valor, valor_total, total ou amount.
-         */
         const financeiroResult = await supabase
           .from("lancamentos_financeiros")
           .select("*");
@@ -354,10 +326,6 @@ export default function Dashboard() {
                         0
                     ) || 0;
 
-                  /*
-                   * Se existir tipo/movimento e for
-                   * uma saída, não somamos ao faturamento.
-                   */
                   const tipo = String(
                     item.tipo ??
                       item.tipo_lancamento ??
@@ -485,7 +453,6 @@ export default function Dashboard() {
             : "-translate-x-full"
         } lg:translate-x-0`}
       >
-        {/* CABEÇALHO */}
         <div className="flex h-20 shrink-0 items-center justify-between border-b border-slate-800 px-5">
           <div className="flex items-center gap-3">
             <Snowflake className="h-8 w-8 text-cyan-400" />
@@ -504,7 +471,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* MENU */}
         <nav className="min-h-0 flex-1 overflow-y-auto p-3">
           {visibleMenuItems.map((item) => {
             const Icon = item.icon;
@@ -524,7 +490,6 @@ export default function Dashboard() {
           })}
         </nav>
 
-        {/* BOTÃO SAIR */}
         <div className="shrink-0 border-t border-slate-700 bg-slate-900 p-3">
           <button
             type="button"
@@ -541,7 +506,6 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* CONTEÚDO */}
       <div className="lg:pl-72">
         <header className="flex h-20 items-center border-b border-slate-800 bg-slate-950 px-4 sm:px-6">
           <button
@@ -582,7 +546,6 @@ export default function Dashboard() {
         </header>
 
         <section className="p-4 sm:p-6 lg:p-8">
-          {/* CARDS PRINCIPAIS */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {hasVisualPermission("financeiro") && (
               <Card
@@ -652,7 +615,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ACESSO RÁPIDO */}
           <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
             <h2 className="mb-5 text-lg font-bold">
               Acesso rápido
@@ -663,7 +625,7 @@ export default function Dashboard() {
                 <QuickButton
                   text="Novo cliente"
                   onClick={() =>
-                    navigate("/clientes")
+                    navigate("/clientes?novo=1")
                   }
                 />
               )}
@@ -674,7 +636,7 @@ export default function Dashboard() {
                 <QuickButton
                   text="Novo orçamento"
                   onClick={() =>
-                    navigate("/orcamentos")
+                    navigate("/orcamentos?novo=1")
                   }
                 />
               )}
@@ -685,7 +647,7 @@ export default function Dashboard() {
                 <QuickButton
                   text="Nova ordem de serviço"
                   onClick={() =>
-                    navigate("/ordens-servico")
+                    navigate("/ordens-servico?novo=1")
                   }
                 />
               )}
@@ -701,7 +663,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* RESUMO */}
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {hasVisualPermission("financeiro") && (
               <InfoCard
