@@ -1,1265 +1,1357 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardList,
-  Edit,
-  Eye,
-  FileText,
-  Plus,
   Search,
-  Snowflake,
+  Plus,
+  Pencil,
   Trash2,
-  User,
-  Wrench,
   X,
-  DollarSign,
+  Save,
+  RefreshCw,
+  Wrench,
+  CalendarDays,
+  User,
   MapPin,
-  AlertTriangle,
+  ClipboardList,
 } from "lucide-react";
-import { useState } from "react";
+import { createClient } from "../../lib/supabase/client";
 
-type MaintenanceStatus =
+type StatusManutencao =
   | "Concluída"
   | "Em andamento"
-  | "Cancelada";
+  | "Cancelada"
+  | "Pendente";
 
-type Maintenance = {
-  id: number;
-  date: string;
-  client: string;
-  city: string;
-  equipment: string;
-  serial: string;
-  technician: string;
-  type: string;
-  status: MaintenanceStatus;
-  problem: string;
-  service: string;
-  parts: string;
-  observations: string;
-  value: string;
-  nextMaintenance: string;
+type Historico = {
+  id: string;
+  data: string;
+  cliente_id: string | null;
+  cliente_nome: string;
+  cidade: string;
+  equipamento: string;
+  serie: string | null;
+  tecnico: string;
+  tipo: string;
+  status: StatusManutencao;
+  problema: string;
+  servico: string;
+  pecas: string | null;
+  observacoes: string | null;
+  valor: number;
+  proxima_manutencao: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
-const initialMaintenance: Maintenance[] = [
-  {
-    id: 1,
-    date: "10/08/2026",
-    client: "João da Silva",
-    city: "Araraquara",
-    equipment: "LG Dual Inverter 12.000 BTUs",
-    serial: "LG123456",
-    technician: "Carlos",
-    type: "Manutenção preventiva",
-    status: "Concluída",
-    problem: "Equipamento apresentando redução no fluxo de ar.",
-    service:
-      "Limpeza completa, higienização da evaporadora e condensadora, verificação elétrica e teste de funcionamento.",
-    parts: "Nenhuma peça substituída.",
-    observations:
-      "Equipamento funcionando normalmente após a manutenção.",
-    value: "180,00",
-    nextMaintenance: "10/11/2026",
-  },
-  {
-    id: 2,
-    date: "05/07/2026",
-    client: "João da Silva",
-    city: "Araraquara",
-    equipment: "Samsung WindFree 18.000 BTUs",
-    serial: "SM789456",
-    technician: "Marcos",
-    type: "Manutenção preventiva",
-    status: "Concluída",
-    problem: "Manutenção preventiva programada.",
-    service:
-      "Limpeza, higienização, inspeção dos filtros e teste de rendimento.",
-    parts: "Filtro higienizado.",
-    observations: "Sem anormalidades.",
-    value: "220,00",
-    nextMaintenance: "05/10/2026",
-  },
-  {
-    id: 3,
-    date: "15/06/2026",
-    client: "Clínica Saúde",
-    city: "Araraquara",
-    equipment: "Daikin EcoSwing 24.000 BTUs",
-    serial: "DK456789",
-    technician: "Carlos",
-    type: "Manutenção corretiva",
-    status: "Concluída",
-    problem: "Equipamento não estava refrigerando corretamente.",
-    service:
-      "Diagnóstico do sistema, limpeza e correção do problema de funcionamento.",
-    parts: "Capacitor substituído.",
-    observations:
-      "Após o reparo, equipamento voltou a operar normalmente.",
-    value: "480,00",
-    nextMaintenance: "15/09/2026",
-  },
+type Cliente = {
+  id: string;
+  nome: string;
+  cidade: string | null;
+};
+
+type FormHistorico = {
+  data: string;
+  cliente_id: string;
+  cliente_nome: string;
+  cidade: string;
+  equipamento: string;
+  serie: string;
+  tecnico: string;
+  tipo: string;
+  status: StatusManutencao;
+  problema: string;
+  servico: string;
+  pecas: string;
+  observacoes: string;
+  valor: string;
+  proxima_manutencao: string;
+};
+
+const formularioInicial: FormHistorico = {
+  data: new Date().toISOString().split("T")[0],
+  cliente_id: "",
+  cliente_nome: "",
+  cidade: "",
+  equipamento: "",
+  serie: "",
+  tecnico: "",
+  tipo: "Manutenção preventiva",
+  status: "Concluída",
+  problema: "",
+  servico: "",
+  pecas: "",
+  observacoes: "",
+  valor: "0",
+  proxima_manutencao: "",
+};
+
+const tiposServico = [
+  "Manutenção preventiva",
+  "Manutenção corretiva",
+  "Instalação",
+  "Higienização",
+  "Visita técnica",
+];
+
+const tecnicosPadrao = [
+  "Nando",
+  "Técnico 2",
+  "Técnico 3",
 ];
 
 export default function HistoricoManutencaoPage() {
-  const [maintenance, setMaintenance] =
-    useState<Maintenance[]>(initialMaintenance);
+  const supabase = createClient();
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<"Todos" | MaintenanceStatus>("Todos");
+  const [historicos, setHistoricos] = useState<Historico[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
 
-  const [showForm, setShowForm] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
 
-  const [editingMaintenance, setEditingMaintenance] =
-    useState<Maintenance | null>(null);
+  const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("Todos");
+  const [filtroTipo, setFiltroTipo] = useState("Todos");
 
-  const [selectedMaintenance, setSelectedMaintenance] =
-    useState<Maintenance | null>(null);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [historicoEditando, setHistoricoEditando] =
+    useState<Historico | null>(null);
 
-  const [date, setDate] = useState("");
-  const [client, setClient] = useState("");
-  const [city, setCity] = useState("Araraquara");
-  const [equipment, setEquipment] = useState("");
-  const [serial, setSerial] = useState("");
-  const [technician, setTechnician] = useState("");
-  const [type, setType] = useState(
-    "Manutenção preventiva"
-  );
-  const [status, setStatus] =
-    useState<MaintenanceStatus>("Concluída");
-  const [problem, setProblem] = useState("");
-  const [service, setService] = useState("");
-  const [parts, setParts] = useState("");
-  const [observations, setObservations] = useState("");
-  const [value, setValue] = useState("");
-  const [nextMaintenance, setNextMaintenance] =
-    useState("");
+  const [form, setForm] =
+    useState<FormHistorico>(formularioInicial);
 
-  const filteredMaintenance = maintenance.filter((item) => {
-    const term = search.toLowerCase().trim();
+  const [mensagem, setMensagem] = useState("");
 
-    const matchesSearch =
-      item.client.toLowerCase().includes(term) ||
-      item.city.toLowerCase().includes(term) ||
-      item.equipment.toLowerCase().includes(term) ||
-      item.serial.toLowerCase().includes(term) ||
-      item.technician.toLowerCase().includes(term) ||
-      item.type.toLowerCase().includes(term) ||
-      item.problem.toLowerCase().includes(term);
+  useEffect(() => {
+    carregarDados();
+  }, []);
 
-    const matchesStatus =
-      statusFilter === "Todos" ||
-      item.status === statusFilter;
+  async function carregarDados() {
+    try {
+      setCarregando(true);
 
-    return matchesSearch && matchesStatus;
-  });
+      const [historicoResult, clientesResult] =
+        await Promise.all([
+          supabase
+            .from("historico_manutencao")
+            .select("*")
+            .order("data", { ascending: false }),
 
-  function clearForm() {
-    setDate("");
-    setClient("");
-    setCity("Araraquara");
-    setEquipment("");
-    setSerial("");
-    setTechnician("");
-    setType("Manutenção preventiva");
-    setStatus("Concluída");
-    setProblem("");
-    setService("");
-    setParts("");
-    setObservations("");
-    setValue("");
-    setNextMaintenance("");
-    setEditingMaintenance(null);
+          supabase
+            .from("clientes")
+            .select("id, nome, cidade")
+            .order("nome", { ascending: true }),
+        ]);
+
+      if (historicoResult.error) {
+        console.error(historicoResult.error);
+        mostrarMensagem(
+          "Erro ao carregar o histórico de manutenção."
+        );
+        return;
+      }
+
+      if (clientesResult.error) {
+        console.error(clientesResult.error);
+      }
+
+      setHistoricos(
+        (historicoResult.data || []) as Historico[]
+      );
+
+      setClientes(
+        (clientesResult.data || []) as Cliente[]
+      );
+    } catch (error) {
+      console.error(error);
+      mostrarMensagem("Erro ao carregar os dados.");
+    } finally {
+      setCarregando(false);
+    }
   }
 
-  function openNewMaintenance() {
-    clearForm();
-    setShowForm(true);
+  function mostrarMensagem(texto: string) {
+    setMensagem(texto);
+
+    setTimeout(() => {
+      setMensagem("");
+    }, 3500);
   }
 
-  function openEdit(item: Maintenance) {
-    setEditingMaintenance(item);
-
-    setDate(item.date);
-    setClient(item.client);
-    setCity(item.city);
-    setEquipment(item.equipment);
-    setSerial(item.serial);
-    setTechnician(item.technician);
-    setType(item.type);
-    setStatus(item.status);
-    setProblem(item.problem);
-    setService(item.service);
-    setParts(item.parts);
-    setObservations(item.observations);
-    setValue(item.value);
-    setNextMaintenance(item.nextMaintenance);
-
-    setShowForm(true);
-  }
-
-  function openDetails(item: Maintenance) {
-    setSelectedMaintenance(item);
-    setShowDetails(true);
-  }
-
-  function saveMaintenance(
-    event: React.FormEvent<HTMLFormElement>
+  function alterarCampo(
+    campo: keyof FormHistorico,
+    valor: string
   ) {
-    event.preventDefault();
+    setForm((anterior) => ({
+      ...anterior,
+      [campo]: valor,
+    }));
+  }
 
-    if (
-      !date.trim() ||
-      !client.trim() ||
-      !equipment.trim() ||
-      !technician.trim() ||
-      !problem.trim() ||
-      !service.trim()
-    ) {
+  function abrirNovo() {
+    setHistoricoEditando(null);
+    setForm({
+      ...formularioInicial,
+      data: new Date().toISOString().split("T")[0],
+    });
+    setModalAberto(true);
+  }
+
+  function abrirEditar(item: Historico) {
+    setHistoricoEditando(item);
+
+    setForm({
+      data: item.data || "",
+      cliente_id: item.cliente_id || "",
+      cliente_nome: item.cliente_nome || "",
+      cidade: item.cidade || "",
+      equipamento: item.equipamento || "",
+      serie: item.serie || "",
+      tecnico: item.tecnico || "",
+      tipo: item.tipo || "Manutenção preventiva",
+      status: item.status || "Concluída",
+      problema: item.problema || "",
+      servico: item.servico || "",
+      pecas: item.pecas || "",
+      observacoes: item.observacoes || "",
+      valor: String(item.valor ?? 0),
+      proxima_manutencao:
+        item.proxima_manutencao || "",
+    });
+
+    setModalAberto(true);
+  }
+
+  function fecharModal() {
+    if (salvando) return;
+
+    setModalAberto(false);
+    setHistoricoEditando(null);
+    setForm(formularioInicial);
+  }
+
+  function selecionarCliente(clienteId: string) {
+    const cliente = clientes.find(
+      (item) => item.id === clienteId
+    );
+
+    if (!cliente) {
+      setForm((anterior) => ({
+        ...anterior,
+        cliente_id: "",
+        cliente_nome: "",
+        cidade: "",
+      }));
+
       return;
     }
 
-    if (editingMaintenance) {
-      setMaintenance((current) =>
-        current.map((item) =>
-          item.id === editingMaintenance.id
-            ? {
-                ...item,
-                date: date.trim(),
-                client: client.trim(),
-                city,
-                equipment: equipment.trim(),
-                serial:
-                  serial.trim() || "Não informado",
-                technician: technician.trim(),
-                type,
-                status,
-                problem: problem.trim(),
-                service: service.trim(),
-                parts:
-                  parts.trim() ||
-                  "Nenhuma peça substituída.",
-                observations:
-                  observations.trim() ||
-                  "Sem observações.",
-                value: value.trim() || "0,00",
-                nextMaintenance:
-                  nextMaintenance.trim() ||
-                  "A definir",
-              }
-            : item
-        )
-      );
-    } else {
-      const newMaintenance: Maintenance = {
-        id: Date.now(),
-        date: date.trim(),
-        client: client.trim(),
-        city,
-        equipment: equipment.trim(),
-        serial:
-          serial.trim() || "Não informado",
-        technician: technician.trim(),
-        type,
-        status,
-        problem: problem.trim(),
-        service: service.trim(),
-        parts:
-          parts.trim() ||
-          "Nenhuma peça substituída.",
-        observations:
-          observations.trim() ||
-          "Sem observações.",
-        value: value.trim() || "0,00",
-        nextMaintenance:
-          nextMaintenance.trim() || "A definir",
+    setForm((anterior) => ({
+      ...anterior,
+      cliente_id: cliente.id,
+      cliente_nome: cliente.nome,
+      cidade: cliente.cidade || "",
+    }));
+  }
+
+  async function salvarHistorico() {
+    if (!form.cliente_nome.trim()) {
+      mostrarMensagem("Informe o cliente.");
+      return;
+    }
+
+    if (!form.equipamento.trim()) {
+      mostrarMensagem("Informe o equipamento.");
+      return;
+    }
+
+    if (!form.tecnico.trim()) {
+      mostrarMensagem("Informe o técnico.");
+      return;
+    }
+
+    if (!form.servico.trim()) {
+      mostrarMensagem("Informe o serviço realizado.");
+      return;
+    }
+
+    const valor = Number(
+      form.valor.replace(",", ".")
+    );
+
+    if (Number.isNaN(valor) || valor < 0) {
+      mostrarMensagem("Informe um valor válido.");
+      return;
+    }
+
+    try {
+      setSalvando(true);
+
+      const dados = {
+        data: form.data,
+        cliente_id: form.cliente_id || null,
+        cliente_nome: form.cliente_nome.trim(),
+        cidade: form.cidade.trim(),
+        equipamento: form.equipamento.trim(),
+        serie: form.serie.trim() || null,
+        tecnico: form.tecnico.trim(),
+        tipo: form.tipo,
+        status: form.status,
+        problema: form.problema.trim(),
+        servico: form.servico.trim(),
+        pecas: form.pecas.trim() || null,
+        observacoes:
+          form.observacoes.trim() || null,
+        valor,
+        proxima_manutencao:
+          form.proxima_manutencao || null,
       };
 
-      setMaintenance((current) => [
-        newMaintenance,
-        ...current,
-      ]);
-    }
+      if (historicoEditando) {
+        const { data, error } = await supabase
+          .from("historico_manutencao")
+          .update(dados)
+          .eq("id", historicoEditando.id)
+          .select()
+          .single();
 
-    clearForm();
-    setShowForm(false);
+        if (error) {
+          console.error(error);
+          mostrarMensagem(
+            "Erro ao atualizar o histórico."
+          );
+          return;
+        }
+
+        setHistoricos((anteriores) =>
+          anteriores.map((item) =>
+            item.id === historicoEditando.id
+              ? (data as Historico)
+              : item
+          )
+        );
+
+        mostrarMensagem(
+          "Histórico atualizado com sucesso."
+        );
+      } else {
+        const { data, error } = await supabase
+          .from("historico_manutencao")
+          .insert(dados)
+          .select()
+          .single();
+
+        if (error) {
+          console.error(error);
+          mostrarMensagem(
+            "Erro ao salvar o histórico."
+          );
+          return;
+        }
+
+        setHistoricos((anteriores) =>
+          [data as Historico, ...anteriores].sort(
+            (a, b) =>
+              new Date(b.data).getTime() -
+              new Date(a.data).getTime()
+          )
+        );
+
+        mostrarMensagem(
+          "Manutenção registrada com sucesso."
+        );
+      }
+
+      fecharModal();
+    } catch (error) {
+      console.error(error);
+      mostrarMensagem("Erro ao salvar o histórico.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
-  function deleteMaintenance(id: number) {
-    const item = maintenance.find(
-      (maintenanceItem) =>
-        maintenanceItem.id === id
+  async function excluirHistorico(item: Historico) {
+    const confirmar = window.confirm(
+      `Deseja realmente excluir o registro de "${item.cliente_nome}"?`
     );
 
-    if (!item) {
-      return;
-    }
+    if (!confirmar) return;
 
-    const confirmed = window.confirm(
-      `Deseja realmente excluir o registro de manutenção de ${item.client}?`
-    );
+    try {
+      const { error } = await supabase
+        .from("historico_manutencao")
+        .delete()
+        .eq("id", item.id);
 
-    if (!confirmed) {
-      return;
-    }
+      if (error) {
+        console.error(error);
+        mostrarMensagem(
+          "Erro ao excluir o registro."
+        );
+        return;
+      }
 
-    setMaintenance((current) =>
-      current.filter(
-        (maintenanceItem) =>
-          maintenanceItem.id !== id
-      )
-    );
-
-    if (selectedMaintenance?.id === id) {
-      setSelectedMaintenance(null);
-      setShowDetails(false);
-    }
-  }
-
-  const totalMaintenance = maintenance.length;
-
-  const completedMaintenance =
-    maintenance.filter(
-      (item) => item.status === "Concluída"
-    ).length;
-
-  const inProgressMaintenance =
-    maintenance.filter(
-      (item) => item.status === "Em andamento"
-    ).length;
-
-  const totalValue = maintenance.reduce(
-    (total, item) => {
-      const number = Number(
-        item.value
-          .replace(/\./g, "")
-          .replace(",", ".")
+      setHistoricos((anteriores) =>
+        anteriores.filter(
+          (registro) => registro.id !== item.id
+        )
       );
 
-      return total + (isNaN(number) ? 0 : number);
-    },
+      mostrarMensagem(
+        "Registro excluído com sucesso."
+      );
+    } catch (error) {
+      console.error(error);
+      mostrarMensagem("Erro ao excluir o registro.");
+    }
+  }
+
+  const historicosFiltrados = useMemo(() => {
+    const texto = busca.trim().toLowerCase();
+
+    return historicos.filter((item) => {
+      const correspondeBusca =
+        !texto ||
+        item.cliente_nome
+          .toLowerCase()
+          .includes(texto) ||
+        item.cidade
+          .toLowerCase()
+          .includes(texto) ||
+        item.equipamento
+          .toLowerCase()
+          .includes(texto) ||
+        item.tecnico
+          .toLowerCase()
+          .includes(texto) ||
+        item.servico
+          .toLowerCase()
+          .includes(texto);
+
+      const correspondeStatus =
+        filtroStatus === "Todos" ||
+        item.status === filtroStatus;
+
+      const correspondeTipo =
+        filtroTipo === "Todos" ||
+        item.tipo === filtroTipo;
+
+      return (
+        correspondeBusca &&
+        correspondeStatus &&
+        correspondeTipo
+      );
+    });
+  }, [
+    historicos,
+    busca,
+    filtroStatus,
+    filtroTipo,
+  ]);
+
+  const totalRegistros = historicos.length;
+
+  const concluidas = historicos.filter(
+    (item) => item.status === "Concluída"
+  ).length;
+
+  const andamento = historicos.filter(
+    (item) => item.status === "Em andamento"
+  ).length;
+
+  const valorTotal = historicos.reduce(
+    (total, item) =>
+      total + Number(item.valor || 0),
     0
   );
 
-  const formattedTotalValue =
-    totalValue.toLocaleString("pt-BR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+  function formatarData(data: string) {
+    if (!data) return "-";
 
-  function statusClass(
-    itemStatus: MaintenanceStatus
-  ) {
-    if (itemStatus === "Concluída") {
-      return "bg-emerald-50 text-emerald-700";
+    const partes = data.split("-");
+
+    if (partes.length !== 3) {
+      return data;
     }
 
-    if (itemStatus === "Em andamento") {
-      return "bg-blue-50 text-blue-700";
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  }
+
+  function formatarMoeda(valor: number) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(valor);
+  }
+
+  function classeStatus(status: StatusManutencao) {
+    if (status === "Concluída") {
+      return "bg-green-500/10 text-green-400 border-green-500/20";
     }
 
-    return "bg-red-50 text-red-700";
+    if (status === "Em andamento") {
+      return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+    }
+
+    if (status === "Cancelada") {
+      return "bg-red-500/10 text-red-400 border-red-500/20";
+    }
+
+    return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      {/* CABEÇALHO */}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-cyan-500 p-3 text-white">
-              <Wrench size={22} />
-            </div>
+    <main className="min-h-screen bg-slate-950 p-4 text-white md:p-6">
+      <div className="mx-auto max-w-7xl">
+        {/* CABEÇALHO */}
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-600 p-3">
+                <Wrench size={25} />
+              </div>
 
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                Histórico de manutenção
-              </h1>
+              <div>
+                <h1 className="text-2xl font-bold">
+                  Histórico de Manutenção
+                </h1>
 
-              <p className="text-sm text-slate-500">
-                Registro dos serviços realizados nos equipamentos
-              </p>
+                <p className="text-sm text-slate-400">
+                  Histórico dos serviços realizados
+                </p>
+              </div>
             </div>
           </div>
 
-          <button
-            onClick={openNewMaintenance}
-            className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-600"
-          >
-            <Plus size={18} />
-
-            <span className="hidden sm:inline">
-              Nova manutenção
-            </span>
-
-            <span className="sm:hidden">
-              Nova
-            </span>
-          </button>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {/* CAMINHO */}
-        <div className="mb-6 flex items-center gap-2 text-sm text-slate-500">
-          <ArrowLeft size={16} />
-
-          <span>ClimaPro</span>
-
-          <span>/</span>
-
-          <span className="font-medium text-slate-700">
-            Histórico de manutenção
-          </span>
-        </div>
-
-        {/* RESUMO */}
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">
-                Total de serviços
-              </p>
-
-              <div className="rounded-lg bg-cyan-50 p-2 text-cyan-600">
-                <ClipboardList size={18} />
-              </div>
-            </div>
-
-            <p className="mt-3 text-2xl font-bold text-slate-900">
-              {totalMaintenance}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">
-                Concluídas
-              </p>
-
-              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                <CheckCircle2 size={18} />
-              </div>
-            </div>
-
-            <p className="mt-3 text-2xl font-bold text-emerald-600">
-              {completedMaintenance}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">
-                Em andamento
-              </p>
-
-              <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                <Wrench size={18} />
-              </div>
-            </div>
-
-            <p className="mt-3 text-2xl font-bold text-blue-600">
-              {inProgressMaintenance}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">
-                Valor registrado
-              </p>
-
-              <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-                <DollarSign size={18} />
-              </div>
-            </div>
-
-            <p className="mt-3 text-2xl font-bold text-slate-900">
-              R$ {formattedTotalValue}
-            </p>
-          </div>
-        </section>
-
-        {/* BUSCA E FILTROS */}
-        <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 lg:flex-row">
-              <div className="relative flex-1">
-                <Search
-                  size={19}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(event.target.value)
-                  }
-                  placeholder="Buscar cliente, equipamento, técnico ou problema..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-2 focus:ring-cyan-100"
-                />
-              </div>
-
-              <select
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(
-                    event.target.value as
-                      | "Todos"
-                      | MaintenanceStatus
-                  )
+          <div className="flex gap-2">
+            <button
+              onClick={carregarDados}
+              disabled={carregando}
+              className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium transition hover:bg-slate-800 disabled:opacity-50"
+            >
+              <RefreshCw
+                size={18}
+                className={
+                  carregando
+                    ? "animate-spin"
+                    : ""
                 }
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-cyan-400"
-              >
-                <option value="Todos">
-                  Todos os status
-                </option>
+              />
+              Atualizar
+            </button>
 
-                <option value="Concluída">
-                  Concluídas
-                </option>
+            <button
+              onClick={abrirNovo}
+              className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold transition hover:bg-blue-700"
+            >
+              <Plus size={18} />
+              Novo registro
+            </button>
+          </div>
+        </div>
 
-                <option value="Em andamento">
-                  Em andamento
-                </option>
+        {/* MENSAGEM */}
+        {mensagem && (
+          <div className="mb-5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+            {mensagem}
+          </div>
+        )}
 
-                <option value="Cancelada">
-                  Canceladas
-                </option>
-              </select>
-            </div>
+        {/* CARDS */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <p className="text-sm text-slate-400">
+              Total de registros
+            </p>
+
+            <p className="mt-2 text-3xl font-bold">
+              {totalRegistros}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Serviços registrados
+            </p>
           </div>
 
-          {/* LISTA */}
-          <div className="divide-y divide-slate-100">
-            {filteredMaintenance.length === 0 ? (
-              <div className="p-10 text-center">
-                <Wrench
-                  size={36}
-                  className="mx-auto text-slate-300"
-                />
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <p className="text-sm text-slate-400">
+              Concluídas
+            </p>
 
-                <p className="mt-3 font-medium text-slate-700">
-                  Nenhuma manutenção encontrada
-                </p>
+            <p className="mt-2 text-3xl font-bold text-green-400">
+              {concluidas}
+            </p>
 
-                <p className="mt-1 text-sm text-slate-400">
-                  Tente outra busca ou cadastre uma nova manutenção.
-                </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Serviços finalizados
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <p className="text-sm text-slate-400">
+              Em andamento
+            </p>
+
+            <p className="mt-2 text-3xl font-bold text-blue-400">
+              {andamento}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Serviços em execução
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <p className="text-sm text-slate-400">
+              Valor dos serviços
+            </p>
+
+            <p className="mt-2 text-2xl font-bold">
+              {formatarMoeda(valorTotal)}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Total registrado
+            </p>
+          </div>
+        </div>
+
+        {/* FILTROS */}
+        <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="relative">
+              <Search
+                size={19}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              />
+
+              <input
+                value={busca}
+                onChange={(e) =>
+                  setBusca(e.target.value)
+                }
+                placeholder="Pesquisar cliente, equipamento, técnico..."
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none placeholder:text-slate-600 focus:border-blue-500"
+              />
+            </div>
+
+            <select
+              value={filtroStatus}
+              onChange={(e) =>
+                setFiltroStatus(e.target.value)
+              }
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+            >
+              <option value="Todos">
+                Todos os status
+              </option>
+              <option value="Concluída">
+                Concluída
+              </option>
+              <option value="Em andamento">
+                Em andamento
+              </option>
+              <option value="Pendente">
+                Pendente
+              </option>
+              <option value="Cancelada">
+                Cancelada
+              </option>
+            </select>
+
+            <select
+              value={filtroTipo}
+              onChange={(e) =>
+                setFiltroTipo(e.target.value)
+              }
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+            >
+              <option value="Todos">
+                Todos os serviços
+              </option>
+
+              {tiposServico.map((tipo) => (
+                <option key={tipo} value={tipo}>
+                  {tipo}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* LISTA */}
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 px-5 py-4">
+            <h2 className="font-semibold">
+              Registros de manutenção
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-500">
+              {historicosFiltrados.length} registro(s)
+              encontrado(s)
+            </p>
+          </div>
+
+          {carregando ? (
+            <div className="flex items-center justify-center p-12 text-slate-400">
+              <RefreshCw
+                size={20}
+                className="mr-2 animate-spin"
+              />
+              Carregando histórico...
+            </div>
+          ) : historicosFiltrados.length === 0 ? (
+            <div className="p-12 text-center">
+              <ClipboardList
+                size={45}
+                className="mx-auto mb-3 text-slate-700"
+              />
+
+              <p className="font-medium text-slate-300">
+                Nenhum registro encontrado
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Registre uma manutenção para começar.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* DESKTOP */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="px-5 py-4">
+                        Data
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Cliente
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Equipamento
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Serviço
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Técnico
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Status
+                      </th>
+
+                      <th className="px-5 py-4 text-right">
+                        Valor
+                      </th>
+
+                      <th className="px-5 py-4 text-right">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {historicosFiltrados.map(
+                      (item) => (
+                        <tr
+                          key={item.id}
+                          className="border-b border-slate-800/70 transition hover:bg-slate-800/30"
+                        >
+                          <td className="px-5 py-4 text-sm text-slate-300">
+                            {formatarData(item.data)}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="font-medium">
+                              {item.cliente_nome}
+                            </div>
+
+                            <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                              <MapPin size={12} />
+                              {item.cidade || "-"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="text-sm font-medium">
+                              {item.equipamento}
+                            </div>
+
+                            {item.serie && (
+                              <div className="mt-1 text-xs text-slate-500">
+                                Série: {item.serie}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="text-sm text-slate-300">
+                              {item.tipo}
+                            </div>
+
+                            <div className="mt-1 max-w-xs truncate text-xs text-slate-500">
+                              {item.servico}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-300">
+                            {item.tecnico}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span
+                              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${classeStatus(
+                                item.status
+                              )}`}
+                            >
+                              {item.status}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4 text-right text-sm font-medium">
+                            {formatarMoeda(
+                              Number(item.valor)
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() =>
+                                  abrirEditar(item)
+                                }
+                                title="Editar"
+                                className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-2 text-blue-400 transition hover:bg-blue-500/20"
+                              >
+                                <Pencil size={17} />
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  excluirHistorico(item)
+                                }
+                                title="Excluir"
+                                className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-400 transition hover:bg-red-500/20"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              filteredMaintenance.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-5 transition hover:bg-slate-50"
-                >
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                    {/* INFORMAÇÕES */}
-                    <button
-                      onClick={() => openDetails(item)}
-                      className="flex items-start gap-4 text-left"
-                    >
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                        <Snowflake size={22} />
-                      </div>
 
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-semibold text-slate-900">
-                            {item.equipment}
+              {/* MOBILE */}
+              <div className="divide-y divide-slate-800 md:hidden">
+                {historicosFiltrados.map(
+                  (item) => (
+                    <div
+                      key={item.id}
+                      className="p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">
+                            {item.cliente_nome}
                           </h3>
 
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(
-                              item.status
-                            )}`}
-                          >
-                            {item.status}
+                          <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                            <MapPin size={12} />
+                            {item.cidade || "-"}
+                          </p>
+                        </div>
+
+                        <span
+                          className={`rounded-full border px-2 py-1 text-xs ${classeStatus(
+                            item.status
+                          )}`}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 rounded-xl bg-slate-950 p-3">
+                        <div className="flex items-center gap-2">
+                          <Wrench
+                            size={16}
+                            className="text-blue-400"
+                          />
+
+                          <span className="font-medium">
+                            {item.equipamento}
                           </span>
                         </div>
 
-                        <div className="mt-2 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                          <span className="flex items-center gap-1">
-                            <User size={14} />
+                        <p className="mt-2 text-sm text-slate-400">
+                          {item.tipo}
+                        </p>
 
-                            {item.client}
-                          </span>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {item.servico}
+                        </p>
+                      </div>
 
-                          <span className="flex items-center gap-1">
-                            <MapPin size={14} />
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <div className="rounded-xl bg-slate-950 p-3">
+                          <p className="text-xs text-slate-500">
+                            Data
+                          </p>
 
-                            {item.city}
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <CalendarDays size={14} />
-
-                            {item.date}
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <Wrench size={14} />
-
-                            Técnico: {item.technician}
-                          </span>
+                          <p className="mt-1 text-sm font-medium">
+                            {formatarData(item.data)}
+                          </p>
                         </div>
 
-                        <p className="mt-2 text-xs text-slate-400">
-                          {item.type} • Série: {item.serial}
-                        </p>
+                        <div className="rounded-xl bg-slate-950 p-3">
+                          <p className="text-xs text-slate-500">
+                            Valor
+                          </p>
 
-                        <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                          {item.problem}
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* AÇÕES */}
-                    <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                      <div className="rounded-xl bg-slate-50 px-4 py-3">
-                        <p className="text-[11px] text-slate-400">
-                          Valor
-                        </p>
-
-                        <p className="mt-1 text-sm font-semibold text-slate-700">
-                          R$ {item.value}
-                        </p>
+                          <p className="mt-1 text-sm font-medium">
+                            {formatarMoeda(
+                              Number(item.valor)
+                            )}
+                          </p>
+                        </div>
                       </div>
 
-                      <button
-                        onClick={() => openDetails(item)}
-                        className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white hover:text-cyan-600"
-                      >
-                        <Eye size={16} />
+                      <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                        <User size={13} />
+                        Técnico: {item.tecnico}
+                      </div>
 
-                        Ver
-                      </button>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={() =>
+                            abrirEditar(item)
+                          }
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-sm text-blue-400"
+                        >
+                          <Pencil size={17} />
+                          Editar
+                        </button>
 
-                      <button
-                        onClick={() => openEdit(item)}
-                        className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white hover:text-cyan-600"
-                      >
-                        <Edit size={16} />
-
-                        Editar
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          deleteMaintenance(item.id)
-                        }
-                        className="rounded-xl border border-slate-200 p-3 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                        title="Excluir manutenção"
-                      >
-                        <Trash2 size={17} />
-                      </button>
+                        <button
+                          onClick={() =>
+                            excluirHistorico(item)
+                          }
+                          className="flex items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-red-400"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* AVISO */}
-        <section className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50 p-5">
-          <div className="flex gap-3">
-            <Wrench
-              className="mt-0.5 shrink-0 text-cyan-600"
-              size={20}
-            />
-
-            <div>
-              <h3 className="font-semibold text-cyan-900">
-                Histórico preparado para as próximas etapas
-              </h3>
-
-              <p className="mt-1 text-sm text-cyan-800">
-                Depois vamos ligar este histórico às ordens de
-                serviço, equipamentos, clientes, técnicos e ao
-                banco de dados do Supabase.
-              </p>
-            </div>
-          </div>
-        </section>
+                  )
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* MODAL NOVA / EDITAR MANUTENÇÃO */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
-            <div className="mb-6 flex items-start justify-between">
+      {/* MODAL */}
+      {modalAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 p-5">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  {editingMaintenance
+                <h2 className="text-lg font-bold">
+                  {historicoEditando
                     ? "Editar manutenção"
-                    : "Nova manutenção"}
+                    : "Novo registro de manutenção"}
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Registre todos os detalhes do atendimento.
+                <p className="mt-1 text-xs text-slate-500">
+                  Registre todos os detalhes do serviço.
                 </p>
               </div>
 
               <button
-                onClick={() => {
-                  clearForm();
-                  setShowForm(false);
-                }}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                onClick={fecharModal}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <form
-              onSubmit={saveMaintenance}
-              className="space-y-5"
-            >
-              {/* DADOS PRINCIPAIS */}
+            <div className="grid gap-4 p-5 md:grid-cols-2">
+              {/* DATA */}
               <div>
-                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">
-                  Dados do atendimento
-                </h3>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Data *
+                </label>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Data *
-                    </label>
-
-                    <input
-                      value={date}
-                      onChange={(event) =>
-                        setDate(event.target.value)
-                      }
-                      placeholder="Ex.: 20/08/2026"
-                      required
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Técnico *
-                    </label>
-
-                    <input
-                      value={technician}
-                      onChange={(event) =>
-                        setTechnician(event.target.value)
-                      }
-                      placeholder="Ex.: Carlos"
-                      required
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                    />
-                  </div>
-                </div>
+                <input
+                  type="date"
+                  value={form.data}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "data",
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
               </div>
 
-              {/* CLIENTE E EQUIPAMENTO */}
+              {/* CLIENTE */}
               <div>
-                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">
-                  Cliente e equipamento
-                </h3>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Cliente *
+                </label>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Cliente *
-                    </label>
+                <select
+                  value={form.cliente_id}
+                  onChange={(e) =>
+                    selecionarCliente(
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                >
+                  <option value="">
+                    Selecionar cliente
+                  </option>
 
-                    <input
-                      value={client}
-                      onChange={(event) =>
-                        setClient(event.target.value)
-                      }
-                      placeholder="Ex.: João da Silva"
-                      required
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                    />
-                  </div>
+                  {clientes.map((cliente) => (
+                    <option
+                      key={cliente.id}
+                      value={cliente.id}
+                    >
+                      {cliente.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Cidade
-                      </label>
+              {/* CLIENTE MANUAL */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Nome do cliente
+                </label>
 
-                      <select
-                        value={city}
-                        onChange={(event) =>
-                          setCity(event.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                      >
-                        <option>Araraquara</option>
-                        <option>São Carlos</option>
-                        <option>Matão</option>
-                        <option>
-                          Américo Brasiliense
-                        </option>
-                      </select>
-                    </div>
+                <input
+                  value={form.cliente_nome}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "cliente_nome",
+                      e.target.value
+                    )
+                  }
+                  placeholder="Nome do cliente"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
+              </div>
 
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                        Número de série
-                      </label>
+              {/* CIDADE */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Cidade
+                </label>
 
-                      <input
-                        value={serial}
-                        onChange={(event) =>
-                          setSerial(event.target.value)
-                        }
-                        placeholder="Ex.: LG123456"
-                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                <input
+                  value={form.cidade}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "cidade",
+                      e.target.value
+                    )
+                  }
+                  placeholder="Cidade"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* EQUIPAMENTO */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Equipamento *
+                </label>
+
+                <input
+                  value={form.equipamento}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "equipamento",
+                      e.target.value
+                    )
+                  }
+                  placeholder="Ex.: Split Fujitsu 12.000 BTUs"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* SÉRIE */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Número de série
+                </label>
+
+                <input
+                  value={form.serie}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "serie",
+                      e.target.value
+                    )
+                  }
+                  placeholder="Número de série"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* TIPO */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Tipo de serviço
+                </label>
+
+                <select
+                  value={form.tipo}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "tipo",
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                >
+                  {tiposServico.map((tipo) => (
+                    <option key={tipo} value={tipo}>
+                      {tipo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* STATUS */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Status
+                </label>
+
+                <select
+                  value={form.status}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "status",
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                >
+                  <option value="Concluída">
+                    Concluída
+                  </option>
+
+                  <option value="Em andamento">
+                    Em andamento
+                  </option>
+
+                  <option value="Pendente">
+                    Pendente
+                  </option>
+
+                  <option value="Cancelada">
+                    Cancelada
+                  </option>
+                </select>
+              </div>
+
+              {/* TÉCNICO */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Técnico *
+                </label>
+
+                <input
+                  list="tecnicos"
+                  value={form.tecnico}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "tecnico",
+                      e.target.value
+                    )
+                  }
+                  placeholder="Nome do técnico"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
+
+                <datalist id="tecnicos">
+                  {tecnicosPadrao.map(
+                    (tecnico) => (
+                      <option
+                        key={tecnico}
+                        value={tecnico}
                       />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Equipamento *
-                    </label>
-
-                    <input
-                      value={equipment}
-                      onChange={(event) =>
-                        setEquipment(event.target.value)
-                      }
-                      placeholder="Ex.: LG Dual Inverter 12.000 BTUs"
-                      required
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                    />
-                  </div>
-                </div>
+                    )
+                  )}
+                </datalist>
               </div>
 
-              {/* TIPO E STATUS */}
+              {/* VALOR */}
               <div>
-                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">
-                  Classificação
-                </h3>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Valor
+                </label>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Tipo de manutenção
-                    </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.valor}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "valor",
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
+              </div>
 
-                    <select
-                      value={type}
-                      onChange={(event) =>
-                        setType(event.target.value)
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                    >
-                      <option>
-                        Manutenção preventiva
-                      </option>
+              {/* PRÓXIMA MANUTENÇÃO */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Próxima manutenção
+                </label>
 
-                      <option>
-                        Manutenção corretiva
-                      </option>
-
-                      <option>
-                        Higienização
-                      </option>
-
-                      <option>
-                        Instalação
-                      </option>
-
-                      <option>
-                        Avaliação técnica
-                      </option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Status
-                    </label>
-
-                    <select
-                      value={status}
-                      onChange={(event) =>
-                        setStatus(
-                          event.target
-                            .value as MaintenanceStatus
-                        )
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-                    >
-                      <option>
-                        Concluída
-                      </option>
-
-                      <option>
-                        Em andamento
-                      </option>
-
-                      <option>
-                        Cancelada
-                      </option>
-                    </select>
-                  </div>
-                </div>
+                <input
+                  type="date"
+                  value={form.proxima_manutencao}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "proxima_manutencao",
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
+                />
               </div>
 
               {/* PROBLEMA */}
-              <div>
-                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
-                  <AlertTriangle size={16} />
-                  Problema encontrado *
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Problema relatado
                 </label>
 
                 <textarea
-                  value={problem}
-                  onChange={(event) =>
-                    setProblem(event.target.value)
+                  value={form.problema}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "problema",
+                      e.target.value
+                    )
                   }
-                  placeholder="Descreva o problema encontrado no equipamento..."
-                  required
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  placeholder="Descreva o problema relatado pelo cliente..."
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
                 />
               </div>
 
               {/* SERVIÇO */}
-              <div>
-                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-700">
-                  <Wrench size={16} />
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
                   Serviço realizado *
                 </label>
 
                 <textarea
-                  value={service}
-                  onChange={(event) =>
-                    setService(event.target.value)
+                  value={form.servico}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "servico",
+                      e.target.value
+                    )
                   }
-                  placeholder="Descreva tudo que foi realizado pelo técnico..."
-                  required
-                  rows={4}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  rows={3}
+                  placeholder="Descreva o serviço realizado..."
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
                 />
               </div>
 
               {/* PEÇAS */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
                   Peças utilizadas
                 </label>
 
                 <textarea
-                  value={parts}
-                  onChange={(event) =>
-                    setParts(event.target.value)
+                  value={form.pecas}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "pecas",
+                      e.target.value
+                    )
                   }
-                  placeholder="Ex.: Capacitor 35uF, filtro, parafusos..."
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  rows={2}
+                  placeholder="Ex.: Capacitor 35+5 µF, fita isolante..."
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
                 />
               </div>
 
               {/* OBSERVAÇÕES */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-300">
                   Observações
                 </label>
 
                 <textarea
-                  value={observations}
-                  onChange={(event) =>
-                    setObservations(event.target.value)
+                  value={form.observacoes}
+                  onChange={(e) =>
+                    alterarCampo(
+                      "observacoes",
+                      e.target.value
+                    )
                   }
-                  placeholder="Outras informações importantes..."
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                  placeholder="Observações adicionais..."
+                  className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-blue-500"
                 />
               </div>
+            </div>
 
-              {/* FINANCEIRO E PRÓXIMA MANUTENÇÃO */}
-              <div>
-                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">
-                  Financeiro e próxima manutenção
-                </h3>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Valor do serviço
-                    </label>
-
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                        R$
-                      </span>
-
-                      <input
-                        value={value}
-                        onChange={(event) =>
-                          setValue(event.target.value)
-                        }
-                        placeholder="Ex.: 180,00"
-                        className="w-full rounded-xl border border-slate-200 px-4 py-3 pl-11 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Próxima manutenção
-                    </label>
-
-                    <input
-                      value={nextMaintenance}
-                      onChange={(event) =>
-                        setNextMaintenance(
-                          event.target.value
-                        )
-                      }
-                      placeholder="Ex.: 20/11/2026"
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* BOTÕES */}
-              <div className="flex gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearForm();
-                    setShowForm(false);
-                  }}
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="submit"
-                  className="flex-1 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-white hover:bg-cyan-600"
-                >
-                  {editingMaintenance
-                    ? "Salvar alterações"
-                    : "Salvar manutenção"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DETALHES */}
-      {showDetails && selectedMaintenance && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-2xl">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-                  <Wrench size={23} />
-                </div>
-
-                <div>
-                  <h2 className="font-bold text-slate-900">
-                    Histórico da manutenção
-                  </h2>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    {selectedMaintenance.equipment}
-                  </p>
-
-                  <span
-                    className={`mt-2 inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(
-                      selectedMaintenance.status
-                    )}`}
-                  >
-                    {selectedMaintenance.status}
-                  </span>
-                </div>
-              </div>
-
+            {/* RODAPÉ */}
+            <div className="flex justify-end gap-3 border-t border-slate-800 p-5">
               <button
-                onClick={() =>
-                  setShowDetails(false)
-                }
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                onClick={fecharModal}
+                disabled={salvando}
+                className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-medium text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
               >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Cliente
-                </p>
-
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {selectedMaintenance.client}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Cidade
-                </p>
-
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {selectedMaintenance.city}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Data
-                </p>
-
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {selectedMaintenance.date}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs text-slate-400">
-                  Técnico
-                </p>
-
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {selectedMaintenance.technician}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2">
-                <p className="text-xs text-slate-400">
-                  Equipamento
-                </p>
-
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {selectedMaintenance.equipment}
-                </p>
-
-                <p className="mt-1 text-xs text-slate-400">
-                  Série: {selectedMaintenance.serial}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-                <p className="text-xs font-semibold text-amber-600">
-                  Problema encontrado
-                </p>
-
-                <p className="mt-2 text-sm leading-6 text-amber-900">
-                  {selectedMaintenance.problem}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-4">
-                <p className="text-xs font-semibold text-cyan-600">
-                  Serviço realizado
-                </p>
-
-                <p className="mt-2 text-sm leading-6 text-cyan-900">
-                  {selectedMaintenance.service}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold text-slate-500">
-                  Peças utilizadas
-                </p>
-
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {selectedMaintenance.parts}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold text-slate-500">
-                  Observações
-                </p>
-
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {selectedMaintenance.observations}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-emerald-50 p-4">
-                <p className="text-xs text-emerald-600">
-                  Valor do serviço
-                </p>
-
-                <p className="mt-1 text-lg font-bold text-emerald-700">
-                  R$ {selectedMaintenance.value}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-blue-50 p-4">
-                <p className="text-xs text-blue-600">
-                  Próxima manutenção
-                </p>
-
-                <p className="mt-1 text-lg font-bold text-blue-700">
-                  {selectedMaintenance.nextMaintenance}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <button
-                onClick={() => {
-                  setShowDetails(false);
-                  openEdit(selectedMaintenance);
-                }}
-                className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600"
-              >
-                Editar
+                Cancelar
               </button>
 
               <button
-                onClick={() =>
-                  setShowDetails(false)
-                }
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={salvarHistorico}
+                disabled={salvando}
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-700 disabled:opacity-50"
               >
-                Fechar
-              </button>
+                {salvando ? (
+                  <RefreshCw
+                    size={18}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Save size={18} />
+                )}
 
-              <button
-                onClick={() =>
-                  deleteMaintenance(
-                    selectedMaintenance.id
-                  )
-                }
-                className="flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50"
-              >
-                <Trash2 size={16} />
-
-                Excluir
+                {salvando
+                  ? "Salvando..."
+                  : "Salvar registro"}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* INDICADOR */}
-      <div className="fixed bottom-4 right-4 hidden items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-lg sm:flex">
-        <CheckCircle2 size={15} />
-
-        Sistema em desenvolvimento
-      </div>
     </main>
   );
 }
