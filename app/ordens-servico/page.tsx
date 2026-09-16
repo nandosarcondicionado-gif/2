@@ -59,7 +59,6 @@ type ServiceOrder = {
   materialsPaidAt: string | null;
   status: ServiceOrderStatus;
   notes: string;
-
   monthlyPlanId: string | null;
   monthlyPlanCovered: boolean;
   monthlyPlanStatus: string;
@@ -173,21 +172,28 @@ function printServiceOrder(order: ServiceOrder) {
     plano_mensal_status: order.monthlyPlanStatus,
     plano_mensal_coberto: order.monthlyPlanCovered,
     plano_mensal_aviso: order.monthlyPlanWarning,
-    plano_mensal_servico_incluso: order.monthlyPlanIncludedService,
+    plano_mensal_servico_incluso:
+      order.monthlyPlanIncludedService,
   });
 
   const planHtml = order.monthlyPlanId
     ? `
       <div class="box">
         <h3>Plano mensal</h3>
-        <p><strong>Status:</strong> ${escapeHtml(planInfo.status)}</p>
+        <p><strong>Status:</strong> ${escapeHtml(
+          planInfo.status
+        )}</p>
         <p><strong>Serviço:</strong> ${
           escapeHtml(planInfo.servico) || "Não informado"
         }</p>
-        <p><strong>Condição:</strong> ${escapeHtml(planInfo.descricao)}</p>
+        <p><strong>Condição:</strong> ${escapeHtml(
+          planInfo.descricao
+        )}</p>
         ${
           planInfo.aviso
-            ? `<p class="alert">${escapeHtml(planInfo.aviso)}</p>`
+            ? `<p class="alert">${escapeHtml(
+                planInfo.aviso
+              )}</p>`
             : ""
         }
       </div>
@@ -204,6 +210,7 @@ function printServiceOrder(order: ServiceOrder) {
     <head>
       <meta charset="UTF-8" />
       <title>OS ${escapeHtml(order.number)}</title>
+
       <style>
         * {
           box-sizing: border-box;
@@ -302,6 +309,7 @@ function printServiceOrder(order: ServiceOrder) {
     </head>
 
     <body>
+
       <div class="header">
         <h1>Nando's Ar-Condicionado</h1>
         <p>Qualidade e confiança em todos os detalhes.</p>
@@ -313,52 +321,94 @@ function printServiceOrder(order: ServiceOrder) {
       </div>
 
       <div class="grid">
+
         <div class="box">
           <h3>Cliente</h3>
-          <p><strong>Nome:</strong> ${escapeHtml(order.client)}</p>
-          <p><strong>Cidade:</strong> ${escapeHtml(order.city)}</p>
+          <p><strong>Nome:</strong> ${escapeHtml(
+            order.client
+          )}</p>
+          <p><strong>Cidade:</strong> ${escapeHtml(
+            order.city
+          )}</p>
         </div>
 
         <div class="box">
           <h3>Atendimento</h3>
-          <p><strong>Data:</strong> ${escapeHtml(formatDate(order.date))}</p>
-          <p><strong>Status:</strong> ${escapeHtml(order.status)}</p>
+          <p><strong>Data:</strong> ${escapeHtml(
+            formatDate(order.date)
+          )}</p>
+          <p><strong>Status:</strong> ${escapeHtml(
+            order.status
+          )}</p>
           <p><strong>Técnico:</strong> ${
-            escapeHtml(order.technician) || "Não informado"
+            escapeHtml(order.technician) ||
+            "Não informado"
           }</p>
         </div>
+
       </div>
 
       <div class="box">
         <h3>Equipamento e serviço</h3>
-        <p><strong>Equipamento:</strong> ${
-          escapeHtml(order.equipment) || "Não informado"
-        }</p>
-        <p><strong>Tipo:</strong> ${escapeHtml(order.serviceType)}</p>
-        <p><strong>Descrição:</strong> ${
-          escapeHtml(order.description) || "Não informado"
-        }</p>
+
+        <p>
+          <strong>Equipamento:</strong>
+          ${
+            escapeHtml(order.equipment) ||
+            "Não informado"
+          }
+        </p>
+
+        <p>
+          <strong>Tipo:</strong>
+          ${escapeHtml(order.serviceType)}
+        </p>
+
+        <p>
+          <strong>Descrição:</strong>
+          ${
+            escapeHtml(order.description) ||
+            "Não informado"
+          }
+        </p>
       </div>
 
       ${planHtml}
 
       <div class="box">
         <h3>Valores</h3>
-        <p><strong>Serviço:</strong> ${formatCurrency(
-          order.serviceValue
-        )}</p>
-        <p><strong>Materiais:</strong> ${formatCurrency(
-          order.materialsValue
-        )}</p>
+
+        <p>
+          <strong>Serviço:</strong>
+          ${formatCurrency(order.serviceValue)}
+        </p>
+
+        <p>
+          <strong>Materiais:</strong>
+          ${formatCurrency(order.materialsValue)}
+        </p>
+
         ${
           order.materialsDescription
-            ? `<p><strong>Descrição dos materiais:</strong> ${escapeHtml(
-                order.materialsDescription
-              )}</p>`
+            ? `
+              <p>
+                <strong>Materiais:</strong>
+                ${escapeHtml(
+                  order.materialsDescription
+                )}
+              </p>
+            `
             : ""
         }
-        <p><strong>Status dos materiais:</strong> ${materialsStatus}</p>
-        <p class="total">Total: ${formatCurrency(order.value)}</p>
+
+        <p>
+          <strong>Status dos materiais:</strong>
+          ${materialsStatus}
+        </p>
+
+        <p class="total">
+          Total: ${formatCurrency(order.value)}
+        </p>
       </div>
 
       ${
@@ -385,6 +435,7 @@ function printServiceOrder(order: ServiceOrder) {
       <div class="footer">
         Nando's Ar-Condicionado — Qualidade e confiança em todos os detalhes.
       </div>
+
     </body>
     </html>
   `;
@@ -392,7 +443,9 @@ function printServiceOrder(order: ServiceOrder) {
   const printWindow = window.open("", "_blank");
 
   if (!printWindow) {
-    alert("Permita a abertura de novas janelas para imprimir.");
+    alert(
+      "Permita a abertura de novas janelas para imprimir."
+    );
     return;
   }
 
@@ -405,12 +458,15 @@ function printServiceOrder(order: ServiceOrder) {
   }, 400);
 }
 
-function sendServiceOrderWhatsApp(order: ServiceOrder) {
+function sendServiceOrderWhatsApp(
+  order: ServiceOrder
+) {
   const planInfo = getPlanoOSInfo({
     plano_mensal_status: order.monthlyPlanStatus,
     plano_mensal_coberto: order.monthlyPlanCovered,
     plano_mensal_aviso: order.monthlyPlanWarning,
-    plano_mensal_servico_incluso: order.monthlyPlanIncludedService,
+    plano_mensal_servico_incluso:
+      order.monthlyPlanIncludedService,
   });
 
   let message = `*Nando's Ar-Condicionado*
@@ -419,17 +475,27 @@ function sendServiceOrderWhatsApp(order: ServiceOrder) {
 
 Cliente: ${order.client}
 Cidade: ${order.city}
-Equipamento: ${order.equipment || "Não informado"}
+Equipamento: ${
+    order.equipment || "Não informado"
+  }
 Serviço: ${order.serviceType}
 Data: ${formatDate(order.date)}
-Técnico: ${order.technician || "Não informado"}
+Técnico: ${
+    order.technician || "Não informado"
+  }
 
 Descrição:
-${order.description || "Não informado"}
+${
+    order.description || "Não informado"
+  }
 
 *VALORES*
-Serviço: ${formatCurrency(order.serviceValue)}
-Materiais: ${formatCurrency(order.materialsValue)}
+Serviço: ${formatCurrency(
+    order.serviceValue
+  )}
+Materiais: ${formatCurrency(
+    order.materialsValue
+  )}
 Total: ${formatCurrency(order.value)}
 
 Status: ${order.status}`;
@@ -452,7 +518,9 @@ Pagamento dos materiais: ${
 
 *PLANO MENSAL*
 Status: ${planInfo.status}
-Serviço coberto: ${planInfo.coberto ? "SIM" : "NÃO"}`;
+Serviço coberto: ${
+      planInfo.coberto ? "SIM" : "NÃO"
+    }`;
 
     if (planInfo.servico) {
       message += `
@@ -474,28 +542,38 @@ Observações:
 ${order.notes}`;
   }
 
-  const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  const url =
+    `https://wa.me/?text=` +
+    encodeURIComponent(message);
 
   window.open(url, "_blank");
 }
 
 export default function OrdensServicoPage() {
-  const [orders, setOrders] = useState<ServiceOrder[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [orders, setOrders] = useState<
+    ServiceOrder[]
+  >([]);
+
+  const [clients, setClients] = useState<
+    Client[]
+  >([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [statusFilter, setStatusFilter] =
+    useState("Todos");
 
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
 
   const [selectedOrder, setSelectedOrder] =
     useState<ServiceOrder | null>(null);
 
-  const [form, setForm] = useState<FormData>(emptyForm);
+  const [form, setForm] =
+    useState<FormData>(emptyForm);
 
   useEffect(() => {
     loadData();
@@ -505,21 +583,27 @@ export default function OrdensServicoPage() {
     setLoading(true);
 
     try {
-      const [ordersResult, clientsResult] = await Promise.all([
-        supabase
-          .from("ordens_servico")
-          .select("*")
-          .order("created_at", { ascending: false }),
+      const [ordersResult, clientsResult] =
+        await Promise.all([
+          supabase
+            .from("ordens_servico")
+            .select("*")
+            .order("created_at", {
+              ascending: false,
+            }),
 
-        supabase
-          .from("clientes")
-          .select("id, nome, cidade")
-          .eq("ativo", true)
-          .order("nome", { ascending: true }),
-      ]);
+          supabase
+            .from("clientes")
+            .select("id, nome, cidade")
+            .eq("ativo", true)
+            .order("nome", {
+              ascending: true,
+            }),
+        ]);
 
       if (ordersResult.error) {
         console.error(ordersResult.error);
+
         alert(
           "Erro ao carregar as ordens de serviço: " +
             ordersResult.error.message
@@ -531,67 +615,112 @@ export default function OrdensServicoPage() {
       }
 
       const mappedOrders: ServiceOrder[] =
-        (ordersResult.data || []).map((item: any) => {
-          const serviceValue = Number(
-            item.valor_servicos ?? item.valor ?? 0
-          );
+        (ordersResult.data || []).map(
+          (item: any) => {
+            const serviceValue = Number(
+              item.valor_servicos ??
+                item.valor ??
+                0
+            );
 
-          const materialsValue = Number(
-            item.valor_materiais ?? 0
-          );
+            const materialsValue = Number(
+              item.valor_materiais ?? 0
+            );
 
-          const totalValue = Number(
-            item.valor ?? serviceValue + materialsValue
-          );
+            const totalValue = Number(
+              item.valor ??
+                serviceValue + materialsValue
+            );
 
-          return {
-            id: item.id,
-            number: item.numero || "OS-0000",
-            clientId: item.cliente_id || "",
-            client: item.cliente_nome || "",
-            equipment: item.equipamento || "",
-            city: item.cidade || "",
-            serviceType:
-              item.tipo_servico || "Preventiva",
-            description: item.descricao || "",
-            date: item.data || "",
-            technician: item.tecnico || "",
-            value: totalValue,
-            serviceValue,
-            materialsValue,
-            materialsDescription:
-              item.materiais_descricao || "",
-            materialsPaid: Boolean(
-              item.materiais_pago ?? false
-            ),
-            materialsPaidAt:
-              item.materiais_pago_em || null,
-            status:
-              item.status || "Aberta",
-            notes: item.observacoes || "",
+            return {
+              id: item.id,
 
-            monthlyPlanId:
-              item.plano_mensal_id || null,
-            monthlyPlanCovered: Boolean(
-              item.plano_mensal_coberto
-            ),
-            monthlyPlanStatus:
-              item.plano_mensal_status || "Sem plano",
-            monthlyPlanWarning:
-              item.plano_mensal_aviso || "",
-            monthlyPlanIncludedService:
-              item.plano_mensal_servico_incluso || "",
-          };
-        });
+              number:
+                item.numero || "OS-0000",
+
+              clientId:
+                item.cliente_id || "",
+
+              client:
+                item.cliente_nome || "",
+
+              equipment:
+                item.equipamento || "",
+
+              city:
+                item.cidade || "",
+
+              serviceType:
+                item.tipo_servico ||
+                "Preventiva",
+
+              description:
+                item.descricao || "",
+
+              date:
+                item.data || "",
+
+              technician:
+                item.tecnico || "",
+
+              value: totalValue,
+
+              serviceValue,
+
+              materialsValue,
+
+              materialsDescription:
+                item.materiais_descricao ||
+                "",
+
+              materialsPaid: Boolean(
+                item.materiais_pago ?? false
+              ),
+
+              materialsPaidAt:
+                item.materiais_pago_em ||
+                null,
+
+              status:
+                item.status || "Aberta",
+
+              notes:
+                item.observacoes || "",
+
+              monthlyPlanId:
+                item.plano_mensal_id ||
+                null,
+
+              monthlyPlanCovered:
+                Boolean(
+                  item.plano_mensal_coberto
+                ),
+
+              monthlyPlanStatus:
+                item.plano_mensal_status ||
+                "Sem plano",
+
+              monthlyPlanWarning:
+                item.plano_mensal_aviso ||
+                "",
+
+              monthlyPlanIncludedService:
+                item.plano_mensal_servico_incluso ||
+                "",
+            };
+          }
+        );
 
       setOrders(mappedOrders);
 
       setClients(
-        (clientsResult.data || []).map((item: any) => ({
-          id: item.id,
-          nome: item.nome || "",
-          cidade: item.cidade || "",
-        }))
+        (clientsResult.data || []).map(
+          (item: any) => ({
+            id: item.id,
+            nome: item.nome || "",
+            cidade: item.cidade || "",
+          })
+        )
       );
     } finally {
       setLoading(false);
@@ -599,49 +728,73 @@ export default function OrdensServicoPage() {
   }
 
   const filteredOrders = useMemo(() => {
-    const searchLower = search.toLowerCase().trim();
+    const searchLower =
+      search.toLowerCase().trim();
 
     return orders.filter((order) => {
       const matchesSearch =
         !searchLower ||
-        order.number.toLowerCase().includes(searchLower) ||
-        order.client.toLowerCase().includes(searchLower) ||
-        order.city.toLowerCase().includes(searchLower) ||
-        order.equipment.toLowerCase().includes(searchLower) ||
-        order.serviceType.toLowerCase().includes(searchLower);
+        order.number
+          .toLowerCase()
+          .includes(searchLower) ||
+        order.client
+          .toLowerCase()
+          .includes(searchLower) ||
+        order.city
+          .toLowerCase()
+          .includes(searchLower) ||
+        order.equipment
+          .toLowerCase()
+          .includes(searchLower) ||
+        order.serviceType
+          .toLowerCase()
+          .includes(searchLower);
 
       const matchesStatus =
         statusFilter === "Todos" ||
         order.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      return (
+        matchesSearch &&
+        matchesStatus
+      );
     });
   }, [orders, search, statusFilter]);
 
   const stats = useMemo(() => {
     return {
       total: orders.length,
+
       abertas: orders.filter(
-        (item) => item.status === "Aberta"
-      ).length,
-      andamento: orders.filter(
-        (item) => item.status === "Em andamento"
-      ).length,
-      concluidas: orders.filter(
-        (item) => item.status === "Concluída"
-      ).length,
-      materiaisPendentes: orders.filter(
         (item) =>
-          item.materialsValue > 0 &&
-          !item.materialsPaid
+          item.status === "Aberta"
       ).length,
+
+      andamento: orders.filter(
+        (item) =>
+          item.status === "Em andamento"
+      ).length,
+
+      concluidas: orders.filter(
+        (item) =>
+          item.status === "Concluída"
+      ).length,
+
+      materiaisPendentes:
+        orders.filter(
+          (item) =>
+            item.materialsValue > 0 &&
+            !item.materialsPaid
+        ).length,
     };
   }, [orders]);
 
   function resetForm() {
     setForm({
       ...emptyForm,
-      date: new Date().toISOString().slice(0, 10),
+      date: new Date()
+        .toISOString()
+        .slice(0, 10),
     });
 
     setEditingId(null);
@@ -657,7 +810,9 @@ export default function OrdensServicoPage() {
     setShowForm(true);
   }
 
-  function openEditOrder(order: ServiceOrder) {
+  function openEditOrder(
+    order: ServiceOrder
+  ) {
     setEditingId(order.id);
 
     setForm({
@@ -669,30 +824,46 @@ export default function OrdensServicoPage() {
       description: order.description,
       date: order.date,
       technician: order.technician,
-      value: String(order.serviceValue || ""),
+
+      value: String(
+        order.serviceValue || ""
+      ),
+
       materialsValue: String(
         order.materialsValue || ""
       ),
+
       materialsDescription:
         order.materialsDescription,
-      materialsPaid: order.materialsPaid,
+
+      materialsPaid:
+        order.materialsPaid,
+
       status: order.status,
+
       notes: order.notes,
     });
 
     setShowForm(true);
   }
 
-  function handleClientChange(clientId: string) {
+  function handleClientChange(
+    clientId: string
+  ) {
     const client = clients.find(
       (item) => item.id === clientId
     );
 
     setForm((current) => ({
       ...current,
+
       clientId,
-      client: client?.nome || "",
-      city: client?.cidade || "",
+
+      client:
+        client?.nome || "",
+
+      city:
+        client?.cidade || "",
     }));
   }
 
@@ -700,61 +871,97 @@ export default function OrdensServicoPage() {
     const numbers = orders
       .map((order) => {
         const match =
-          order.number.match(/(\d+)$/);
+          order.number.match(
+            /(\d+)$/
+          );
 
-        return match ? Number(match[1]) : 0;
+        return match
+          ? Number(match[1])
+          : 0;
       })
-      .filter((number) => Number.isFinite(number));
+      .filter((number) =>
+        Number.isFinite(number)
+      );
 
     const next =
       numbers.length > 0
         ? Math.max(...numbers) + 1
         : 1;
 
-    return `OS-${String(next).padStart(4, "0")}`;
+    return `OS-${String(next).padStart(
+      4,
+      "0"
+    )}`;
   }
 
   async function saveOrder() {
-    if (!form.clientId && !form.client.trim()) {
-      alert("Selecione ou informe o cliente.");
+    if (
+      !form.clientId &&
+      !form.client.trim()
+    ) {
+      alert(
+        "Selecione ou informe o cliente."
+      );
       return;
     }
 
     if (!form.description.trim()) {
-      alert("Informe a descrição do serviço.");
+      alert(
+        "Informe a descrição do serviço."
+      );
       return;
     }
 
     setSaving(true);
 
     try {
-      const serviceValue = parseMoney(form.value);
-      const materialsValue = parseMoney(
-        form.materialsValue
-      );
+      const serviceValue =
+        parseMoney(form.value);
+
+      const materialsValue =
+        parseMoney(
+          form.materialsValue
+        );
 
       let monthlyPlanData = {
-        plano_mensal_id: null as string | null,
+        plano_mensal_id:
+          null as string | null,
+
         plano_mensal_coberto: false,
-        plano_mensal_status: "Sem plano",
+
+        plano_mensal_status:
+          "Sem plano",
+
         plano_mensal_aviso: "",
-        plano_mensal_servico_incluso: "",
-        valor_servicos: serviceValue,
+
+        plano_mensal_servico_incluso:
+          "",
+
+        valor_servicos:
+          serviceValue,
       };
 
       /*
-       * A verificação do plano acontece automaticamente
-       * quando existe cliente selecionado.
+       * VERIFICAÇÃO AUTOMÁTICA DO PLANO
+       *
+       * Importante:
+       * o auxiliar espera "service".
        */
       if (form.clientId) {
         try {
           monthlyPlanData =
-            await applyMonthlyPlanToServiceOrder({
-              clientId: form.clientId,
-              requestedService:
-                form.serviceType,
-              normalServiceValue: serviceValue,
-            });
+            await applyMonthlyPlanToServiceOrder(
+              {
+                clientId:
+                  form.clientId,
+
+                service:
+                  form.serviceType,
+
+                normalServiceValue:
+                  serviceValue,
+              }
+            );
         } catch (planError) {
           console.error(
             "Erro ao verificar plano mensal:",
@@ -762,76 +969,120 @@ export default function OrdensServicoPage() {
           );
 
           /*
-           * Se houver algum problema no módulo de plano,
-           * não bloqueamos a OS. Ela continua com cobrança
+           * Se houver problema no módulo do
+           * plano, a OS continua com cobrança
            * normal do serviço.
            */
           monthlyPlanData = {
-            plano_mensal_id: null,
-            plano_mensal_coberto: false,
-            plano_mensal_status: "Sem plano",
-            plano_mensal_aviso: "",
-            plano_mensal_servico_incluso: "",
-            valor_servicos: serviceValue,
+            plano_mensal_id:
+              null,
+
+            plano_mensal_coberto:
+              false,
+
+            plano_mensal_status:
+              "Sem plano",
+
+            plano_mensal_aviso:
+              "",
+
+            plano_mensal_servico_incluso:
+              "",
+
+            valor_servicos:
+              serviceValue,
           };
         }
       }
 
       const totalValue =
-        Number(monthlyPlanData.valor_servicos || 0) +
+        Number(
+          monthlyPlanData.valor_servicos ||
+            0
+        ) +
         materialsValue;
 
       const client = clients.find(
-        (item) => item.id === form.clientId
+        (item) =>
+          item.id === form.clientId
       );
 
       let number = "OS-0001";
 
       if (editingId) {
-        const current = orders.find(
-          (item) => item.id === editingId
-        );
+        const current =
+          orders.find(
+            (item) =>
+              item.id === editingId
+          );
 
-        number = current?.number || "OS-0001";
+        number =
+          current?.number ||
+          "OS-0001";
       } else {
-        number = await generateNumber();
+        number =
+          await generateNumber();
       }
 
       const payload = {
         numero: number,
-        cliente_id: form.clientId || null,
+
+        cliente_id:
+          form.clientId || null,
+
         cliente_nome:
-          client?.nome || form.client,
-        equipamento: form.equipment,
-        cidade: client?.cidade || form.city,
-        tipo_servico: form.serviceType,
-        descricao: form.description,
-        data: form.date || null,
-        tecnico: form.technician || null,
+          client?.nome ||
+          form.client,
+
+        equipamento:
+          form.equipment,
+
+        cidade:
+          client?.cidade ||
+          form.city,
+
+        tipo_servico:
+          form.serviceType,
+
+        descricao:
+          form.description,
+
+        data:
+          form.date || null,
+
+        tecnico:
+          form.technician || null,
 
         valor_servicos:
           monthlyPlanData.valor_servicos,
 
-        valor_materiais: materialsValue,
+        valor_materiais:
+          materialsValue,
 
         materiais_descricao:
-          form.materialsDescription || null,
+          form.materialsDescription ||
+          null,
 
-        materiais_pago: editingId
-          ? form.materialsPaid
-          : false,
+        materiais_pago:
+          editingId
+            ? form.materialsPaid
+            : false,
 
-        materiais_pago_em: editingId
-          ? form.materialsPaid
-            ? new Date().toISOString()
-            : null
-          : null,
+        materiais_pago_em:
+          editingId
+            ? form.materialsPaid
+              ? new Date().toISOString()
+              : null
+            : null,
 
-        valor: totalValue,
+        valor:
+          totalValue,
 
-        status: form.status,
+        status:
+          form.status,
 
-        observacoes: form.notes || null,
+        observacoes:
+          form.notes || null,
 
         plano_mensal_id:
           monthlyPlanData.plano_mensal_id,
@@ -849,75 +1100,88 @@ export default function OrdensServicoPage() {
           monthlyPlanData.plano_mensal_servico_incluso,
       };
 
-      let savedOrderId = editingId;
+      let savedOrderId =
+        editingId;
 
       if (editingId) {
-        const { error } = await supabase
-          .from("ordens_servico")
-          .update(payload)
-          .eq("id", editingId);
+        const { error } =
+          await supabase
+            .from("ordens_servico")
+            .update(payload)
+            .eq(
+              "id",
+              editingId
+            );
 
         if (error) {
           throw error;
         }
       } else {
-        const { data, error } = await supabase
-          .from("ordens_servico")
-          .insert(payload)
-          .select("id")
-          .single();
+        const { data, error } =
+          await supabase
+            .from("ordens_servico")
+            .insert(payload)
+            .select("id")
+            .single();
 
         if (error) {
           throw error;
         }
 
-        savedOrderId = data?.id || null;
+        savedOrderId =
+          data?.id || null;
       }
 
       /*
-       * Se a OS estiver vinculada a um plano,
-       * registramos o uso do plano.
+       * REGISTRA O USO DO PLANO
        */
       if (
         savedOrderId &&
         monthlyPlanData.plano_mensal_id
       ) {
         try {
-          const { error: usageError } =
-            await supabase
-              .from("uso_planos_mensais")
-              .insert({
-                plano_id:
-                  monthlyPlanData.plano_mensal_id,
+          const {
+            error: usageError,
+          } = await supabase
+            .from(
+              "uso_planos_mensais"
+            )
+            .insert({
+              plano_id:
+                monthlyPlanData.plano_mensal_id,
 
-                ordem_servico_id: savedOrderId,
+              ordem_servico_id:
+                savedOrderId,
 
-                cliente_id:
-                  form.clientId || null,
+              cliente_id:
+                form.clientId ||
+                null,
 
-                data_uso:
-                  form.date ||
-                  new Date()
-                    .toISOString()
-                    .slice(0, 10),
+              data_uso:
+                form.date ||
+                new Date()
+                  .toISOString()
+                  .slice(0, 10),
 
-                servico: form.serviceType,
+              servico:
+                form.serviceType,
 
-                equipamento:
-                  form.equipment || "",
+              equipamento:
+                form.equipment ||
+                "",
 
-                coberto:
-                  monthlyPlanData.plano_mensal_coberto,
+              coberto:
+                monthlyPlanData.plano_mensal_coberto,
 
-                motivo:
-                  monthlyPlanData.plano_mensal_coberto
-                    ? "Serviço coberto pelo plano mensal."
-                    : monthlyPlanData.plano_mensal_aviso ||
-                      "Serviço não coberto pelo plano.",
+              motivo:
+                monthlyPlanData.plano_mensal_coberto
+                  ? "Serviço coberto pelo plano mensal."
+                  : monthlyPlanData.plano_mensal_aviso ||
+                    "Serviço não coberto pelo plano.",
 
-                observacoes:
-                  form.notes || "",
-              });
+              observacoes:
+                form.notes || "",
+            });
 
           if (usageError) {
             console.error(
@@ -934,6 +1198,7 @@ export default function OrdensServicoPage() {
       }
 
       closeForm();
+
       await loadData();
 
       alert(
@@ -946,33 +1211,40 @@ export default function OrdensServicoPage() {
 
       alert(
         "Não foi possível salvar a ordem de serviço.\n\n" +
-          (error?.message || "Erro desconhecido.")
+          (error?.message ||
+            "Erro desconhecido.")
       );
     } finally {
       setSaving(false);
     }
   }
 
-  async function deleteOrder(order: ServiceOrder) {
-    const confirmed = window.confirm(
-      `Deseja realmente excluir a ordem ${order.number}?`
-    );
+  async function deleteOrder(
+    order: ServiceOrder
+  ) {
+    const confirmed =
+      window.confirm(
+        `Deseja realmente excluir a ordem ${order.number}?`
+      );
 
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("ordens_servico")
-      .delete()
-      .eq("id", order.id);
+    const { error } =
+      await supabase
+        .from("ordens_servico")
+        .delete()
+        .eq("id", order.id);
 
     if (error) {
       alert(
-        "Erro ao excluir: " + error.message
+        "Erro ao excluir: " +
+          error.message
       );
       return;
     }
 
     setSelectedOrder(null);
+
     await loadData();
   }
 
@@ -980,10 +1252,11 @@ export default function OrdensServicoPage() {
     order: ServiceOrder,
     status: ServiceOrderStatus
   ) {
-    const { error } = await supabase
-      .from("ordens_servico")
-      .update({ status })
-      .eq("id", order.id);
+    const { error } =
+      await supabase
+        .from("ordens_servico")
+        .update({ status })
+        .eq("id", order.id);
 
     if (error) {
       alert(
@@ -995,7 +1268,10 @@ export default function OrdensServicoPage() {
 
     await loadData();
 
-    if (selectedOrder?.id === order.id) {
+    if (
+      selectedOrder?.id ===
+      order.id
+    ) {
       setSelectedOrder({
         ...selectedOrder,
         status,
@@ -1006,24 +1282,31 @@ export default function OrdensServicoPage() {
   async function toggleMaterialsPayment(
     order: ServiceOrder
   ) {
-    if (order.materialsValue <= 0) {
+    if (
+      order.materialsValue <= 0
+    ) {
       alert(
         "Esta OS não possui valor de materiais."
       );
       return;
     }
 
-    const nextPaid = !order.materialsPaid;
+    const nextPaid =
+      !order.materialsPaid;
 
-    const { error } = await supabase
-      .from("ordens_servico")
-      .update({
-        materiais_pago: nextPaid,
-        materiais_pago_em: nextPaid
-          ? new Date().toISOString()
-          : null,
-      })
-      .eq("id", order.id);
+    const { error } =
+      await supabase
+        .from("ordens_servico")
+        .update({
+          materiais_pago:
+            nextPaid,
+
+          materiais_pago_em:
+            nextPaid
+              ? new Date().toISOString()
+              : null,
+        })
+        .eq("id", order.id);
 
     if (error) {
       alert(
@@ -1035,28 +1318,41 @@ export default function OrdensServicoPage() {
 
     await loadData();
 
-    if (selectedOrder?.id === order.id) {
+    if (
+      selectedOrder?.id ===
+      order.id
+    ) {
       setSelectedOrder({
         ...selectedOrder,
-        materialsPaid: nextPaid,
-        materialsPaidAt: nextPaid
-          ? new Date().toISOString()
-          : null,
+
+        materialsPaid:
+          nextPaid,
+
+        materialsPaidAt:
+          nextPaid
+            ? new Date().toISOString()
+            : null,
       });
     }
   }
 
-  function renderPlanBadge(order: ServiceOrder) {
-    const info = getPlanoOSInfo({
-      plano_mensal_status:
-        order.monthlyPlanStatus,
-      plano_mensal_coberto:
-        order.monthlyPlanCovered,
-      plano_mensal_aviso:
-        order.monthlyPlanWarning,
-      plano_mensal_servico_incluso:
-        order.monthlyPlanIncludedService,
-    });
+  function renderPlanBadge(
+    order: ServiceOrder
+  ) {
+    const info =
+      getPlanoOSInfo({
+        plano_mensal_status:
+          order.monthlyPlanStatus,
+
+        plano_mensal_coberto:
+          order.monthlyPlanCovered,
+
+        plano_mensal_aviso:
+          order.monthlyPlanWarning,
+
+        plano_mensal_servico_incluso:
+          order.monthlyPlanIncludedService,
+      });
 
     return (
       <div className="mt-2">
@@ -1069,7 +1365,9 @@ export default function OrdensServicoPage() {
           {info.coberto ? (
             <ShieldCheck size={13} />
           ) : (
-            <AlertTriangle size={13} />
+            <AlertTriangle
+              size={13}
+            />
           )}
 
           {info.coberto
@@ -1083,6 +1381,7 @@ export default function OrdensServicoPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mx-auto max-w-7xl">
+
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
@@ -1091,8 +1390,9 @@ export default function OrdensServicoPage() {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500">
-              Controle completo dos atendimentos da
-              Nando's Ar-Condicionado.
+              Controle completo dos
+              atendimentos da Nando's
+              Ar-Condicionado.
             </p>
           </div>
 
@@ -1106,10 +1406,12 @@ export default function OrdensServicoPage() {
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+
           <div className="rounded-xl border bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">
               Total
             </p>
+
             <p className="mt-1 text-2xl font-bold">
               {stats.total}
             </p>
@@ -1119,6 +1421,7 @@ export default function OrdensServicoPage() {
             <p className="text-xs text-gray-500">
               Abertas
             </p>
+
             <p className="mt-1 text-2xl font-bold text-yellow-600">
               {stats.abertas}
             </p>
@@ -1128,6 +1431,7 @@ export default function OrdensServicoPage() {
             <p className="text-xs text-gray-500">
               Em andamento
             </p>
+
             <p className="mt-1 text-2xl font-bold text-blue-600">
               {stats.andamento}
             </p>
@@ -1137,6 +1441,7 @@ export default function OrdensServicoPage() {
             <p className="text-xs text-gray-500">
               Concluídas
             </p>
+
             <p className="mt-1 text-2xl font-bold text-green-600">
               {stats.concluidas}
             </p>
@@ -1146,6 +1451,7 @@ export default function OrdensServicoPage() {
             <p className="text-xs text-gray-500">
               Materiais pendentes
             </p>
+
             <p className="mt-1 text-2xl font-bold text-orange-600">
               {stats.materiaisPendentes}
             </p>
@@ -1162,7 +1468,9 @@ export default function OrdensServicoPage() {
             <input
               value={search}
               onChange={(event) =>
-                setSearch(event.target.value)
+                setSearch(
+                  event.target.value
+                )
               }
               placeholder="Pesquisar OS, cliente, cidade ou equipamento..."
               className="w-full rounded-xl border bg-white py-3 pl-10 pr-4 outline-none focus:border-gray-900"
@@ -1172,23 +1480,32 @@ export default function OrdensServicoPage() {
           <select
             value={statusFilter}
             onChange={(event) =>
-              setStatusFilter(event.target.value)
+              setStatusFilter(
+                event.target.value
+              )
             }
             className="rounded-xl border bg-white px-4 py-3 outline-none"
           >
             <option value="Todos">
               Todos os status
             </option>
-            <option value="Aberta">Aberta</option>
+
+            <option value="Aberta">
+              Aberta
+            </option>
+
             <option value="Agendada">
               Agendada
             </option>
+
             <option value="Em andamento">
               Em andamento
             </option>
+
             <option value="Concluída">
               Concluída
             </option>
+
             <option value="Cancelada">
               Cancelada
             </option>
@@ -1199,8 +1516,10 @@ export default function OrdensServicoPage() {
           <div className="rounded-xl border bg-white p-10 text-center text-gray-500">
             Carregando ordens de serviço...
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : filteredOrders.length ===
+          0 ? (
           <div className="rounded-xl border bg-white p-10 text-center">
+
             <ClipboardList
               size={42}
               className="mx-auto text-gray-300"
@@ -1211,7 +1530,9 @@ export default function OrdensServicoPage() {
             </p>
 
             <button
-              onClick={openNewOrder}
+              onClick={
+                openNewOrder
+              }
               className="mt-4 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
             >
               Criar primeira OS
@@ -1219,136 +1540,182 @@ export default function OrdensServicoPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredOrders.map((order) => (
-              <div
-                key={order.id}
-                className="rounded-xl border bg-white p-4 shadow-sm"
-              >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-bold text-gray-900">
-                        {order.number}
-                      </span>
 
-                      <span
-                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(
-                          order.status
-                        )}`}
-                      >
-                        {order.status}
-                      </span>
-                    </div>
+            {filteredOrders.map(
+              (order) => (
+                <div
+                  key={order.id}
+                  className="rounded-xl border bg-white p-4 shadow-sm"
+                >
 
-                    <div className="mt-2 flex flex-col gap-1 text-sm text-gray-600">
-                      <span className="flex items-center gap-2">
-                        <User size={15} />
-                        {order.client}
-                      </span>
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
-                      <span className="flex items-center gap-2">
-                        <MapPin size={15} />
-                        {order.city || "Cidade não informada"}
-                      </span>
+                    <div className="min-w-0">
 
-                      <span className="flex items-center gap-2">
-                        <Wrench size={15} />
-                        {order.serviceType}
-                        {order.equipment
-                          ? ` — ${order.equipment}`
-                          : ""}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
 
-                      <span className="flex items-center gap-2">
-                        <CalendarDays size={15} />
-                        {formatDate(order.date)}
-                      </span>
-                    </div>
+                        <span className="font-bold text-gray-900">
+                          {order.number}
+                        </span>
 
-                    {renderPlanBadge(order)}
-
-                    {order.monthlyPlanWarning && (
-                      <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700">
-                        ⚠️ {order.monthlyPlanWarning}
+                        <span
+                          className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(
+                            order.status
+                          )}`}
+                        >
+                          {order.status}
+                        </span>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex flex-col gap-2 lg:min-w-[230px]">
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500">
-                        Total da OS
-                      </p>
+                      <div className="mt-2 flex flex-col gap-1 text-sm text-gray-600">
 
-                      <p className="text-xl font-bold text-gray-900">
-                        {formatCurrency(order.value)}
-                      </p>
+                        <span className="flex items-center gap-2">
+                          <User size={15} />
+                          {order.client}
+                        </span>
 
-                      <p className="text-xs text-gray-500">
-                        Serviço:{" "}
-                        {formatCurrency(
-                          order.serviceValue
-                        )}
-                        {" • "}
-                        Materiais:{" "}
-                        {formatCurrency(
-                          order.materialsValue
-                        )}
-                      </p>
+                        <span className="flex items-center gap-2">
+                          <MapPin size={15} />
+                          {order.city ||
+                            "Cidade não informada"}
+                        </span>
+
+                        <span className="flex items-center gap-2">
+                          <Wrench size={15} />
+                          {order.serviceType}
+
+                          {order.equipment
+                            ? ` — ${order.equipment}`
+                            : ""}
+                        </span>
+
+                        <span className="flex items-center gap-2">
+                          <CalendarDays
+                            size={15}
+                          />
+                          {formatDate(
+                            order.date
+                          )}
+                        </span>
+
+                      </div>
+
+                      {renderPlanBadge(
+                        order
+                      )}
+
+                      {order.monthlyPlanWarning && (
+                        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700">
+                          ⚠️{" "}
+                          {
+                            order.monthlyPlanWarning
+                          }
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <button
-                        onClick={() =>
-                          setSelectedOrder(order)
-                        }
-                        className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
-                      >
-                        Detalhes
-                      </button>
+                    <div className="flex flex-col gap-2 lg:min-w-[230px]">
 
-                      <button
-                        onClick={() =>
-                          openEditOrder(order)
-                        }
-                        className="rounded-lg border p-2 hover:bg-gray-50"
-                        title="Editar"
-                      >
-                        <Edit size={17} />
-                      </button>
+                      <div className="text-right">
 
-                      <button
-                        onClick={() =>
-                          printServiceOrder(order)
-                        }
-                        className="rounded-lg border p-2 hover:bg-gray-50"
-                        title="Imprimir"
-                      >
-                        <Printer size={17} />
-                      </button>
+                        <p className="text-xs text-gray-500">
+                          Total da OS
+                        </p>
 
-                      <button
-                        onClick={() =>
-                          sendServiceOrderWhatsApp(order)
-                        }
-                        className="rounded-lg border p-2 text-green-600 hover:bg-green-50"
-                        title="Enviar WhatsApp"
-                      >
-                        <MessageCircle size={17} />
-                      </button>
+                        <p className="text-xl font-bold text-gray-900">
+                          {formatCurrency(
+                            order.value
+                          )}
+                        </p>
+
+                        <p className="text-xs text-gray-500">
+                          Serviço:{" "}
+                          {formatCurrency(
+                            order.serviceValue
+                          )}
+                          {" • "}
+                          Materiais:{" "}
+                          {formatCurrency(
+                            order.materialsValue
+                          )}
+                        </p>
+
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2">
+
+                        <button
+                          onClick={() =>
+                            setSelectedOrder(
+                              order
+                            )
+                          }
+                          className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-gray-50"
+                        >
+                          Detalhes
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            openEditOrder(
+                              order
+                            )
+                          }
+                          className="rounded-lg border p-2 hover:bg-gray-50"
+                          title="Editar"
+                        >
+                          <Edit
+                            size={17}
+                          />
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            printServiceOrder(
+                              order
+                            )
+                          }
+                          className="rounded-lg border p-2 hover:bg-gray-50"
+                          title="Imprimir"
+                        >
+                          <Printer
+                            size={17}
+                          />
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            sendServiceOrderWhatsApp(
+                              order
+                            )
+                          }
+                          className="rounded-lg border p-2 text-green-600 hover:bg-green-50"
+                          title="Enviar WhatsApp"
+                        >
+                          <MessageCircle
+                            size={17}
+                          />
+                        </button>
+
+                      </div>
                     </div>
+
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            )}
+
           </div>
         )}
       </div>
 
       {showForm && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
+
           <div className="mx-auto max-w-3xl rounded-2xl bg-white shadow-2xl">
+
             <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-4">
+
               <div>
                 <h2 className="text-xl font-bold">
                   {editingId
@@ -1357,65 +1724,90 @@ export default function OrdensServicoPage() {
                 </h2>
 
                 <p className="text-xs text-gray-500">
-                  O plano mensal será verificado
-                  automaticamente.
+                  O plano mensal será
+                  verificado automaticamente.
                 </p>
               </div>
 
               <button
-                onClick={closeForm}
+                onClick={
+                  closeForm
+                }
                 className="rounded-lg p-2 hover:bg-gray-100"
               >
                 <X size={21} />
               </button>
+
             </div>
 
             <div className="space-y-5 p-4">
+
               <div>
                 <label className="mb-1 block text-sm font-semibold">
                   Cliente
                 </label>
 
                 <select
-                  value={form.clientId}
+                  value={
+                    form.clientId
+                  }
                   onChange={(event) =>
                     handleClientChange(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   className="w-full rounded-xl border px-3 py-3"
                 >
+
                   <option value="">
                     Selecione o cliente
                   </option>
 
-                  {clients.map((client) => (
-                    <option
-                      key={client.id}
-                      value={client.id}
-                    >
-                      {client.nome}
-                      {client.cidade
-                        ? ` — ${client.cidade}`
-                        : ""}
-                    </option>
-                  ))}
+                  {clients.map(
+                    (client) => (
+                      <option
+                        key={
+                          client.id
+                        }
+                        value={
+                          client.id
+                        }
+                      >
+                        {
+                          client.nome
+                        }
+
+                        {client.cidade
+                          ? ` — ${client.cidade}`
+                          : ""}
+                      </option>
+                    )
+                  )}
+
                 </select>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
+
                 <div>
                   <label className="mb-1 block text-sm font-semibold">
                     Equipamento
                   </label>
 
                   <input
-                    value={form.equipment}
-                    onChange={(event) =>
+                    value={
+                      form.equipment
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setForm({
                         ...form,
                         equipment:
-                          event.target.value,
+                          event
+                            .target
+                            .value,
                       })
                     }
                     placeholder="Ex.: Split 12.000 BTUs"
@@ -1429,17 +1821,23 @@ export default function OrdensServicoPage() {
                   </label>
 
                   <select
-                    value={form.serviceType}
-                    onChange={(event) =>
+                    value={
+                      form.serviceType
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setForm({
                         ...form,
                         serviceType:
-                          event.target
+                          event
+                            .target
                             .value as ServiceType,
                       })
                     }
                     className="w-full rounded-xl border px-3 py-3"
                   >
+
                     <option value="Preventiva">
                       Preventiva
                     </option>
@@ -1459,11 +1857,14 @@ export default function OrdensServicoPage() {
                     <option value="Visita técnica">
                       Visita técnica
                     </option>
+
                   </select>
                 </div>
+
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
+
                 <div>
                   <label className="mb-1 block text-sm font-semibold">
                     Data
@@ -1471,11 +1872,18 @@ export default function OrdensServicoPage() {
 
                   <input
                     type="date"
-                    value={form.date}
-                    onChange={(event) =>
+                    value={
+                      form.date
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setForm({
                         ...form,
-                        date: event.target.value,
+                        date:
+                          event
+                            .target
+                            .value,
                       })
                     }
                     className="w-full rounded-xl border px-3 py-3"
@@ -1488,18 +1896,25 @@ export default function OrdensServicoPage() {
                   </label>
 
                   <input
-                    value={form.technician}
-                    onChange={(event) =>
+                    value={
+                      form.technician
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setForm({
                         ...form,
                         technician:
-                          event.target.value,
+                          event
+                            .target
+                            .value,
                       })
                     }
                     placeholder="Nome do técnico"
                     className="w-full rounded-xl border px-3 py-3"
                   />
                 </div>
+
               </div>
 
               <div>
@@ -1508,12 +1923,18 @@ export default function OrdensServicoPage() {
                 </label>
 
                 <textarea
-                  value={form.description}
-                  onChange={(event) =>
+                  value={
+                    form.description
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setForm({
                       ...form,
                       description:
-                        event.target.value,
+                        event
+                          .target
+                          .value,
                     })
                   }
                   rows={4}
@@ -1523,26 +1944,37 @@ export default function OrdensServicoPage() {
               </div>
 
               <div className="rounded-xl border bg-gray-50 p-4">
+
                 <div className="mb-3 flex items-center gap-2">
-                  <CreditCard size={18} />
+                  <CreditCard
+                    size={18}
+                  />
+
                   <h3 className="font-bold">
                     Valores
                   </h3>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
+
                   <div>
                     <label className="mb-1 block text-sm font-semibold">
                       Valor do serviço
                     </label>
 
                     <input
-                      value={form.value}
-                      onChange={(event) =>
+                      value={
+                        form.value
+                      }
+                      onChange={(
+                        event
+                      ) =>
                         setForm({
                           ...form,
                           value:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         })
                       }
                       inputMode="decimal"
@@ -1557,12 +1989,18 @@ export default function OrdensServicoPage() {
                     </label>
 
                     <input
-                      value={form.materialsValue}
-                      onChange={(event) =>
+                      value={
+                        form.materialsValue
+                      }
+                      onChange={(
+                        event
+                      ) =>
                         setForm({
                           ...form,
                           materialsValue:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         })
                       }
                       inputMode="decimal"
@@ -1570,28 +2008,38 @@ export default function OrdensServicoPage() {
                       className="w-full rounded-xl border bg-white px-3 py-3"
                     />
                   </div>
+
                 </div>
 
                 <div className="mt-4">
+
                   <label className="mb-1 block text-sm font-semibold">
                     Descrição dos materiais
                   </label>
 
                   <input
-                    value={form.materialsDescription}
-                    onChange={(event) =>
+                    value={
+                      form.materialsDescription
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setForm({
                         ...form,
                         materialsDescription:
-                          event.target.value,
+                          event
+                            .target
+                            .value,
                       })
                     }
                     placeholder="Ex.: capacitor, tubulação, suporte..."
                     className="w-full rounded-xl border bg-white px-3 py-3"
                   />
+
                 </div>
 
                 <div className="mt-4 rounded-xl border bg-white p-4">
+
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">
                       Serviço
@@ -1599,7 +2047,9 @@ export default function OrdensServicoPage() {
 
                     <strong>
                       {formatCurrency(
-                        parseMoney(form.value)
+                        parseMoney(
+                          form.value
+                        )
                       )}
                     </strong>
                   </div>
@@ -1619,7 +2069,9 @@ export default function OrdensServicoPage() {
                   </div>
 
                   <div className="mt-3 border-t pt-3">
+
                     <div className="flex items-center justify-between">
+
                       <span className="font-bold">
                         Total
                       </span>
@@ -1634,7 +2086,9 @@ export default function OrdensServicoPage() {
                             )
                         )}
                       </span>
+
                     </div>
+
                   </div>
                 </div>
 
@@ -1643,16 +2097,20 @@ export default function OrdensServicoPage() {
                     form.materialsValue
                   ) > 0 && (
                     <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-3">
+
                       <input
                         type="checkbox"
                         checked={
                           form.materialsPaid
                         }
-                        onChange={(event) =>
+                        onChange={(
+                          event
+                        ) =>
                           setForm({
                             ...form,
                             materialsPaid:
-                              event.target
+                              event
+                                .target
                                 .checked,
                           })
                         }
@@ -1662,8 +2120,10 @@ export default function OrdensServicoPage() {
                       <span className="text-sm font-semibold">
                         Materiais já foram pagos
                       </span>
+
                     </label>
                   )}
+
               </div>
 
               <div>
@@ -1672,17 +2132,23 @@ export default function OrdensServicoPage() {
                 </label>
 
                 <select
-                  value={form.status}
-                  onChange={(event) =>
+                  value={
+                    form.status
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setForm({
                       ...form,
                       status:
-                        event.target
+                        event
+                          .target
                           .value as ServiceOrderStatus,
                     })
                   }
                   className="w-full rounded-xl border px-3 py-3"
                 >
+
                   <option value="Aberta">
                     Aberta
                   </option>
@@ -1702,6 +2168,7 @@ export default function OrdensServicoPage() {
                   <option value="Cancelada">
                     Cancelada
                   </option>
+
                 </select>
               </div>
 
@@ -1711,11 +2178,18 @@ export default function OrdensServicoPage() {
                 </label>
 
                 <textarea
-                  value={form.notes}
-                  onChange={(event) =>
+                  value={
+                    form.notes
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setForm({
                       ...form,
-                      notes: event.target.value,
+                      notes:
+                        event
+                          .target
+                          .value,
                     })
                   }
                   rows={3}
@@ -1725,46 +2199,62 @@ export default function OrdensServicoPage() {
               </div>
 
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+
                 <div className="flex items-start gap-2">
+
                   <ShieldCheck
                     size={19}
                     className="mt-0.5 shrink-0"
                   />
 
                   <div>
+
                     <p className="font-bold">
-                      Verificação automática do Plano
-                      Mensal
+                      Verificação automática do Plano Mensal
                     </p>
 
                     <p className="mt-1">
-                      Ao salvar esta OS, o ClimaPro
-                      verifica automaticamente se o
-                      cliente possui plano ativo, se o
-                      carnê está em dia e se o serviço
-                      está incluído.
+                      Ao salvar esta OS,
+                      o ClimaPro verifica
+                      automaticamente se
+                      o cliente possui
+                      plano ativo, se o
+                      carnê está em dia e
+                      se o serviço está
+                      incluído.
                     </p>
 
                     <p className="mt-1">
-                      O técnico não precisa decidir se
-                      o atendimento é coberto.
+                      O técnico não precisa
+                      decidir se o atendimento
+                      é coberto.
                     </p>
+
                   </div>
+
                 </div>
               </div>
+
             </div>
 
             <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t bg-white p-4 sm:flex-row sm:justify-end">
+
               <button
-                onClick={closeForm}
+                onClick={
+                  closeForm
+                }
                 className="rounded-xl border px-5 py-3 font-semibold"
               >
                 Cancelar
               </button>
 
               <button
-                onClick={saveOrder}
-                disabled={saving}
+                onClick={
+                  saveOrder
+                }
+                disabled={
+                  saving
+                }
                 className="rounded-xl bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-50"
               >
                 {saving
@@ -1773,18 +2263,25 @@ export default function OrdensServicoPage() {
                   ? "Salvar alterações"
                   : "Criar Ordem de Serviço"}
               </button>
+
             </div>
+
           </div>
         </div>
       )}
 
       {selectedOrder && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
+
           <div className="mx-auto max-w-2xl rounded-2xl bg-white shadow-2xl">
+
             <div className="flex items-center justify-between border-b p-4">
+
               <div>
                 <h2 className="text-xl font-bold">
-                  {selectedOrder.number}
+                  {
+                    selectedOrder.number
+                  }
                 </h2>
 
                 <p className="text-sm text-gray-500">
@@ -1794,27 +2291,36 @@ export default function OrdensServicoPage() {
 
               <button
                 onClick={() =>
-                  setSelectedOrder(null)
+                  setSelectedOrder(
+                    null
+                  )
                 }
                 className="rounded-lg p-2 hover:bg-gray-100"
               >
                 <X size={21} />
               </button>
+
             </div>
 
             <div className="space-y-4 p-4">
+
               <div className="grid gap-3 md:grid-cols-2">
+
                 <div className="rounded-xl border p-4">
                   <p className="text-xs text-gray-500">
                     Cliente
                   </p>
 
                   <p className="mt-1 font-bold">
-                    {selectedOrder.client}
+                    {
+                      selectedOrder.client
+                    }
                   </p>
 
                   <p className="text-sm text-gray-500">
-                    {selectedOrder.city}
+                    {
+                      selectedOrder.city
+                    }
                   </p>
                 </div>
 
@@ -1824,7 +2330,9 @@ export default function OrdensServicoPage() {
                   </p>
 
                   <p className="mt-1 font-bold">
-                    {selectedOrder.serviceType}
+                    {
+                      selectedOrder.serviceType
+                    }
                   </p>
 
                   <p className="text-sm text-gray-500">
@@ -1833,28 +2341,37 @@ export default function OrdensServicoPage() {
                     )}
                   </p>
                 </div>
+
               </div>
 
               <div className="rounded-xl border p-4">
+
                 <p className="text-xs text-gray-500">
                   Equipamento
                 </p>
 
                 <p className="mt-1 font-semibold">
-                  {selectedOrder.equipment ||
-                    "Não informado"}
+                  {
+                    selectedOrder.equipment ||
+                    "Não informado"
+                  }
                 </p>
+
               </div>
 
               <div className="rounded-xl border p-4">
+
                 <p className="text-xs text-gray-500">
                   Descrição
                 </p>
 
                 <p className="mt-1 whitespace-pre-wrap">
-                  {selectedOrder.description ||
-                    "Não informado"}
+                  {
+                    selectedOrder.description ||
+                    "Não informado"
+                  }
                 </p>
+
               </div>
 
               {selectedOrder.monthlyPlanId && (
@@ -1868,7 +2385,9 @@ export default function OrdensServicoPage() {
                       : "border-yellow-200 bg-yellow-50"
                   }`}
                 >
+
                   <div className="flex items-center gap-2">
+
                     {selectedOrder.monthlyPlanCovered ? (
                       <ShieldCheck
                         size={20}
@@ -1884,15 +2403,19 @@ export default function OrdensServicoPage() {
                     <h3 className="font-bold">
                       Plano Mensal
                     </h3>
+
                   </div>
 
                   <p className="mt-2">
-                    <strong>Status:</strong>{" "}
-                    {selectedOrder.monthlyPlanStatus}
+                    <strong>
+                      Status:
+                    </strong>{" "}
+                    {
+                      selectedOrder.monthlyPlanStatus
+                    }
                   </p>
 
-                  {selectedOrder
-                    .monthlyPlanIncludedService && (
+                  {selectedOrder.monthlyPlanIncludedService && (
                     <p className="mt-1">
                       <strong>
                         Serviço incluído:
@@ -1917,15 +2440,18 @@ export default function OrdensServicoPage() {
                       ? "Este serviço está coberto pelo plano. O valor do serviço foi zerado automaticamente."
                       : "Este serviço não está coberto pelo plano e permanece com cobrança normal."}
                   </p>
+
                 </div>
               )}
 
               <div className="rounded-xl border p-4">
+
                 <h3 className="font-bold">
                   Valores
                 </h3>
 
                 <div className="mt-3 space-y-2 text-sm">
+
                   <div className="flex justify-between">
                     <span>
                       Serviço
@@ -1950,9 +2476,9 @@ export default function OrdensServicoPage() {
                     </strong>
                   </div>
 
-                  {selectedOrder
-                    .materialsDescription && (
+                  {selectedOrder.materialsDescription && (
                     <div className="border-t pt-2">
+
                       <p className="text-xs text-gray-500">
                         Materiais
                       </p>
@@ -1962,11 +2488,14 @@ export default function OrdensServicoPage() {
                           selectedOrder.materialsDescription
                         }
                       </p>
+
                     </div>
                   )}
 
                   <div className="border-t pt-3">
+
                     <div className="flex justify-between text-lg">
+
                       <span className="font-bold">
                         Total
                       </span>
@@ -1976,12 +2505,16 @@ export default function OrdensServicoPage() {
                           selectedOrder.value
                         )}
                       </strong>
+
                     </div>
+
                   </div>
+
                 </div>
               </div>
 
-              {selectedOrder.materialsValue > 0 && (
+              {selectedOrder.materialsValue >
+                0 && (
                 <div
                   className={`rounded-xl border p-4 ${
                     selectedOrder.materialsPaid
@@ -1989,8 +2522,11 @@ export default function OrdensServicoPage() {
                       : "border-orange-200 bg-orange-50"
                   }`}
                 >
+
                   <div className="flex items-center justify-between gap-3">
+
                     <div>
+
                       <p className="font-bold">
                         Pagamento dos materiais
                       </p>
@@ -2011,6 +2547,7 @@ export default function OrdensServicoPage() {
                           )}
                         </p>
                       )}
+
                     </div>
 
                     <button
@@ -2029,30 +2566,41 @@ export default function OrdensServicoPage() {
                         ? "Marcar como pendente"
                         : "Marcar como pago"}
                     </button>
+
                   </div>
+
                 </div>
               )}
 
               {selectedOrder.notes && (
                 <div className="rounded-xl border p-4">
+
                   <h3 className="font-bold">
                     Observações
                   </h3>
 
                   <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {selectedOrder.notes}
+                    {
+                      selectedOrder.notes
+                    }
                   </p>
+
                 </div>
               )}
 
               <div>
+
                 <label className="mb-2 block text-sm font-bold">
                   Alterar status
                 </label>
 
                 <select
-                  value={selectedOrder.status}
-                  onChange={(event) =>
+                  value={
+                    selectedOrder.status
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     changeStatus(
                       selectedOrder,
                       event.target
@@ -2061,6 +2609,7 @@ export default function OrdensServicoPage() {
                   }
                   className="w-full rounded-xl border px-3 py-3"
                 >
+
                   <option value="Aberta">
                     Aberta
                   </option>
@@ -2080,14 +2629,20 @@ export default function OrdensServicoPage() {
                   <option value="Cancelada">
                     Cancelada
                   </option>
+
                 </select>
+
               </div>
+
             </div>
 
             <div className="flex flex-wrap justify-between gap-2 border-t p-4">
+
               <button
                 onClick={() =>
-                  deleteOrder(selectedOrder)
+                  deleteOrder(
+                    selectedOrder
+                  )
                 }
                 className="flex items-center gap-2 rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-600 hover:bg-red-50"
               >
@@ -2096,6 +2651,7 @@ export default function OrdensServicoPage() {
               </button>
 
               <div className="flex flex-wrap gap-2">
+
                 <button
                   onClick={() =>
                     printServiceOrder(
@@ -2116,20 +2672,26 @@ export default function OrdensServicoPage() {
                   }
                   className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-3 font-semibold text-white"
                 >
-                  <MessageCircle size={17} />
+                  <MessageCircle
+                    size={17}
+                  />
                   WhatsApp
                 </button>
 
                 <button
                   onClick={() =>
-                    setSelectedOrder(null)
+                    setSelectedOrder(
+                      null
+                    )
                   }
                   className="rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white"
                 >
                   Fechar
                 </button>
+
               </div>
             </div>
+
           </div>
         </div>
       )}
