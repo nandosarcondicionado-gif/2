@@ -1,1199 +1,1399 @@
 "use client";
 
 import {
-  ArrowLeft,
-  CheckCircle2,
-  KeyRound,
+  Edit,
   Mail,
-  Pencil,
+  MapPin,
+  Phone,
   Plus,
   Search,
-  ShieldCheck,
+  Trash2,
   User,
-  UserCog,
-  Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-
-type Role =
-  | "Administrador"
-  | "Gerente"
-  | "Atendente"
-  | "Técnico"
-  | "Financeiro";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type EmployeeStatus = "Ativo" | "Inativo";
 
 type Employee = {
   id: string;
-  name: string;
+  nome: string;
+  cpf: string;
+  rg: string;
+  telefone: string;
+  whatsapp: string;
   email: string;
-  phone: string;
-  role: Role;
-  city: string;
+
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  cep: string;
+
+  cargo: string;
+  tipo_vinculo: string;
+
+  data_nascimento: string | null;
+  data_admissao: string | null;
+
+  salario: number;
+
+  forma_pagamento: string;
+  chave_pix: string;
+
   status: EmployeeStatus;
+  observacoes: string;
+
+  created_at?: string;
+  updated_at?: string;
 };
 
-type PermissionModule =
-  | "dashboard"
-  | "clientes"
-  | "equipamentos"
-  | "orcamentos"
-  | "ordens-servico"
-  | "agenda"
-  | "contratos"
-  | "financeiro"
-  | "estoque"
-  | "relatorios"
-  | "tecnicos"
-  | "tecnico"
-  | "area-cliente"
-  | "configuracoes";
+type EmployeeForm = {
+  nome: string;
+  cpf: string;
+  rg: string;
+  telefone: string;
+  whatsapp: string;
+  email: string;
 
-type Permission = {
-  modulo: PermissionModule;
-  visualizar: boolean;
-  criar: boolean;
-  editar: boolean;
-  excluir: boolean;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  cep: string;
+
+  cargo: string;
+  tipo_vinculo: string;
+
+  data_nascimento: string;
+  data_admissao: string;
+
+  salario: string;
+
+  forma_pagamento: string;
+  chave_pix: string;
+
+  status: EmployeeStatus;
+  observacoes: string;
 };
 
-const permissionModules: {
-  id: PermissionModule;
-  label: string;
-}[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "clientes", label: "Clientes" },
-  { id: "equipamentos", label: "Equipamentos" },
-  { id: "orcamentos", label: "Orçamentos" },
-  { id: "ordens-servico", label: "Ordens de Serviço" },
-  { id: "agenda", label: "Agenda" },
-  { id: "contratos", label: "Contratos" },
-  { id: "financeiro", label: "Financeiro" },
-  { id: "estoque", label: "Estoque" },
-  { id: "relatorios", label: "Relatórios" },
-  { id: "tecnicos", label: "Técnicos" },
-  { id: "tecnico", label: "Área do Técnico" },
-  { id: "area-cliente", label: "Área do Cliente" },
-  { id: "configuracoes", label: "Configurações" },
-];
+const emptyForm: EmployeeForm = {
+  nome: "",
+  cpf: "",
+  rg: "",
+  telefone: "",
+  whatsapp: "",
+  email: "",
 
-function createEmptyPermissions(): Permission[] {
-  return permissionModules.map((module) => ({
-    modulo: module.id,
-    visualizar: false,
-    criar: false,
-    editar: false,
-    excluir: false,
-  }));
+  endereco: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  cep: "",
+
+  cargo: "",
+  tipo_vinculo: "Funcionário",
+
+  data_nascimento: "",
+  data_admissao: "",
+
+  salario: "",
+
+  forma_pagamento: "",
+  chave_pix: "",
+
+  status: "Ativo",
+  observacoes: "",
+};
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value || 0));
 }
 
-const initialEmployees: Employee[] = [
-  {
-    id: "1",
-    name: "ADM",
-    email: "admin@climapro.com",
-    phone: "",
-    role: "Administrador",
-    city: "Araraquara",
-    status: "Ativo",
-  },
-];
+function parseMoney(value: string) {
+  const cleaned = value
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
 
-const roleStyles: Record<Role, string> = {
-  Administrador: "bg-red-50 text-red-700 border-red-200",
-  Gerente: "bg-purple-50 text-purple-700 border-purple-200",
-  Atendente: "bg-blue-50 text-blue-700 border-blue-200",
-  Técnico: "bg-amber-50 text-amber-700 border-amber-200",
-  Financeiro: "bg-emerald-50 text-emerald-700 border-emerald-200",
-};
+  const number = Number(cleaned);
 
-const roleDescriptions: Record<Role, string> = {
-  Administrador: "Acesso total ao sistema.",
-  Gerente: "Acesso operacional e gestão da equipe.",
-  Atendente: "Clientes, agenda, orçamentos e ordens de serviço.",
-  Técnico: "Serviços, ordens de serviço e área do técnico.",
-  Financeiro: "Acesso aos dados e operações financeiras.",
-};
+  return Number.isFinite(number) ? number : 0;
+}
 
-const roleToDatabase: Record<Role, string> = {
-  Administrador: "administrador",
-  Gerente: "gerente",
-  Atendente: "atendente",
-  Técnico: "tecnico",
-  Financeiro: "financeiro",
-};
+function formatDate(date: string | null) {
+  if (!date) return "-";
 
-const databaseToRole: Record<string, Role> = {
-  administrador: "Administrador",
-  gerente: "Gerente",
-  atendente: "Atendente",
-  tecnico: "Técnico",
-  financeiro: "Financeiro",
-};
+  const parts = date.split("-");
+
+  if (parts.length !== 3) return date;
+
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function maskCpf(value: string) {
+  const numbers = value.replace(/\D/g, "").slice(0, 11);
+
+  if (numbers.length <= 3) return numbers;
+  if (numbers.length <= 6) {
+    return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+  }
+  if (numbers.length <= 9) {
+    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(
+      6
+    )}`;
+  }
+
+  return `${numbers.slice(0, 3)}.${numbers.slice(
+    3,
+    6
+  )}.${numbers.slice(6, 9)}-${numbers.slice(9)}`;
+}
+
+function maskPhone(value: string) {
+  const numbers = value.replace(/\D/g, "").slice(0, 11);
+
+  if (numbers.length <= 2) return numbers;
+
+  if (numbers.length <= 7) {
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+  }
+
+  if (numbers.length <= 10) {
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(
+      2,
+      6
+    )}-${numbers.slice(6)}`;
+  }
+
+  return `(${numbers.slice(0, 2)}) ${numbers.slice(
+    2,
+    7
+  )}-${numbers.slice(7)}`;
+}
 
 export default function FuncionariosPage() {
-  const [employees, setEmployees] =
-    useState<Employee[]>(initialEmployees);
+  const supabase = createClient();
+
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "Todos" | EmployeeStatus
+  >("Todos");
+
   const [showForm, setShowForm] = useState(false);
-  const [editingEmployee, setEditingEmployee] =
-    useState<Employee | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("Técnico");
-  const [city, setCity] = useState("Araraquara");
+  const [form, setForm] = useState<EmployeeForm>(emptyForm);
 
-  const [permissions, setPermissions] = useState<Permission[]>(
-    createEmptyPermissions()
-  );
+  const [saving, setSaving] = useState(false);
 
-  const [permissionsLoading, setPermissionsLoading] =
-    useState(false);
+  async function loadEmployees() {
+    setLoading(true);
 
-  const [loading, setLoading] = useState(false);
-  const [formError, setFormError] = useState("");
+    const { data, error } = await supabase
+      .from("funcionarios")
+      .select("*")
+      .order("nome", {
+        ascending: true,
+      });
 
-  useEffect(() => {
-    async function loadEmployees() {
-      try {
-        const response = await fetch("/api/funcionarios");
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data = await response.json();
-
-        const realEmployees: Employee[] = (data.employees ?? []).map(
-          (employee: {
-            id: string;
-            nome: string;
-            email: string;
-            telefone?: string | null;
-            cidade?: string | null;
-            funcao: string;
-            status: string;
-          }) => ({
-            id: employee.id,
-            name: employee.nome,
-            email: employee.email,
-            phone: employee.telefone ?? "",
-            role: databaseToRole[employee.funcao] ?? "Técnico",
-            city: employee.cidade ?? "Não informado",
-            status:
-              employee.status === "ativo"
-                ? "Ativo"
-                : "Inativo",
-          })
-        );
-
-        setEmployees(realEmployees);
-      } catch {
-        // Mantém a tela funcionando mesmo se a API falhar.
-      }
+    if (error) {
+      console.error("Erro ao carregar funcionários:", error);
+      alert(
+        `Não foi possível carregar os funcionários.\n\n${error.message}`
+      );
+      setEmployees([]);
+      setLoading(false);
+      return;
     }
 
+    const normalized: Employee[] = (data || []).map((item) => ({
+      id: item.id,
+      nome: item.nome || "",
+      cpf: item.cpf || "",
+      rg: item.rg || "",
+      telefone: item.telefone || "",
+      whatsapp: item.whatsapp || "",
+      email: item.email || "",
+
+      endereco: item.endereco || "",
+      numero: item.numero || "",
+      complemento: item.complemento || "",
+      bairro: item.bairro || "",
+      cidade: item.cidade || "",
+      cep: item.cep || "",
+
+      cargo: item.cargo || "",
+      tipo_vinculo: item.tipo_vinculo || "Funcionário",
+
+      data_nascimento: item.data_nascimento || null,
+      data_admissao: item.data_admissao || null,
+
+      salario: Number(item.salario || 0),
+
+      forma_pagamento: item.forma_pagamento || "",
+      chave_pix: item.chave_pix || "",
+
+      status:
+        item.status === "Inativo"
+          ? "Inativo"
+          : "Ativo",
+
+      observacoes: item.observacoes || "",
+
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    }));
+
+    setEmployees(normalized);
+    setLoading(false);
+  }
+
+  useEffect(() => {
     loadEmployees();
   }, []);
 
-  function resetForm() {
-    setEditingEmployee(null);
-    setName("");
-    setEmail("");
-    setPhone("");
-    setPassword("");
-    setRole("Técnico");
-    setCity("Araraquara");
-    setPermissions(createEmptyPermissions());
-    setPermissionsLoading(false);
-    setFormError("");
-  }
+  const filteredEmployees = useMemo(() => {
+    const term = search.trim().toLowerCase();
 
-  function openNewEmployeeForm() {
-    resetForm();
-    setShowForm(true);
-  }
+    return employees.filter((employee) => {
+      const matchesSearch =
+        !term ||
+        employee.nome.toLowerCase().includes(term) ||
+        employee.cpf.toLowerCase().includes(term) ||
+        employee.telefone.toLowerCase().includes(term) ||
+        employee.cargo.toLowerCase().includes(term) ||
+        employee.cidade.toLowerCase().includes(term);
 
-  async function loadEmployeePermissions(id: string) {
-    setPermissionsLoading(true);
-    setFormError("");
+      const matchesStatus =
+        statusFilter === "Todos" ||
+        employee.status === statusFilter;
 
-    try {
-      const response = await fetch(
-        `/api/funcionarios/${id}/permissoes`
-      );
+      return matchesSearch && matchesStatus;
+    });
+  }, [employees, search, statusFilter]);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setFormError(
-          data.error ||
-            "Não foi possível carregar as permissões."
-        );
-        return;
-      }
-
-      const savedPermissions = data.permissions ?? [];
-
-      const mergedPermissions = permissionModules.map(
-        (module) => {
-          const saved = savedPermissions.find(
-            (item: Permission) =>
-              item.modulo === module.id
-          );
-
-          return {
-            modulo: module.id,
-            visualizar: saved?.visualizar === true,
-            criar: saved?.criar === true,
-            editar: saved?.editar === true,
-            excluir: saved?.excluir === true,
-          };
-        }
-      );
-
-      setPermissions(mergedPermissions);
-    } catch {
-      setFormError(
-        "Erro de conexão ao carregar as permissões."
-      );
-    } finally {
-      setPermissionsLoading(false);
-    }
-  }
-
-  function startEditing(employee: Employee) {
-    setEditingEmployee(employee);
-
-    setName(employee.name);
-    setEmail(employee.email);
-    setPhone(employee.phone);
-    setRole(employee.role);
-    setCity(employee.city);
-    setPassword("");
-    setPermissions(createEmptyPermissions());
-    setFormError("");
-    setShowForm(true);
-
-    loadEmployeePermissions(employee.id);
-  }
-
-  function updatePermission(
-    module: PermissionModule,
-    action:
-      | "visualizar"
-      | "criar"
-      | "editar"
-      | "excluir",
-    value: boolean
-  ) {
-    setPermissions((current) =>
-      current.map((permission) =>
-        permission.modulo === module
-          ? {
-              ...permission,
-              [action]: value,
-            }
-          : permission
-      )
-    );
-  }
-
-  async function savePermissions(employeeId: string) {
-    const response = await fetch(
-      `/api/funcionarios/${employeeId}/permissoes`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          permissions,
-        }),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.error ||
-          "Não foi possível salvar as permissões."
-      );
-    }
-
-    return data;
-  }
-
-  async function addEmployee(
-    event: React.FormEvent
-  ) {
-    event.preventDefault();
-
-    setFormError("");
-
-    if (!name.trim() || !email.trim()) {
-      setFormError("Nome e e-mail são obrigatórios.");
-      return;
-    }
-
-    if (!password || password.length < 6) {
-      setFormError(
-        "A senha deve ter pelo menos 6 caracteres."
-      );
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/funcionarios", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          password,
-          phone: phone.trim(),
-          city: city.trim(),
-          role: roleToDatabase[role],
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setFormError(
-          data.error ||
-            "Não foi possível cadastrar o funcionário."
-        );
-        return;
-      }
-
-      const createdEmployee: Employee = {
-        id: data.employee.id,
-        name: data.employee.nome,
-        email: data.employee.email,
-        phone:
-          data.employee.telefone ??
-          phone.trim(),
-        role:
-          databaseToRole[data.employee.funcao] ??
-          role,
-        city:
-          data.employee.cidade ??
-          city.trim(),
-        status:
-          data.employee.status === "ativo"
-            ? "Ativo"
-            : "Inativo",
-      };
-
-      setEmployees((current) => [
-        ...current,
-        createdEmployee,
-      ]);
-
-      try {
-        await savePermissions(createdEmployee.id);
-
-        resetForm();
-        setShowForm(false);
-      } catch (permissionError) {
-        setEditingEmployee(createdEmployee);
-        setName(createdEmployee.name);
-        setEmail(createdEmployee.email);
-        setPhone(createdEmployee.phone);
-        setRole(createdEmployee.role);
-        setCity(createdEmployee.city);
-        setPassword("");
-
-        setFormError(
-          permissionError instanceof Error
-            ? permissionError.message
-            : "Funcionário criado, mas não foi possível salvar as permissões. Tente salvar novamente."
-        );
-      }
-    } catch {
-      setFormError("Erro de conexão com o servidor.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function updateEmployee(
-    event: React.FormEvent
-  ) {
-    event.preventDefault();
-
-    if (!editingEmployee) {
-      return;
-    }
-
-    setFormError("");
-
-    if (!name.trim() || !email.trim()) {
-      setFormError("Nome e e-mail são obrigatórios.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch(
-        `/api/funcionarios/${editingEmployee.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: name.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
-            city: city.trim(),
-            role: roleToDatabase[role],
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setFormError(
-          data.error ||
-            "Não foi possível atualizar o funcionário."
-        );
-        return;
-      }
-
-      const updatedEmployee: Employee = {
-        id: data.employee.id,
-        name: data.employee.nome,
-        email: data.employee.email,
-        phone:
-          data.employee.telefone ??
-          phone.trim(),
-        role:
-          databaseToRole[data.employee.funcao] ??
-          role,
-        city:
-          data.employee.cidade ??
-          city.trim(),
-        status:
-          data.employee.status === "ativo"
-            ? "Ativo"
-            : "Inativo",
-      };
-
-      setEmployees((current) =>
-        current.map((employee) =>
-          employee.id === editingEmployee.id
-            ? updatedEmployee
-            : employee
-        )
-      );
-
-      try {
-        await savePermissions(editingEmployee.id);
-
-        resetForm();
-        setShowForm(false);
-      } catch (permissionError) {
-        setEditingEmployee(updatedEmployee);
-
-        setFormError(
-          permissionError instanceof Error
-            ? permissionError.message
-            : "Os dados foram atualizados, mas não foi possível salvar as permissões."
-        );
-      }
-    } catch {
-      setFormError("Erro de conexão com o servidor.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleSubmitEmployee(
-    event: React.FormEvent
-  ) {
-    if (editingEmployee) {
-      return updateEmployee(event);
-    }
-
-    return addEmployee(event);
-  }
-
-  async function toggleStatus(id: string) {
-    const employee = employees.find(
-      (item) => item.id === id
-    );
-
-    if (!employee) {
-      return;
-    }
-
-    const newStatus =
-      employee.status === "Ativo"
-        ? "inativo"
-        : "ativo";
-
-    try {
-      const response = await fetch(
-        `/api/funcionarios/${id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            status: newStatus,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(
-          data.error ||
-            "Não foi possível alterar o status do funcionário."
-        );
-        return;
-      }
-
-      setEmployees((current) =>
-        current.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                status:
-                  data.employee.status === "ativo"
-                    ? "Ativo"
-                    : "Inativo",
-              }
-            : item
-        )
-      );
-    } catch {
-      alert("Erro de conexão com o servidor.");
-    }
-  }
-
-  const filteredEmployees = employees.filter((employee) => {
-    const searchText = search.toLowerCase();
-
-    return (
-      employee.name.toLowerCase().includes(searchText) ||
-      employee.email.toLowerCase().includes(searchText) ||
-      employee.role.toLowerCase().includes(searchText) ||
-      employee.city.toLowerCase().includes(searchText)
-    );
-  });
-
-  const totalEmployees = employees.length;
-
-  const activeEmployees = employees.filter(
+  const activeCount = employees.filter(
     (employee) => employee.status === "Ativo"
   ).length;
 
-  const technicianEmployees = employees.filter(
-    (employee) => employee.role === "Técnico"
+  const inactiveCount = employees.filter(
+    (employee) => employee.status === "Inativo"
   ).length;
 
-  const adminEmployees = employees.filter(
-    (employee) => employee.role === "Administrador"
-  ).length;
+  const totalSalaries = employees
+    .filter((employee) => employee.status === "Ativo")
+    .reduce(
+      (total, employee) => total + Number(employee.salario || 0),
+      0
+    );
+
+  function openNewForm() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowForm(true);
+  }
+
+  function openEditForm(employee: Employee) {
+    setEditingId(employee.id);
+
+    setForm({
+      nome: employee.nome,
+      cpf: employee.cpf,
+      rg: employee.rg,
+      telefone: employee.telefone,
+      whatsapp: employee.whatsapp,
+      email: employee.email,
+
+      endereco: employee.endereco,
+      numero: employee.numero,
+      complemento: employee.complemento,
+      bairro: employee.bairro,
+      cidade: employee.cidade,
+      cep: employee.cep,
+
+      cargo: employee.cargo,
+      tipo_vinculo: employee.tipo_vinculo,
+
+      data_nascimento: employee.data_nascimento || "",
+      data_admissao: employee.data_admissao || "",
+
+      salario: employee.salario
+        ? String(employee.salario)
+        : "",
+
+      forma_pagamento: employee.forma_pagamento,
+      chave_pix: employee.chave_pix,
+
+      status: employee.status,
+      observacoes: employee.observacoes,
+    });
+
+    setShowForm(true);
+  }
+
+  function updateField<K extends keyof EmployeeForm>(
+    field: K,
+    value: EmployeeForm[K]
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function saveEmployee() {
+    if (!form.nome.trim()) {
+      alert("Informe o nome do funcionário.");
+      return;
+    }
+
+    setSaving(true);
+
+    const payload = {
+      nome: form.nome.trim(),
+      cpf: form.cpf.trim(),
+      rg: form.rg.trim(),
+      telefone: form.telefone.trim(),
+      whatsapp: form.whatsapp.trim(),
+      email: form.email.trim(),
+
+      endereco: form.endereco.trim(),
+      numero: form.numero.trim(),
+      complemento: form.complemento.trim(),
+      bairro: form.bairro.trim(),
+      cidade: form.cidade.trim(),
+      cep: form.cep.trim(),
+
+      cargo: form.cargo.trim(),
+      tipo_vinculo: form.tipo_vinculo.trim(),
+
+      data_nascimento:
+        form.data_nascimento || null,
+
+      data_admissao:
+        form.data_admissao || null,
+
+      salario: parseMoney(form.salario),
+
+      forma_pagamento:
+        form.forma_pagamento.trim(),
+
+      chave_pix:
+        form.chave_pix.trim(),
+
+      status: form.status,
+
+      observacoes:
+        form.observacoes.trim(),
+
+      updated_at: new Date().toISOString(),
+    };
+
+    let error;
+
+    if (editingId) {
+      const result = await supabase
+        .from("funcionarios")
+        .update(payload)
+        .eq("id", editingId);
+
+      error = result.error;
+    } else {
+      const result = await supabase
+        .from("funcionarios")
+        .insert({
+          ...payload,
+          created_at: new Date().toISOString(),
+        });
+
+      error = result.error;
+    }
+
+    setSaving(false);
+
+    if (error) {
+      console.error("Erro ao salvar funcionário:", error);
+
+      alert(
+        `Não foi possível salvar o funcionário.\n\n${error.message}`
+      );
+
+      return;
+    }
+
+    alert(
+      editingId
+        ? "Funcionário atualizado com sucesso!"
+        : "Funcionário cadastrado com sucesso!"
+    );
+
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+
+    await loadEmployees();
+  }
+
+  async function deleteEmployee(employee: Employee) {
+    const confirmed = window.confirm(
+      `Deseja realmente excluir o funcionário "${employee.nome}"?\n\n` +
+        `Se ele já possuir pagamentos registrados, recomendamos apenas colocá-lo como Inativo.`
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("funcionarios")
+      .delete()
+      .eq("id", employee.id);
+
+    if (error) {
+      console.error("Erro ao excluir funcionário:", error);
+
+      alert(
+        `Não foi possível excluir o funcionário.\n\n${error.message}`
+      );
+
+      return;
+    }
+
+    await loadEmployees();
+  }
+
+  async function toggleStatus(employee: Employee) {
+    const nextStatus =
+      employee.status === "Ativo"
+        ? "Inativo"
+        : "Ativo";
+
+    const { error } = await supabase
+      .from("funcionarios")
+      .update({
+        status: nextStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", employee.id);
+
+    if (error) {
+      alert(
+        `Não foi possível alterar o status.\n\n${error.message}`
+      );
+      return;
+    }
+
+    await loadEmployees();
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => window.history.back()}
-              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-100"
-            >
-              <ArrowLeft size={20} />
-            </button>
+    <main className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* CABEÇALHO */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Funcionários
+            </h1>
 
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">
-                Funcionários
-              </h1>
-
-              <p className="text-sm text-slate-500">
-                Gerencie os usuários e permissões da equipe.
-              </p>
-            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Cadastro, dados pessoais, cargos e salários.
+            </p>
           </div>
 
           <button
             type="button"
-            onClick={openNewEmployeeForm}
-            className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+            onClick={openNewForm}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
-            <Plus size={18} />
+            <Plus size={20} />
             Novo funcionário
           </button>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Total</p>
-                <p className="mt-1 text-2xl font-bold text-slate-900">
-                  {totalEmployees}
-                </p>
-              </div>
+        {/* RESUMO */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border bg-white p-5 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Funcionários ativos
+            </p>
 
-              <UserCog
-                className="text-slate-400"
-                size={24}
-              />
-            </div>
+            <p className="mt-2 text-2xl font-bold text-gray-900">
+              {activeCount}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">
-                  Ativos
-                </p>
+          <div className="rounded-2xl border bg-white p-5 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Funcionários inativos
+            </p>
 
-                <p className="mt-1 text-2xl font-bold text-green-600">
-                  {activeEmployees}
-                </p>
-              </div>
-
-              <CheckCircle2
-                className="text-green-500"
-                size={24}
-              />
-            </div>
+            <p className="mt-2 text-2xl font-bold text-gray-900">
+              {inactiveCount}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">
-                  Técnicos
-                </p>
+          <div className="rounded-2xl border bg-white p-5 shadow-sm">
+            <p className="text-sm text-gray-500">
+              Folha mensal cadastrada
+            </p>
 
-                <p className="mt-1 text-2xl font-bold text-amber-600">
-                  {technicianEmployees}
-                </p>
-              </div>
+            <p className="mt-2 text-2xl font-bold text-gray-900">
+              {formatCurrency(totalSalaries)}
+            </p>
 
-              <Wrench
-                className="text-amber-500"
-                size={24}
-              />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">
-                  Administradores
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-red-600">
-                  {adminEmployees}
-                </p>
-              </div>
-
-              <ShieldCheck
-                className="text-red-500"
-                size={24}
-              />
-            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Apenas funcionários ativos
+            </p>
           </div>
         </div>
 
-        <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="relative">
-            <Search
-              size={18}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+        {/* FILTROS */}
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row">
+            <div className="relative flex-1">
+              <Search
+                size={19}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
 
-            <input
-              type="text"
-              value={search}
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Pesquisar funcionário..."
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
               onChange={(event) =>
-                setSearch(event.target.value)
+                setStatusFilter(
+                  event.target.value as
+                    | "Todos"
+                    | EmployeeStatus
+                )
               }
-              placeholder="Buscar funcionário..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-            />
+              className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="Todos">
+                Todos os status
+              </option>
+
+              <option value="Ativo">
+                Ativos
+              </option>
+
+              <option value="Inativo">
+                Inativos
+              </option>
+            </select>
           </div>
         </div>
 
-        <div className="space-y-4">
-          {filteredEmployees.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+        {/* LISTA */}
+        <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+          {loading ? (
+            <div className="p-10 text-center text-gray-500">
+              Carregando funcionários...
+            </div>
+          ) : filteredEmployees.length === 0 ? (
+            <div className="p-10 text-center">
               <User
-                size={40}
-                className="mx-auto text-slate-300"
+                size={42}
+                className="mx-auto text-gray-300"
               />
 
-              <p className="mt-3 font-semibold text-slate-700">
-                Nenhum funcionário encontrado.
+              <p className="mt-3 font-semibold text-gray-700">
+                Nenhum funcionário encontrado
+              </p>
+
+              <p className="mt-1 text-sm text-gray-400">
+                Cadastre o primeiro funcionário para começar.
               </p>
             </div>
           ) : (
-            filteredEmployees.map((employee) => (
-              <div
-                key={employee.id}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex min-w-0 items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                      {employee.role === "Técnico" ? (
-                        <Wrench size={22} />
-                      ) : employee.role === "Administrador" ? (
-                        <ShieldCheck size={22} />
-                      ) : (
-                        <User size={22} />
-                      )}
-                    </div>
+            <>
+              {/* DESKTOP */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b bg-gray-50">
+                    <tr>
+                      <th className="px-5 py-4 font-semibold text-gray-600">
+                        Funcionário
+                      </th>
 
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate font-bold text-slate-900">
-                          {employee.name}
-                        </h2>
+                      <th className="px-5 py-4 font-semibold text-gray-600">
+                        Cargo
+                      </th>
 
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${roleStyles[employee.role]}`}
+                      <th className="px-5 py-4 font-semibold text-gray-600">
+                        Telefone
+                      </th>
+
+                      <th className="px-5 py-4 font-semibold text-gray-600">
+                        Salário
+                      </th>
+
+                      <th className="px-5 py-4 font-semibold text-gray-600">
+                        Status
+                      </th>
+
+                      <th className="px-5 py-4 text-right font-semibold text-gray-600">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y">
+                    {filteredEmployees.map(
+                      (employee) => (
+                        <tr
+                          key={employee.id}
+                          className="transition hover:bg-gray-50"
                         >
-                          {employee.role}
-                        </span>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                                <User size={20} />
+                              </div>
+
+                              <div>
+                                <p className="font-semibold text-gray-900">
+                                  {employee.nome}
+                                </p>
+
+                                <p className="text-xs text-gray-500">
+                                  {employee.cpf ||
+                                    "CPF não informado"}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <p className="font-medium text-gray-800">
+                              {employee.cargo ||
+                                "Não informado"}
+                            </p>
+
+                            <p className="text-xs text-gray-500">
+                              {employee.tipo_vinculo}
+                            </p>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {employee.whatsapp ||
+                              employee.telefone ||
+                              "-"}
+                          </td>
+
+                          <td className="px-5 py-4 font-semibold">
+                            {formatCurrency(
+                              employee.salario
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleStatus(employee)
+                              }
+                              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                                employee.status ===
+                                "Ativo"
+                                  ? "border-green-200 bg-green-50 text-green-700"
+                                  : "border-gray-200 bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {employee.status}
+                            </button>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openEditForm(employee)
+                                }
+                                className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
+                                title="Editar"
+                              >
+                                <Edit size={17} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  deleteEmployee(
+                                    employee
+                                  )
+                                }
+                                className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                                title="Excluir"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* MOBILE */}
+              <div className="divide-y md:hidden">
+                {filteredEmployees.map(
+                  (employee) => (
+                    <div
+                      key={employee.id}
+                      className="p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                            <User size={21} />
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              {employee.nome}
+                            </p>
+
+                            <p className="text-xs text-gray-500">
+                              {employee.cargo ||
+                                "Cargo não informado"}
+                            </p>
+                          </div>
+                        </div>
 
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            employee.status === "Ativo"
-                              ? "bg-green-50 text-green-700"
-                              : "bg-slate-100 text-slate-500"
+                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                            employee.status ===
+                            "Ativo"
+                              ? "border-green-200 bg-green-50 text-green-700"
+                              : "border-gray-200 bg-gray-100 text-gray-600"
                           }`}
                         >
                           {employee.status}
                         </span>
                       </div>
 
-                      <p className="mt-1 text-sm text-slate-500">
-                        {roleDescriptions[employee.role]}
-                      </p>
+                      <div className="mt-4 space-y-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <Phone size={16} />
+                          {employee.whatsapp ||
+                            employee.telefone ||
+                            "Telefone não informado"}
+                        </div>
 
-                      <div className="mt-3 flex flex-col gap-1 text-sm text-slate-500 sm:flex-row sm:flex-wrap sm:gap-x-5">
-                        <span className="flex items-center gap-1.5">
-                          <Mail size={15} />
-                          {employee.email}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <Mail size={16} />
+                          {employee.email ||
+                            "E-mail não informado"}
+                        </div>
 
-                        {employee.phone && (
-                          <span>
-                            📱 {employee.phone}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <MapPin size={16} />
+                          {employee.cidade ||
+                            "Cidade não informada"}
+                        </div>
+                      </div>
 
-                        {employee.city && (
-                          <span>
-                            📍 {employee.city}
-                          </span>
-                        )}
+                      <div className="mt-4 rounded-xl bg-gray-50 p-3">
+                        <p className="text-xs text-gray-500">
+                          Salário
+                        </p>
+
+                        <p className="mt-1 font-bold text-gray-900">
+                          {formatCurrency(
+                            employee.salario
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openEditForm(employee)
+                          }
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-gray-700"
+                        >
+                          <Edit size={17} />
+                          Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            deleteEmployee(employee)
+                          }
+                          className="rounded-xl border border-red-200 px-4 py-3 text-red-600"
+                        >
+                          <Trash2 size={17} />
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        startEditing(employee)
-                      }
-                      className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                    >
-                      <Pencil size={14} />
-                      Editar
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toggleStatus(employee.id)
-                      }
-                      className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
-                        employee.status === "Ativo"
-                          ? "border border-red-200 text-red-600 hover:bg-red-50"
-                          : "border border-green-200 text-green-600 hover:bg-green-50"
-                      }`}
-                    >
-                      {employee.status === "Ativo"
-                        ? "Desativar"
-                        : "Ativar"}
-                    </button>
-                  </div>
-                </div>
+                  )
+                )}
               </div>
-            ))
+            </>
           )}
         </div>
       </div>
 
+      {/* MODAL */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 p-5">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
+          <div className="mx-auto my-4 max-w-4xl rounded-2xl bg-white shadow-2xl md:my-8">
+            {/* CABEÇALHO MODAL */}
+            <div className="flex items-center justify-between border-b p-5">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  {editingEmployee
+                <h2 className="text-xl font-bold text-gray-900">
+                  {editingId
                     ? "Editar funcionário"
                     : "Novo funcionário"}
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  {editingEmployee
-                    ? "Atualize os dados e as permissões do funcionário."
-                    : "Cadastre um novo usuário e defina o acesso ao sistema."}
+                <p className="mt-1 text-sm text-gray-500">
+                  Preencha os dados para manter o cadastro
+                  organizado.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  resetForm();
-                  setShowForm(false);
-                }}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setShowForm(false)}
+                className="rounded-xl p-2 text-gray-500 hover:bg-gray-100"
               >
-                <X size={20} />
+                <X size={22} />
               </button>
             </div>
 
-            <form
-              onSubmit={handleSubmitEmployee}
-              className="space-y-5 p-5"
-            >
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Nome
-                </label>
-
-                <div className="relative">
-                  <User
-                    size={18}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(event) =>
-                      setName(event.target.value)
-                    }
-                    placeholder="Nome completo"
-                    className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-4 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  E-mail
-                </label>
-
-                <div className="relative">
-                  <Mail
-                    size={18}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) =>
-                      setEmail(event.target.value)
-                    }
-                    placeholder="email@exemplo.com"
-                    className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-4 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Telefone
-                </label>
-
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(event) =>
-                    setPhone(event.target.value)
-                  }
-                  placeholder="(14) 99999-9999"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              {!editingEmployee && (
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Senha
-                  </label>
-
-                  <div className="relative">
-                    <KeyRound
-                      size={18}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
-
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(event) =>
-                        setPassword(event.target.value)
-                      }
-                      placeholder="Mínimo de 6 caracteres"
-                      className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-4 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Função
-                </label>
-
-                <select
-                  value={role}
-                  onChange={(event) =>
-                    setRole(event.target.value as Role)
-                  }
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                >
-                  <option value="Administrador">
-                    Administrador
-                  </option>
-
-                  <option value="Gerente">
-                    Gerente
-                  </option>
-
-                  <option value="Atendente">
-                    Atendente
-                  </option>
-
-                  <option value="Técnico">
-                    Técnico
-                  </option>
-
-                  <option value="Financeiro">
-                    Financeiro
-                  </option>
-                </select>
-
-                <p className="mt-2 text-xs text-slate-500">
-                  {roleDescriptions[role]}
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Cidade
-                </label>
-
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(event) =>
-                    setCity(event.target.value)
-                  }
-                  placeholder="Cidade"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-4">
-                  <h3 className="text-base font-bold text-slate-900">
-                    Permissões de acesso
+            <div className="max-h-[75vh] overflow-y-auto p-5">
+              <div className="space-y-6">
+                {/* DADOS PESSOAIS */}
+                <section>
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+                    Dados pessoais
                   </h3>
 
-                  <p className="mt-1 text-xs text-slate-500">
-                    Escolha exatamente o que este funcionário
-                    poderá visualizar e executar no sistema.
-                  </p>
-                </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Nome completo *
+                      </label>
 
-                {permissionsLoading ? (
-                  <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">
-                    Carregando permissões...
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                    <div className="min-w-[650px]">
-                      <div className="grid grid-cols-[1fr_90px_90px_90px_90px] border-b border-slate-200 bg-slate-100 px-3 py-3 text-xs font-bold text-slate-600">
-                        <div>Módulo</div>
-                        <div className="text-center">
-                          Visualizar
-                        </div>
-                        <div className="text-center">
-                          Criar
-                        </div>
-                        <div className="text-center">
-                          Editar
-                        </div>
-                        <div className="text-center">
-                          Excluir
-                        </div>
-                      </div>
-
-                      {permissions.map((permission) => {
-                        const moduleInfo =
-                          permissionModules.find(
-                            (module) =>
-                              module.id ===
-                              permission.modulo
-                          );
-
-                        if (!moduleInfo) {
-                          return null;
+                      <input
+                        value={form.nome}
+                        onChange={(event) =>
+                          updateField(
+                            "nome",
+                            event.target.value
+                          )
                         }
+                        placeholder="Nome completo"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                        return (
-                          <div
-                            key={permission.modulo}
-                            className="grid grid-cols-[1fr_90px_90px_90px_90px] items-center border-b border-slate-100 px-3 py-3 last:border-b-0"
-                          >
-                            <div className="text-sm font-semibold text-slate-700">
-                              {moduleInfo.label}
-                            </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        CPF
+                      </label>
 
-                            <div className="flex justify-center">
-                              <input
-                                type="checkbox"
-                                checked={
-                                  permission.visualizar
-                                }
-                                onChange={(event) =>
-                                  updatePermission(
-                                    permission.modulo,
-                                    "visualizar",
-                                    event.target.checked
-                                  )
-                                }
-                                className="h-5 w-5 cursor-pointer rounded border-slate-300"
-                              />
-                            </div>
+                      <input
+                        value={form.cpf}
+                        onChange={(event) =>
+                          updateField(
+                            "cpf",
+                            maskCpf(
+                              event.target.value
+                            )
+                          )
+                        }
+                        placeholder="000.000.000-00"
+                        inputMode="numeric"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                            <div className="flex justify-center">
-                              <input
-                                type="checkbox"
-                                checked={permission.criar}
-                                onChange={(event) =>
-                                  updatePermission(
-                                    permission.modulo,
-                                    "criar",
-                                    event.target.checked
-                                  )
-                                }
-                                className="h-5 w-5 cursor-pointer rounded border-slate-300"
-                              />
-                            </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        RG
+                      </label>
 
-                            <div className="flex justify-center">
-                              <input
-                                type="checkbox"
-                                checked={permission.editar}
-                                onChange={(event) =>
-                                  updatePermission(
-                                    permission.modulo,
-                                    "editar",
-                                    event.target.checked
-                                  )
-                                }
-                                className="h-5 w-5 cursor-pointer rounded border-slate-300"
-                              />
-                            </div>
+                      <input
+                        value={form.rg}
+                        onChange={(event) =>
+                          updateField(
+                            "rg",
+                            event.target.value
+                          )
+                        }
+                        placeholder="RG"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
 
-                            <div className="flex justify-center">
-                              <input
-                                type="checkbox"
-                                checked={permission.excluir}
-                                onChange={(event) =>
-                                  updatePermission(
-                                    permission.modulo,
-                                    "excluir",
-                                    event.target.checked
-                                  )
-                                }
-                                className="h-5 w-5 cursor-pointer rounded border-slate-300"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Data de nascimento
+                      </label>
+
+                      <input
+                        type="date"
+                        value={
+                          form.data_nascimento
+                        }
+                        onChange={(event) =>
+                          updateField(
+                            "data_nascimento",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Data de admissão
+                      </label>
+
+                      <input
+                        type="date"
+                        value={
+                          form.data_admissao
+                        }
+                        onChange={(event) =>
+                          updateField(
+                            "data_admissao",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
                     </div>
                   </div>
-                )}
+                </section>
 
-                <p className="mt-3 text-xs text-slate-400">
-                  As permissões serão aplicadas individualmente
-                  ao funcionário.
-                </p>
+                {/* CONTATO */}
+                <section>
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+                    Contato
+                  </h3>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Telefone
+                      </label>
+
+                      <input
+                        value={form.telefone}
+                        onChange={(event) =>
+                          updateField(
+                            "telefone",
+                            maskPhone(
+                              event.target.value
+                            )
+                          )
+                        }
+                        placeholder="(00) 0000-0000"
+                        inputMode="tel"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        WhatsApp
+                      </label>
+
+                      <input
+                        value={form.whatsapp}
+                        onChange={(event) =>
+                          updateField(
+                            "whatsapp",
+                            maskPhone(
+                              event.target.value
+                            )
+                          )
+                        }
+                        placeholder="(00) 00000-0000"
+                        inputMode="tel"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        E-mail
+                      </label>
+
+                      <input
+                        type="email"
+                        value={form.email}
+                        onChange={(event) =>
+                          updateField(
+                            "email",
+                            event.target.value
+                          )
+                        }
+                        placeholder="email@exemplo.com"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* ENDEREÇO */}
+                <section>
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+                    Endereço
+                  </h3>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+                    <div className="md:col-span-4">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Endereço
+                      </label>
+
+                      <input
+                        value={form.endereco}
+                        onChange={(event) =>
+                          updateField(
+                            "endereco",
+                            event.target.value
+                          )
+                        }
+                        placeholder="Rua / Avenida"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Número
+                      </label>
+
+                      <input
+                        value={form.numero}
+                        onChange={(event) =>
+                          updateField(
+                            "numero",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        CEP
+                      </label>
+
+                      <input
+                        value={form.cep}
+                        onChange={(event) =>
+                          updateField(
+                            "cep",
+                            event.target.value
+                          )
+                        }
+                        placeholder="00000-000"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Bairro
+                      </label>
+
+                      <input
+                        value={form.bairro}
+                        onChange={(event) =>
+                          updateField(
+                            "bairro",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Cidade
+                      </label>
+
+                      <input
+                        value={form.cidade}
+                        onChange={(event) =>
+                          updateField(
+                            "cidade",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Complemento
+                      </label>
+
+                      <input
+                        value={form.complemento}
+                        onChange={(event) =>
+                          updateField(
+                            "complemento",
+                            event.target.value
+                          )
+                        }
+                        placeholder="Apartamento, casa, sala..."
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* DADOS PROFISSIONAIS */}
+                <section>
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+                    Dados profissionais
+                  </h3>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Cargo
+                      </label>
+
+                      <input
+                        value={form.cargo}
+                        onChange={(event) =>
+                          updateField(
+                            "cargo",
+                            event.target.value
+                          )
+                        }
+                        placeholder="Ex.: Técnico de climatização"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Tipo de vínculo
+                      </label>
+
+                      <select
+                        value={
+                          form.tipo_vinculo
+                        }
+                        onChange={(event) =>
+                          updateField(
+                            "tipo_vinculo",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                      >
+                        <option>
+                          Funcionário
+                        </option>
+
+                        <option>
+                          CLT
+                        </option>
+
+                        <option>
+                          Autônomo
+                        </option>
+
+                        <option>
+                          Prestador de serviço
+                        </option>
+
+                        <option>
+                          Temporário
+                        </option>
+
+                        <option>
+                          Sócio
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Salário / valor mensal
+                      </label>
+
+                      <input
+                        value={form.salario}
+                        onChange={(event) =>
+                          updateField(
+                            "salario",
+                            event.target.value
+                          )
+                        }
+                        placeholder="0,00"
+                        inputMode="decimal"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Forma de pagamento
+                      </label>
+
+                      <select
+                        value={
+                          form.forma_pagamento
+                        }
+                        onChange={(event) =>
+                          updateField(
+                            "forma_pagamento",
+                            event.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                      >
+                        <option value="">
+                          Selecionar
+                        </option>
+
+                        <option value="Pix">
+                          Pix
+                        </option>
+
+                        <option value="Transferência">
+                          Transferência
+                        </option>
+
+                        <option value="Dinheiro">
+                          Dinheiro
+                        </option>
+
+                        <option value="Cheque">
+                          Cheque
+                        </option>
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Chave Pix
+                      </label>
+
+                      <input
+                        value={form.chave_pix}
+                        onChange={(event) =>
+                          updateField(
+                            "chave_pix",
+                            event.target.value
+                          )
+                        }
+                        placeholder="CPF, telefone, e-mail ou chave aleatória"
+                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Status
+                      </label>
+
+                      <select
+                        value={form.status}
+                        onChange={(event) =>
+                          updateField(
+                            "status",
+                            event.target.value as EmployeeStatus
+                          )
+                        }
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                      >
+                        <option value="Ativo">
+                          Ativo
+                        </option>
+
+                        <option value="Inativo">
+                          Inativo
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                </section>
+
+                {/* OBSERVAÇÕES */}
+                <section>
+                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+                    Observações
+                  </h3>
+
+                  <textarea
+                    value={form.observacoes}
+                    onChange={(event) =>
+                      updateField(
+                        "observacoes",
+                        event.target.value
+                      )
+                    }
+                    rows={4}
+                    placeholder="Observações sobre o funcionário..."
+                    className="w-full resize-none rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </section>
               </div>
+            </div>
 
-              {formError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-                  {formError}
-                </div>
-              )}
+            {/* RODAPÉ */}
+            <div className="flex flex-col-reverse gap-3 border-t bg-gray-50 p-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="rounded-xl border bg-white px-5 py-3 font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
 
-              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetForm();
-                    setShowForm(false);
-                  }}
-                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={
-                    loading ||
-                    permissionsLoading
-                  }
-                  className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading
-                    ? "Salvando..."
-                    : editingEmployee
-                    ? "Salvar alterações"
-                    : "Cadastrar funcionário"}
-                </button>
-              </div>
-            </form>
+              <button
+                type="button"
+                onClick={saveEmployee}
+                disabled={saving}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving
+                  ? "Salvando..."
+                  : editingId
+                  ? "Salvar alterações"
+                  : "Cadastrar funcionário"}
+              </button>
+            </div>
           </div>
         </div>
       )}
