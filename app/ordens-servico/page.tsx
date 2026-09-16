@@ -14,6 +14,7 @@ import {
   User,
   Wrench,
   X,
+  CircleDollarSign,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -43,7 +44,18 @@ type ServiceOrder = {
   description: string;
   date: string;
   technician: string;
+
+  // Valores
   value: number;
+  serviceValue: number;
+  materialsValue: number;
+  totalValue: number;
+
+  // Materiais
+  materialsDescription: string;
+  materialsPaid: boolean;
+  materialsPaidAt: string | null;
+
   status: ServiceOrderStatus;
   notes: string;
 };
@@ -80,6 +92,9 @@ const emptyForm = {
   date: "",
   technician: "",
   value: "",
+  materialsValue: "",
+  materialsDescription: "",
+  materialsPaid: false,
   status: "Aberta" as ServiceOrderStatus,
   notes: "",
 };
@@ -103,6 +118,26 @@ function formatDate(date: string) {
   return date;
 }
 
+function formatDateTime(date: string | null) {
+  if (!date) return "";
+
+  try {
+    return new Date(date).toLocaleString("pt-BR");
+  } catch {
+    return "";
+  }
+}
+
+function parseMoney(value: string) {
+  return (
+    Number(
+      String(value)
+        .replace(/\./g, "")
+        .replace(",", ".")
+    ) || 0
+  );
+}
+
 function escapeHtml(value: string) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -116,9 +151,15 @@ function printServiceOrder(order: ServiceOrder) {
   const printWindow = window.open("", "_blank", "width=900,height=1000");
 
   if (!printWindow) {
-    alert("Não foi possível abrir a impressão. Verifique o bloqueador de pop-ups.");
+    alert(
+      "Não foi possível abrir a impressão. Verifique o bloqueador de pop-ups."
+    );
     return;
   }
+
+  const materialsStatus = order.materialsPaid
+    ? `PAGO${order.materialsPaidAt ? ` em ${formatDateTime(order.materialsPaidAt)}` : ""}`
+    : "PENDENTE";
 
   const html = `
     <!DOCTYPE html>
@@ -251,6 +292,27 @@ function printServiceOrder(order: ServiceOrder) {
             font-weight: 800;
           }
 
+          .total-box {
+            margin-top: 10px;
+            padding: 15px;
+            border: 2px solid #111827;
+          }
+
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 12px;
+          }
+
+          .total-final {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #d1d5db;
+            font-size: 18px;
+            font-weight: 800;
+          }
+
           .signature-area {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -364,24 +426,59 @@ function printServiceOrder(order: ServiceOrder) {
             </div>
           </div>
 
+          ${
+            order.materialsDescription
+              ? `
+          <div class="section">
+            <div class="section-title">Materiais</div>
+
+            <div class="description">
+              ${escapeHtml(order.materialsDescription)}
+            </div>
+          </div>
+          `
+              : ""
+          }
+
+          <div class="section">
+            <div class="section-title">Valores</div>
+
+            <div class="total-box">
+
+              <div class="total-row">
+                <span>Serviços</span>
+                <strong>${escapeHtml(
+                  formatCurrency(order.serviceValue)
+                )}</strong>
+              </div>
+
+              <div class="total-row">
+                <span>Materiais</span>
+                <strong>${escapeHtml(
+                  formatCurrency(order.materialsValue)
+                )}</strong>
+              </div>
+
+              <div class="total-row">
+                <span>Status dos materiais</span>
+                <strong>${escapeHtml(materialsStatus)}</strong>
+              </div>
+
+              <div class="total-row total-final">
+                <span>TOTAL GERAL</span>
+                <strong>${escapeHtml(
+                  formatCurrency(order.totalValue)
+                )}</strong>
+              </div>
+
+            </div>
+          </div>
+
           <div class="section">
             <div class="section-title">Observações</div>
 
             <div class="description">
               ${escapeHtml(order.notes || "Nenhuma observação registrada.")}
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Valor</div>
-
-            <div class="grid">
-              <div class="field full">
-                <div class="label">Valor do serviço</div>
-                <div class="money">
-                  ${escapeHtml(formatCurrency(order.value))}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -422,8 +519,6 @@ function printServiceOrder(order: ServiceOrder) {
 }
 
 function sendServiceOrderWhatsApp(order: ServiceOrder) {
-  const formattedValue = formatCurrency(order.value);
-
   const message = `Olá! 👋
 
 Segue a Ordem de Serviço da Nando's Ar-Condicionado.
@@ -438,14 +533,36 @@ Segue a Ordem de Serviço da Nando's Ar-Condicionado.
 📅 Data: ${formatDate(order.date)}
 👨‍🔧 Técnico: ${order.technician || "Não definido"}
 
-📝 Descrição:
+📝 *Descrição:*
 ${order.description || "Não informada"}
 
-💰 Valor: ${formattedValue}
+💰 *VALORES*
+
+🔧 Serviços: ${formatCurrency(order.serviceValue)}
+🧰 Materiais: ${formatCurrency(order.materialsValue)}
+
+${
+  order.materialsPaid
+    ? `✅ Materiais: PAGOS${
+        order.materialsPaidAt
+          ? ` em ${formatDateTime(order.materialsPaidAt)}`
+          : ""
+      }`
+    : `⏳ Materiais: PENDENTES`
+}
+
+💵 *TOTAL GERAL: ${formatCurrency(order.totalValue)}*
 
 📌 Status: ${order.status}
 
 ${
+  order.materialsDescription
+    ? `🧰 Materiais:
+${order.materialsDescription}
+
+`
+    : ""
+}${
   order.notes
     ? `📄 Observações:
 ${order.notes}
@@ -456,7 +573,9 @@ ${order.notes}
 Qualidade e confiança em todos os detalhes.
 Jaú, Bauru e Região`;
 
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(
+    message
+  )}`;
 
   window.open(whatsappUrl, "_blank");
 }
@@ -491,10 +610,12 @@ export default function OrdensServicoPage() {
 
     if (params.get("novo") === "1") {
       setEditingId(null);
+
       setForm({
         ...emptyForm,
         date: new Date().toISOString().split("T")[0],
       });
+
       setShowForm(true);
 
       window.history.replaceState(
@@ -526,7 +647,10 @@ export default function OrdensServicoPage() {
         "Erro ao carregar ordens de serviço:",
         ordersResult.error
       );
-      alert("Não foi possível carregar as ordens de serviço.");
+
+      alert(
+        "Não foi possível carregar as ordens de serviço."
+      );
     }
 
     if (clientsResult.error) {
@@ -538,23 +662,55 @@ export default function OrdensServicoPage() {
 
     const formattedOrders: ServiceOrder[] = (
       ordersResult.data ?? []
-    ).map((item: any) => ({
-      id: item.id,
-      number: item.numero ?? "",
-      clientId: item.cliente_id ?? "",
-      client: item.cliente_nome ?? "",
-      equipment: item.equipamento ?? "",
-      city: item.cidade ?? "",
-      serviceType:
-        item.tipo_servico ?? "Preventiva",
-      description: item.descricao ?? "",
-      date: item.data ?? "",
-      technician: item.tecnico ?? "",
-      value: Number(item.valor ?? 0),
-      status:
-        item.status ?? "Aberta",
-      notes: item.observacoes ?? "",
-    }));
+    ).map((item: any) => {
+      const oldValue = Number(item.valor ?? 0);
+
+      const serviceValue =
+        Number(item.valor_servicos ?? 0) || oldValue;
+
+      const materialsValue =
+        Number(item.valor_materiais ?? 0);
+
+      const totalValue =
+        Number(item.valor ?? 0) ||
+        serviceValue + materialsValue;
+
+      return {
+        id: item.id,
+        number: item.numero ?? "",
+        clientId: item.cliente_id ?? "",
+        client: item.cliente_nome ?? "",
+        equipment: item.equipamento ?? "",
+        city: item.cidade ?? "",
+        serviceType:
+          item.tipo_servico ?? "Preventiva",
+        description: item.descricao ?? "",
+        date: item.data ?? "",
+        technician: item.tecnico ?? "",
+
+        value: totalValue,
+        serviceValue,
+        materialsValue,
+
+        totalValue:
+          totalValue || serviceValue + materialsValue,
+
+        materialsDescription:
+          item.materiais_descricao ?? "",
+
+        materialsPaid:
+          Boolean(item.materiais_pago ?? false),
+
+        materialsPaidAt:
+          item.materiais_pago_em ?? null,
+
+        status:
+          item.status ?? "Aberta",
+
+        notes:
+          item.observacoes ?? "",
+      };
+    });
 
     const formattedClients: Client[] = (
       clientsResult.data ?? []
@@ -593,12 +749,15 @@ export default function OrdensServicoPage() {
   const stats = useMemo(() => {
     return {
       total: orders.length,
+
       abertas: orders.filter(
         (item) => item.status === "Aberta"
       ).length,
+
       andamento: orders.filter(
         (item) => item.status === "Em andamento"
       ).length,
+
       concluidas: orders.filter(
         (item) => item.status === "Concluída"
       ).length,
@@ -636,7 +795,20 @@ export default function OrdensServicoPage() {
       description: order.description,
       date: order.date,
       technician: order.technician,
-      value: String(order.value),
+
+      value: String(order.serviceValue),
+
+      materialsValue:
+        order.materialsValue > 0
+          ? String(order.materialsValue)
+          : "",
+
+      materialsDescription:
+        order.materialsDescription,
+
+      materialsPaid:
+        order.materialsPaid,
+
       status: order.status,
       notes: order.notes,
     });
@@ -669,10 +841,10 @@ export default function OrdensServicoPage() {
         "Erro ao gerar número da OS:",
         error
       );
-      return `OS-${String(orders.length + 1).padStart(
-        4,
-        "0"
-      )}`;
+
+      return `OS-${String(
+        orders.length + 1
+      ).padStart(4, "0")}`;
     }
 
     const lastNumber =
@@ -685,7 +857,10 @@ export default function OrdensServicoPage() {
       ? Number(match[1]) + 1
       : 1;
 
-    return `OS-${String(nextNumber).padStart(4, "0")}`;
+    return `OS-${String(nextNumber).padStart(
+      4,
+      "0"
+    )}`;
   }
 
   async function saveOrder() {
@@ -699,37 +874,76 @@ export default function OrdensServicoPage() {
       return;
     }
 
-    const numericValue =
-      Number(
-        String(form.value)
-          .replace(/\./g, "")
-          .replace(",", ".")
-      ) || 0;
+    const serviceValue =
+      parseMoney(form.value);
+
+    const materialsValue =
+      parseMoney(form.materialsValue);
+
+    const totalValue =
+      serviceValue + materialsValue;
 
     const client = clients.find(
       (item) => item.id === form.clientId
     );
 
+    const dataToSave = {
+      cliente_id: form.clientId,
+
+      cliente_nome:
+        client?.nome ?? form.client,
+
+      equipamento:
+        form.equipment,
+
+      cidade:
+        client?.cidade ?? form.city,
+
+      tipo_servico:
+        form.serviceType,
+
+      descricao:
+        form.description,
+
+      data:
+        form.date || null,
+
+      tecnico:
+        form.technician || null,
+
+      // Compatibilidade com o sistema antigo
+      valor:
+        totalValue,
+
+      // Novos campos
+      valor_servicos:
+        serviceValue,
+
+      valor_materiais:
+        materialsValue,
+
+      materiais_descricao:
+        form.materialsDescription || null,
+
+      materiais_pago:
+        form.materialsPaid,
+
+      materiais_pago_em:
+        form.materialsPaid
+          ? new Date().toISOString()
+          : null,
+
+      status:
+        form.status,
+
+      observacoes:
+        form.notes || null,
+    };
+
     if (editingId) {
       const { error } = await supabase
         .from("ordens_servico")
-        .update({
-          cliente_id: form.clientId,
-          cliente_nome:
-            client?.nome ?? form.client,
-          equipamento: form.equipment,
-          cidade:
-            client?.cidade ?? form.city,
-          tipo_servico: form.serviceType,
-          descricao: form.description,
-          data: form.date || null,
-          tecnico:
-            form.technician || null,
-          valor: numericValue,
-          status: form.status,
-          observacoes:
-            form.notes || null,
-        })
+        .update(dataToSave)
         .eq("id", editingId);
 
       if (error) {
@@ -737,33 +951,22 @@ export default function OrdensServicoPage() {
           "Erro ao atualizar OS:",
           error
         );
+
         alert(
           `Não foi possível atualizar a ordem de serviço.\n\n${error.message}`
         );
+
         return;
       }
     } else {
-      const number = await generateNumber();
+      const number =
+        await generateNumber();
 
       const { error } = await supabase
         .from("ordens_servico")
         .insert({
           numero: number,
-          cliente_id: form.clientId,
-          cliente_nome:
-            client?.nome ?? form.client,
-          equipamento: form.equipment,
-          cidade:
-            client?.cidade ?? form.city,
-          tipo_servico: form.serviceType,
-          descricao: form.description,
-          data: form.date || null,
-          tecnico:
-            form.technician || null,
-          valor: numericValue,
-          status: form.status,
-          observacoes:
-            form.notes || null,
+          ...dataToSave,
         });
 
       if (error) {
@@ -771,9 +974,11 @@ export default function OrdensServicoPage() {
           "Erro ao criar OS:",
           error
         );
+
         alert(
           `Não foi possível criar a ordem de serviço.\n\n${error.message}`
         );
+
         return;
       }
     }
@@ -783,9 +988,10 @@ export default function OrdensServicoPage() {
   }
 
   async function deleteOrder(id: string) {
-    const confirmed = window.confirm(
-      "Tem certeza que deseja excluir esta ordem de serviço?"
-    );
+    const confirmed =
+      window.confirm(
+        "Tem certeza que deseja excluir esta ordem de serviço?"
+      );
 
     if (!confirmed) return;
 
@@ -799,9 +1005,11 @@ export default function OrdensServicoPage() {
         "Erro ao excluir OS:",
         error
       );
+
       alert(
         `Não foi possível excluir a ordem de serviço.\n\n${error.message}`
       );
+
       return;
     }
 
@@ -825,9 +1033,11 @@ export default function OrdensServicoPage() {
         "Erro ao alterar status:",
         error
       );
+
       alert(
         `Não foi possível alterar o status.\n\n${error.message}`
       );
+
       return;
     }
 
@@ -848,6 +1058,60 @@ export default function OrdensServicoPage() {
     );
   }
 
+  async function toggleMaterialsPayment(
+    order: ServiceOrder
+  ) {
+    const newPaidState =
+      !order.materialsPaid;
+
+    const newPaidAt =
+      newPaidState
+        ? new Date().toISOString()
+        : null;
+
+    const { error } = await supabase
+      .from("ordens_servico")
+      .update({
+        materiais_pago:
+          newPaidState,
+
+        materiais_pago_em:
+          newPaidAt,
+      })
+      .eq("id", order.id);
+
+    if (error) {
+      console.error(
+        "Erro ao atualizar pagamento dos materiais:",
+        error
+      );
+
+      alert(
+        `Não foi possível atualizar o pagamento dos materiais.\n\n${error.message}`
+      );
+
+      return;
+    }
+
+    const updatedOrder = {
+      ...order,
+      materialsPaid:
+        newPaidState,
+      materialsPaidAt:
+        newPaidAt,
+    };
+
+    setSelectedOrder(updatedOrder);
+
+    setOrders((current) =>
+      current.map((item) =>
+        item.id === order.id
+          ? updatedOrder
+          : item
+      )
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 p-4 text-white sm:p-6">
       <div className="mx-auto max-w-7xl">
@@ -856,6 +1120,7 @@ export default function OrdensServicoPage() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-3">
+
               <div className="rounded-xl bg-cyan-500/10 p-3">
                 <ClipboardList className="h-7 w-7 text-cyan-400" />
               </div>
@@ -869,6 +1134,7 @@ export default function OrdensServicoPage() {
                   Controle completo dos serviços realizados
                 </p>
               </div>
+
             </div>
           </div>
 
@@ -1006,6 +1272,7 @@ export default function OrdensServicoPage() {
             </div>
           ) : filteredOrders.length === 0 ? (
             <div className="p-10 text-center">
+
               <ClipboardList className="mx-auto h-12 w-12 text-slate-700" />
 
               <p className="mt-4 font-semibold">
@@ -1022,6 +1289,7 @@ export default function OrdensServicoPage() {
               >
                 Nova ordem de serviço
               </button>
+
             </div>
           ) : (
             <div className="divide-y divide-slate-800">
@@ -1031,11 +1299,13 @@ export default function OrdensServicoPage() {
                   key={order.id}
                   className="p-5 transition hover:bg-slate-800/30"
                 >
+
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
 
                     <div className="min-w-0 flex-1">
 
                       <div className="flex flex-wrap items-center gap-2">
+
                         <span className="font-bold text-cyan-400">
                           {order.number}
                         </span>
@@ -1059,6 +1329,21 @@ export default function OrdensServicoPage() {
                         <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300">
                           {order.serviceType}
                         </span>
+
+                        {order.materialsValue > 0 && (
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                              order.materialsPaid
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "bg-orange-500/10 text-orange-400"
+                            }`}
+                          >
+                            {order.materialsPaid
+                              ? "Materiais pagos"
+                              : "Materiais pendentes"}
+                          </span>
+                        )}
+
                       </div>
 
                       <h3 className="mt-2 text-lg font-semibold">
@@ -1066,6 +1351,7 @@ export default function OrdensServicoPage() {
                       </h3>
 
                       <div className="mt-2 flex flex-col gap-1 text-sm text-slate-400 sm:flex-row sm:flex-wrap sm:gap-x-5">
+
                         <span className="flex items-center gap-1.5">
                           <MapPin className="h-4 w-4" />
                           {order.city || "Cidade não informada"}
@@ -1087,6 +1373,7 @@ export default function OrdensServicoPage() {
                             {order.technician}
                           </span>
                         )}
+
                       </div>
 
                       <p className="mt-2 line-clamp-2 text-sm text-slate-500">
@@ -1139,6 +1426,42 @@ export default function OrdensServicoPage() {
                     </div>
 
                   </div>
+
+                  {/* RESUMO FINANCEIRO */}
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+
+                    <div className="rounded-xl bg-slate-950 p-3">
+                      <p className="text-[11px] text-slate-500">
+                        Serviços
+                      </p>
+
+                      <p className="mt-1 font-semibold text-slate-200">
+                        {formatCurrency(order.serviceValue)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-950 p-3">
+                      <p className="text-[11px] text-slate-500">
+                        Materiais
+                      </p>
+
+                      <p className="mt-1 font-semibold text-orange-400">
+                        {formatCurrency(order.materialsValue)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-cyan-500/5 p-3">
+                      <p className="text-[11px] text-slate-500">
+                        Total geral
+                      </p>
+
+                      <p className="mt-1 font-bold text-cyan-400">
+                        {formatCurrency(order.totalValue)}
+                      </p>
+                    </div>
+
+                  </div>
+
                 </div>
               ))}
 
@@ -1329,10 +1652,10 @@ export default function OrdensServicoPage() {
                   />
                 </div>
 
-                {/* VALOR */}
+                {/* VALOR SERVIÇO */}
                 <div>
                   <label className="mb-2 block text-sm font-medium">
-                    Valor
+                    Valor dos serviços
                   </label>
 
                   <input
@@ -1343,12 +1666,40 @@ export default function OrdensServicoPage() {
                     onChange={(event) =>
                       setForm({
                         ...form,
-                        value: event.target.value,
+                        value:
+                          event.target.value,
                       })
                     }
                     placeholder="0,00"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
                   />
+                </div>
+
+                {/* VALOR MATERIAIS */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Valor dos materiais
+                  </label>
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.materialsValue}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        materialsValue:
+                          event.target.value,
+                      })
+                    }
+                    placeholder="0,00"
+                    className="w-full rounded-xl border border-orange-500/30 bg-slate-950 px-4 py-3 outline-none focus:border-orange-400"
+                  />
+
+                  <p className="mt-1 text-xs text-orange-400">
+                    Materiais cobrados antecipadamente.
+                  </p>
                 </div>
 
                 {/* STATUS */}
@@ -1379,6 +1730,114 @@ export default function OrdensServicoPage() {
                       )
                     )}
                   </select>
+                </div>
+
+              </div>
+
+              {/* MATERIAIS DESCRIÇÃO */}
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Materiais
+                </label>
+
+                <textarea
+                  value={
+                    form.materialsDescription
+                  }
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      materialsDescription:
+                        event.target.value,
+                    })
+                  }
+                  rows={3}
+                  placeholder="Ex.: 5 metros de tubulação, suporte, cabo, isolante..."
+                  className="w-full resize-none rounded-xl border border-orange-500/30 bg-slate-950 px-4 py-3 outline-none focus:border-orange-400"
+                />
+              </div>
+
+              {/* STATUS PAGAMENTO */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+                  <div>
+                    <p className="font-semibold">
+                      Pagamento dos materiais
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Os materiais devem ser pagos antecipadamente.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        materialsPaid:
+                          !form.materialsPaid,
+                      })
+                    }
+                    className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+                      form.materialsPaid
+                        ? "bg-emerald-500 text-slate-950"
+                        : "border border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                    }`}
+                  >
+                    {form.materialsPaid
+                      ? "✓ Materiais pagos"
+                      : "Marcar como pago"}
+                  </button>
+
+                </div>
+
+              </div>
+
+              {/* RESUMO */}
+              <div className="grid gap-3 sm:grid-cols-3">
+
+                <div className="rounded-xl bg-slate-950 p-4">
+                  <p className="text-xs text-slate-500">
+                    Serviços
+                  </p>
+
+                  <p className="mt-1 text-lg font-bold">
+                    {formatCurrency(
+                      parseMoney(form.value)
+                    )}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-orange-500/5 p-4">
+                  <p className="text-xs text-slate-500">
+                    Materiais
+                  </p>
+
+                  <p className="mt-1 text-lg font-bold text-orange-400">
+                    {formatCurrency(
+                      parseMoney(
+                        form.materialsValue
+                      )
+                    )}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-cyan-500/5 p-4">
+                  <p className="text-xs text-slate-500">
+                    Total geral
+                  </p>
+
+                  <p className="mt-1 text-lg font-bold text-cyan-400">
+                    {formatCurrency(
+                      parseMoney(form.value) +
+                        parseMoney(
+                          form.materialsValue
+                        )
+                    )}
+                  </p>
                 </div>
 
               </div>
@@ -1584,6 +2043,120 @@ export default function OrdensServicoPage() {
                 </p>
               </div>
 
+              {/* MATERIAIS */}
+              <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
+
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+                  <div>
+                    <p className="text-xs text-slate-500">
+                      Materiais
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-orange-400">
+                      {formatCurrency(
+                        selectedOrder.materialsValue
+                      )}
+                    </p>
+
+                    {selectedOrder.materialsDescription && (
+                      <p className="mt-3 whitespace-pre-wrap text-sm text-slate-300">
+                        {selectedOrder.materialsDescription}
+                      </p>
+                    )}
+
+                    {selectedOrder.materialsPaid ? (
+                      <p className="mt-3 text-xs font-semibold text-emerald-400">
+                        ✓ Pago
+                        {selectedOrder.materialsPaidAt
+                          ? ` em ${formatDateTime(
+                              selectedOrder.materialsPaidAt
+                            )}`
+                          : ""}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs font-semibold text-orange-400">
+                        ⏳ Pagamento pendente
+                      </p>
+                    )}
+                  </div>
+
+                  {selectedOrder.materialsValue > 0 && (
+                    <button
+                      onClick={() =>
+                        toggleMaterialsPayment(
+                          selectedOrder
+                        )
+                      }
+                      className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ${
+                        selectedOrder.materialsPaid
+                          ? "border border-slate-700 text-slate-300 hover:bg-slate-800"
+                          : "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                      }`}
+                    >
+                      <CircleDollarSign className="h-4 w-4" />
+
+                      {selectedOrder.materialsPaid
+                        ? "Desmarcar pagamento"
+                        : "Marcar materiais como pagos"}
+                    </button>
+                  )}
+
+                </div>
+
+              </div>
+
+              {/* VALORES */}
+              <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+
+                <p className="text-xs text-slate-500">
+                  Resumo financeiro
+                </p>
+
+                <div className="mt-3 space-y-2">
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">
+                      Serviços
+                    </span>
+
+                    <strong>
+                      {formatCurrency(
+                        selectedOrder.serviceValue
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">
+                      Materiais
+                    </span>
+
+                    <strong className="text-orange-400">
+                      {formatCurrency(
+                        selectedOrder.materialsValue
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-700 pt-3">
+
+                    <span className="font-semibold">
+                      Total geral
+                    </span>
+
+                    <span className="text-2xl font-bold text-cyan-400">
+                      {formatCurrency(
+                        selectedOrder.totalValue
+                      )}
+                    </span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
               {/* OBSERVAÇÕES */}
               <div className="rounded-xl bg-slate-950 p-4">
                 <p className="mb-2 text-xs text-slate-500">
@@ -1593,19 +2166,6 @@ export default function OrdensServicoPage() {
                 <p className="whitespace-pre-wrap text-sm text-slate-300">
                   {selectedOrder.notes ||
                     "Nenhuma observação registrada."}
-                </p>
-              </div>
-
-              {/* VALOR */}
-              <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-                <p className="text-xs text-slate-500">
-                  Valor
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-cyan-400">
-                  {formatCurrency(
-                    selectedOrder.value
-                  )}
                 </p>
               </div>
 
