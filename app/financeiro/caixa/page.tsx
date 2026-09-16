@@ -1,35 +1,34 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
   Banknote,
-  CalendarDays,
-  CreditCard,
+  Calculator,
+  CheckCircle2,
   Edit,
-  MinusCircle,
   Plus,
-  Receipt,
   Search,
   Trash2,
-  User,
+  UserRound,
   Wallet,
   X,
 } from "lucide-react";
-
-import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-type MovementType =
-  | "Entrada"
-  | "Despesa"
-  | "Sangria"
-  | "Pagamento funcionário"
-  | "Pró-labore";
-
-type Movement = {
+type Funcionario = {
   id: string;
-  tipo: MovementType;
+  nome: string;
+  cargo?: string;
+  salario?: number;
+  forma_pagamento?: string;
+  chave_pix?: string;
+};
+
+type Movimento = {
+  id: string;
+  tipo: string;
   descricao: string;
   valor: number;
   data_movimento: string;
@@ -40,915 +39,778 @@ type Movement = {
   motivo: string;
   observacoes: string;
   criado_por: string;
+  referencia: string;
+  salario_base: number;
+  adicionais: number;
+  descontos: number;
+  adiantamento: number;
   created_at: string;
 };
 
-type Employee = {
-  id: string;
-  nome: string;
-  cargo: string;
-  salario: number;
-  status: string;
-};
+const TIPOS = [
+  "Entrada",
+  "Despesa",
+  "Sangria",
+  "Pagamento funcionário",
+  "Pró-labore",
+];
 
-type FormData = {
-  tipo: MovementType;
-  descricao: string;
-  valor: string;
-  data_movimento: string;
-  forma_pagamento: string;
-  categoria: string;
-  funcionario_id: string;
-  funcionario_nome: string;
-  motivo: string;
-  observacoes: string;
-};
-
-const emptyForm: FormData = {
-  tipo: "Entrada",
-  descricao: "",
-  valor: "",
-  data_movimento: new Date()
-    .toISOString()
-    .slice(0, 10),
-  forma_pagamento: "",
-  categoria: "",
-  funcionario_id: "",
-  funcionario_nome: "",
-  motivo: "",
-  observacoes: "",
-};
-
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function dinheiro(valor: number) {
+  return valor.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Number(value || 0));
+  });
 }
 
-function parseMoney(value: string) {
-  const cleaned = value
-    .replace(/[^\d,.-]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-
-  const number = Number(cleaned);
-
-  return Number.isFinite(number) ? number : 0;
+function numero(valor: string) {
+  const n = Number(valor.replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
 }
 
-function dateBR(value: string) {
-  if (!value) return "-";
-
-  const parts = value.split("-");
-
-  if (parts.length !== 3) return value;
-
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-}
-
-function typeClass(type: MovementType) {
-  if (type === "Entrada") {
-    return "bg-green-100 text-green-700 border-green-200";
-  }
-
-  if (type === "Pró-labore") {
-    return "bg-purple-100 text-purple-700 border-purple-200";
-  }
-
-  if (type === "Pagamento funcionário") {
-    return "bg-orange-100 text-orange-700 border-orange-200";
-  }
-
-  if (type === "Sangria") {
-    return "bg-red-100 text-red-700 border-red-200";
-  }
-
-  return "bg-gray-100 text-gray-700 border-gray-200";
-}
-
-function isIncome(type: MovementType) {
-  return type === "Entrada";
+function hoje() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function CaixaPage() {
   const supabase = createClient();
 
-  const [movements, setMovements] = useState<
-    Movement[]
-  >([]);
-
-  const [employees, setEmployees] = useState<
-    Employee[]
-  >([]);
+  const [movimentos, setMovimentos] = useState<Movimento[]>([]);
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [salvando, setSalvando] = useState(false);
 
-  const [search, setSearch] = useState("");
+  const [busca, setBusca] = useState("");
+  const [modal, setModal] = useState(false);
+  const [editando, setEditando] = useState<Movimento | null>(null);
 
-  const [showForm, setShowForm] =
-    useState(false);
+  const [tipo, setTipo] = useState("Entrada");
+  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState("");
+  const [dataMovimento, setDataMovimento] = useState(hoje());
+  const [formaPagamento, setFormaPagamento] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [funcionarioId, setFuncionarioId] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [observacoes, setObservacoes] = useState("");
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [referencia, setReferencia] = useState("");
+  const [salarioBase, setSalarioBase] = useState("");
+  const [adicionais, setAdicionais] = useState("");
+  const [descontos, setDescontos] = useState("");
+  const [adiantamento, setAdiantamento] = useState("");
 
-  const [form, setForm] =
-    useState<FormData>(emptyForm);
-
-  const [saving, setSaving] = useState(false);
-
-  async function loadData() {
+  async function carregar() {
     setLoading(true);
 
-    const [movementsResult, employeesResult] =
-      await Promise.all([
-        supabase
-          .from("caixa_movimentacoes")
-          .select("*")
-          .order("data_movimento", {
-            ascending: false,
-          })
-          .order("created_at", {
-            ascending: false,
-          }),
+    const [movResult, funcResult] = await Promise.all([
+      supabase
+        .from("caixa_movimentacoes")
+        .select("*")
+        .order("data_movimento", { ascending: false })
+        .order("created_at", { ascending: false }),
 
-        supabase
-          .from("funcionarios")
-          .select(
-            "id, nome, cargo, salario, status"
-          )
-          .eq("status", "Ativo")
-          .order("nome", {
-            ascending: true,
-          }),
-      ]);
+      supabase
+        .from("funcionarios")
+        .select("*")
+        .eq("status", "Ativo")
+        .order("nome"),
+    ]);
 
-    if (movementsResult.error) {
-      console.error(
-        "Erro ao carregar caixa:",
-        movementsResult.error
-      );
-
-      alert(
-        `Erro ao carregar o caixa.\n\n${movementsResult.error.message}`
-      );
+    if (!movResult.error) {
+      setMovimentos((movResult.data || []) as Movimento[]);
     }
 
-    if (employeesResult.error) {
-      console.error(
-        "Erro ao carregar funcionários:",
-        employeesResult.error
-      );
+    if (!funcResult.error) {
+      setFuncionarios((funcResult.data || []) as Funcionario[]);
     }
-
-    const movementData =
-      movementsResult.data || [];
-
-    setMovements(
-      movementData.map((item) => ({
-        id: item.id,
-        tipo: item.tipo as MovementType,
-        descricao: item.descricao || "",
-        valor: Number(item.valor || 0),
-        data_movimento:
-          item.data_movimento || "",
-        forma_pagamento:
-          item.forma_pagamento || "",
-        categoria: item.categoria || "",
-        funcionario_id:
-          item.funcionario_id || null,
-        funcionario_nome:
-          item.funcionario_nome || "",
-        motivo: item.motivo || "",
-        observacoes:
-          item.observacoes || "",
-        criado_por:
-          item.criado_por || "",
-        created_at:
-          item.created_at || "",
-      }))
-    );
-
-    setEmployees(
-      (employeesResult.data || []).map(
-        (item) => ({
-          id: item.id,
-          nome: item.nome || "",
-          cargo: item.cargo || "",
-          salario: Number(
-            item.salario || 0
-          ),
-          status: item.status || "Ativo",
-        })
-      )
-    );
 
     setLoading(false);
   }
 
   useEffect(() => {
-    loadData();
+    carregar();
   }, []);
 
-  const totals = useMemo(() => {
-    const entradas = movements
-      .filter((item) =>
-        isIncome(item.tipo)
-      )
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.valor || 0),
-        0
-      );
-
-    const saidas = movements
-      .filter(
-        (item) =>
-          item.tipo !== "Entrada"
-      )
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.valor || 0),
-        0
-      );
-
-    const sangrias = movements
-      .filter(
-        (item) =>
-          item.tipo === "Sangria"
-      )
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.valor || 0),
-        0
-      );
-
-    const salarios = movements
-      .filter(
-        (item) =>
-          item.tipo ===
-          "Pagamento funcionário"
-      )
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.valor || 0),
-        0
-      );
-
-    const proLabore = movements
-      .filter(
-        (item) =>
-          item.tipo === "Pró-labore"
-      )
-      .reduce(
-        (sum, item) =>
-          sum + Number(item.valor || 0),
-        0
-      );
-
-    return {
-      entradas,
-      saidas,
-      sangrias,
-      salarios,
-      proLabore,
-      saldo: entradas - saidas,
-    };
-  }, [movements]);
-
-  const filteredMovements = useMemo(() => {
-    const term =
-      search.trim().toLowerCase();
-
-    if (!term) return movements;
-
-    return movements.filter((item) =>
-      [
-        item.tipo,
-        item.descricao,
-        item.funcionario_nome,
-        item.motivo,
-        item.categoria,
-        item.forma_pagamento,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(term)
-    );
-  }, [movements, search]);
-
-  function openNewForm(
-    type: MovementType = "Entrada"
-  ) {
-    setEditingId(null);
-
-    setForm({
-      ...emptyForm,
-      tipo: type,
-    });
-
-    setShowForm(true);
+  function limparFormulario() {
+    setTipo("Entrada");
+    setDescricao("");
+    setValor("");
+    setDataMovimento(hoje());
+    setFormaPagamento("");
+    setCategoria("");
+    setFuncionarioId("");
+    setMotivo("");
+    setObservacoes("");
+    setReferencia("");
+    setSalarioBase("");
+    setAdicionais("");
+    setDescontos("");
+    setAdiantamento("");
+    setEditando(null);
   }
 
-  function openEditForm(
-    movement: Movement
-  ) {
-    setEditingId(movement.id);
+  function abrirNovo(tipoInicial = "Entrada") {
+    limparFormulario();
+    setTipo(tipoInicial);
 
-    setForm({
-      tipo: movement.tipo,
-      descricao: movement.descricao,
-      valor: String(movement.valor),
-      data_movimento:
-        movement.data_movimento,
-      forma_pagamento:
-        movement.forma_pagamento,
-      categoria: movement.categoria,
-      funcionario_id:
-        movement.funcionario_id || "",
-      funcionario_nome:
-        movement.funcionario_nome,
-      motivo: movement.motivo,
-      observacoes:
-        movement.observacoes,
-    });
-
-    setShowForm(true);
-  }
-
-  function updateField<K extends keyof FormData>(
-    field: K,
-    value: FormData[K]
-  ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
-  function handleTypeChange(
-    type: MovementType
-  ) {
-    setForm((current) => ({
-      ...current,
-      tipo: type,
-      funcionario_id: "",
-      funcionario_nome: "",
-      motivo: "",
-      descricao:
-        type === "Sangria"
-          ? "Sangria de caixa"
-          : type === "Pró-labore"
-          ? "Pró-labore do administrador"
-          : type ===
-            "Pagamento funcionário"
-          ? "Pagamento de funcionário"
-          : current.descricao,
-    }));
-  }
-
-  function handleEmployeeChange(
-    employeeId: string
-  ) {
-    const employee =
-      employees.find(
-        (item) =>
-          item.id === employeeId
-      );
-
-    setForm((current) => ({
-      ...current,
-      funcionario_id: employeeId,
-      funcionario_nome:
-        employee?.nome || "",
-      valor:
-        current.tipo ===
-          "Pagamento funcionário" &&
-        employee?.salario
-          ? String(employee.salario)
-          : current.valor,
-    }));
-  }
-
-  async function saveMovement() {
-    const numericValue = parseMoney(
-      form.valor
-    );
-
-    if (numericValue <= 0) {
-      alert(
-        "Informe um valor maior que zero."
-      );
-      return;
+    if (tipoInicial === "Pagamento funcionário") {
+      setReferencia(new Date().toLocaleDateString("pt-BR", {
+        month: "long",
+        year: "numeric",
+      }));
     }
 
+    setModal(true);
+  }
+
+  function abrirEditar(item: Movimento) {
+    setEditando(item);
+
+    setTipo(item.tipo);
+    setDescricao(item.descricao || "");
+    setValor(String(item.valor ?? ""));
+    setDataMovimento(item.data_movimento || hoje());
+    setFormaPagamento(item.forma_pagamento || "");
+    setCategoria(item.categoria || "");
+    setFuncionarioId(item.funcionario_id || "");
+    setMotivo(item.motivo || "");
+    setObservacoes(item.observacoes || "");
+
+    setReferencia(item.referencia || "");
+    setSalarioBase(String(item.salario_base ?? ""));
+    setAdicionais(String(item.adicionais ?? ""));
+    setDescontos(String(item.descontos ?? ""));
+    setAdiantamento(String(item.adiantamento ?? ""));
+
+    setModal(true);
+  }
+
+  const funcionarioSelecionado = useMemo(
+    () => funcionarios.find((f) => f.id === funcionarioId),
+    [funcionarios, funcionarioId]
+  );
+
+  const valorCalculadoFuncionario =
+    numero(salarioBase) +
+    numero(adicionais) -
+    numero(descontos) -
+    numero(adiantamento);
+
+  useEffect(() => {
     if (
-      form.tipo ===
-        "Pagamento funcionário" &&
-      !form.funcionario_id
+      tipo === "Pagamento funcionário" &&
+      funcionarioSelecionado &&
+      !editando
     ) {
-      alert(
-        "Selecione o funcionário que receberá o pagamento."
-      );
+      setSalarioBase(String(funcionarioSelecionado.salario || 0));
+
+      if (!formaPagamento && funcionarioSelecionado.forma_pagamento) {
+        setFormaPagamento(funcionarioSelecionado.forma_pagamento);
+      }
+    }
+  }, [funcionarioSelecionado, tipo, editando]);
+
+  useEffect(() => {
+    if (tipo === "Pagamento funcionário" && !editando) {
+      setValor(String(valorCalculadoFuncionario || ""));
+    }
+  }, [
+    salarioBase,
+    adicionais,
+    descontos,
+    adiantamento,
+    tipo,
+    editando,
+  ]);
+
+  async function salvar() {
+    if (salvando) return;
+
+    const valorNumerico =
+      tipo === "Pagamento funcionário"
+        ? valorCalculadoFuncionario
+        : numero(valor);
+
+    if (valorNumerico <= 0) {
+      alert("Informe um valor maior que zero.");
       return;
     }
 
-    if (
-      (form.tipo === "Sangria" ||
-        form.tipo === "Pró-labore") &&
-      !form.motivo.trim()
-    ) {
-      alert(
-        "Informe o motivo da retirada."
-      );
+    if (tipo === "Pagamento funcionário" && !funcionarioId) {
+      alert("Selecione o funcionário.");
       return;
     }
 
-    setSaving(true);
+    setSalvando(true);
 
-    const payload = {
-      tipo: form.tipo,
+    const funcionarioNome = funcionarioSelecionado?.nome || "";
+
+    const dados = {
+      tipo,
       descricao:
-        form.descricao.trim() ||
-        form.tipo,
-      valor: numericValue,
-      data_movimento:
-        form.data_movimento,
-      forma_pagamento:
-        form.forma_pagamento.trim(),
-      categoria:
-        form.categoria.trim(),
-      funcionario_id:
-        form.funcionario_id || null,
-      funcionario_nome:
-        form.funcionario_nome.trim(),
-      motivo:
-        form.motivo.trim(),
-      observacoes:
-        form.observacoes.trim(),
-      criado_por: "Administrador",
-      updated_at:
-        new Date().toISOString(),
+        descricao ||
+        (tipo === "Pagamento funcionário"
+          ? `Pagamento de funcionário - ${funcionarioNome}`
+          : tipo),
+      valor: valorNumerico,
+      data_movimento: dataMovimento,
+      forma_pagamento: formaPagamento,
+      categoria,
+      funcionario_id: funcionarioId || null,
+      funcionario_nome: funcionarioNome,
+      motivo,
+      observacoes,
+
+      referencia,
+      salario_base:
+        tipo === "Pagamento funcionário" ? numero(salarioBase) : 0,
+      adicionais:
+        tipo === "Pagamento funcionário" ? numero(adicionais) : 0,
+      descontos:
+        tipo === "Pagamento funcionário" ? numero(descontos) : 0,
+      adiantamento:
+        tipo === "Pagamento funcionário" ? numero(adiantamento) : 0,
     };
 
-    let error;
+    try {
+      /*
+       * EDIÇÃO
+       */
+      if (editando) {
+        const { error } = await supabase
+          .from("caixa_movimentacoes")
+          .update(dados)
+          .eq("id", editando.id);
 
-    if (editingId) {
-      const result = await supabase
-        .from("caixa_movimentacoes")
-        .update(payload)
-        .eq("id", editingId);
+        if (error) throw error;
 
-      error = result.error;
-    } else {
-      const result = await supabase
-        .from("caixa_movimentacoes")
-        .insert({
-          ...payload,
-          created_at:
-            new Date().toISOString(),
-        });
+        /*
+         * Se era pagamento de funcionário, sincroniza o histórico.
+         */
+        if (
+          editando.tipo === "Pagamento funcionário" &&
+          editando.funcionario_id
+        ) {
+          const { data: pagamentoExistente } = await supabase
+            .from("pagamentos_funcionarios")
+            .select("id")
+            .eq("funcionario_id", editando.funcionario_id)
+            .eq("valor_pago", editando.valor)
+            .eq("data_pagamento", editando.data_movimento)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-      error = result.error;
-    }
+          if (pagamentoExistente) {
+            await supabase
+              .from("pagamentos_funcionarios")
+              .update({
+                funcionario_id: funcionarioId,
+                funcionario_nome: funcionarioNome,
+                referencia,
+                salario_base: numero(salarioBase),
+                adicionais: numero(adicionais),
+                descontos: numero(descontos),
+                adiantamento: numero(adiantamento),
+                valor_pago: valorNumerico,
+                data_pagamento: dataMovimento,
+                forma_pagamento: formaPagamento,
+                status: "Pago",
+                observacoes,
+              })
+              .eq("id", pagamentoExistente.id);
+          }
+        }
 
-    setSaving(false);
+        /*
+         * Se transformou outro movimento em pagamento,
+         * cria o histórico.
+         */
+        if (
+          editando.tipo !== "Pagamento funcionário" &&
+          tipo === "Pagamento funcionário"
+        ) {
+          await supabase.from("pagamentos_funcionarios").insert({
+            funcionario_id: funcionarioId,
+            funcionario_nome: funcionarioNome,
+            referencia,
+            salario_base: numero(salarioBase),
+            adicionais: numero(adicionais),
+            descontos: numero(descontos),
+            adiantamento: numero(adiantamento),
+            valor_pago: valorNumerico,
+            data_pagamento: dataMovimento,
+            forma_pagamento: formaPagamento,
+            status: "Pago",
+            observacoes,
+          });
+        }
+      } else {
+        /*
+         * NOVO MOVIMENTO
+         */
+        const { error } = await supabase
+          .from("caixa_movimentacoes")
+          .insert(dados);
 
-    if (error) {
-      console.error(
-        "Erro ao salvar movimentação:",
-        error
-      );
+        if (error) throw error;
 
+        /*
+         * Pagamento de funcionário também entra
+         * automaticamente no histórico da folha.
+         */
+        if (tipo === "Pagamento funcionário") {
+          const { error: pagamentoError } = await supabase
+            .from("pagamentos_funcionarios")
+            .insert({
+              funcionario_id: funcionarioId,
+              funcionario_nome: funcionarioNome,
+              referencia,
+              salario_base: numero(salarioBase),
+              adicionais: numero(adicionais),
+              descontos: numero(descontos),
+              adiantamento: numero(adiantamento),
+              valor_pago: valorNumerico,
+              data_pagamento: dataMovimento,
+              forma_pagamento: formaPagamento,
+              status: "Pago",
+              observacoes,
+            });
+
+          if (pagamentoError) {
+            console.error(
+              "Erro ao registrar histórico do funcionário:",
+              pagamentoError
+            );
+
+            alert(
+              "O pagamento foi lançado no Caixa, mas houve um problema ao salvar o histórico do funcionário."
+            );
+          }
+        }
+      }
+
+      setModal(false);
+      limparFormulario();
+      await carregar();
+
+      alert("Movimentação salva com sucesso!");
+    } catch (error: any) {
+      console.error(error);
       alert(
-        `Não foi possível salvar.\n\n${error.message}`
+        error?.message ||
+          "Não foi possível salvar a movimentação."
       );
-
-      return;
+    } finally {
+      setSalvando(false);
     }
-
-    setShowForm(false);
-    setEditingId(null);
-    setForm(emptyForm);
-
-    await loadData();
-
-    alert(
-      editingId
-        ? "Movimentação atualizada!"
-        : "Movimentação registrada!"
-    );
   }
 
-  async function deleteMovement(
-    movement: Movement
-  ) {
-    const confirmed =
-      window.confirm(
-        `Excluir esta movimentação?\n\n${movement.tipo}: ${money(
-          movement.valor
-        )}`
-      );
+  async function excluir(item: Movimento) {
+    const confirmar = confirm(
+      `Deseja realmente excluir esta movimentação?\n\n${item.descricao}\n${dinheiro(
+        item.valor
+      )}`
+    );
 
-    if (!confirmed) return;
+    if (!confirmar) return;
 
-    const { error } =
-      await supabase
+    try {
+      /*
+       * Se for pagamento de funcionário,
+       * tenta localizar o histórico correspondente
+       * antes de excluir o lançamento do Caixa.
+       */
+      if (
+        item.tipo === "Pagamento funcionário" &&
+        item.funcionario_id
+      ) {
+        const { data: pagamentoExistente } = await supabase
+          .from("pagamentos_funcionarios")
+          .select("id")
+          .eq("funcionario_id", item.funcionario_id)
+          .eq("valor_pago", item.valor)
+          .eq("data_pagamento", item.data_movimento)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (pagamentoExistente) {
+          await supabase
+            .from("pagamentos_funcionarios")
+            .delete()
+            .eq("id", pagamentoExistente.id);
+        }
+      }
+
+      const { error } = await supabase
         .from("caixa_movimentacoes")
         .delete()
-        .eq("id", movement.id);
+        .eq("id", item.id);
 
-    if (error) {
+      if (error) throw error;
+
+      await carregar();
+
+      alert("Movimentação excluída com sucesso!");
+    } catch (error: any) {
+      console.error(error);
       alert(
-        `Não foi possível excluir.\n\n${error.message}`
+        error?.message ||
+          "Não foi possível excluir a movimentação."
       );
-      return;
     }
-
-    await loadData();
   }
 
+  const filtrados = movimentos.filter((item) => {
+    const texto = [
+      item.tipo,
+      item.descricao,
+      item.funcionario_nome,
+      item.categoria,
+      item.motivo,
+      item.referencia,
+      item.observacoes,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return texto.includes(busca.toLowerCase());
+  });
+
+  const entradas = movimentos
+    .filter((m) => m.tipo === "Entrada")
+    .reduce((s, m) => s + Number(m.valor || 0), 0);
+
+  const despesas = movimentos
+    .filter((m) => m.tipo === "Despesa")
+    .reduce((s, m) => s + Number(m.valor || 0), 0);
+
+  const sangrias = movimentos
+    .filter((m) => m.tipo === "Sangria")
+    .reduce((s, m) => s + Number(m.valor || 0), 0);
+
+  const pagamentosFuncionarios = movimentos
+    .filter((m) => m.tipo === "Pagamento funcionário")
+    .reduce((s, m) => s + Number(m.valor || 0), 0);
+
+  const proLabore = movimentos
+    .filter((m) => m.tipo === "Pró-labore")
+    .reduce((s, m) => s + Number(m.valor || 0), 0);
+
+  const saidas =
+    despesas +
+    sangrias +
+    pagamentosFuncionarios +
+    proLabore;
+
+  const saldo = entradas - saidas;
+
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <main className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* CABEÇALHO */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-2xl font-bold text-slate-900">
               Caixa
             </h1>
 
-            <p className="mt-1 text-sm text-gray-500">
-              Controle de entradas, despesas,
-              sangrias, funcionários e
-              pró-labore.
+            <p className="text-sm text-slate-500">
+              Controle financeiro, sangrias, funcionários e pró-labore.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button
-              type="button"
-              onClick={() =>
-                openNewForm("Entrada")
-              }
-              className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-3 font-semibold text-white hover:bg-green-700"
+              onClick={() => abrirNovo("Sangria")}
+              className="flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white"
             >
-              <Plus size={18} />
-              Entrada
+              <ArrowDownCircle size={18} />
+              Nova sangria
             </button>
 
             <button
-              type="button"
-              onClick={() =>
-                openNewForm("Despesa")
-              }
-              className="inline-flex items-center gap-2 rounded-xl bg-gray-800 px-4 py-3 font-semibold text-white hover:bg-gray-900"
+              onClick={() => abrirNovo("Pagamento funcionário")}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white"
             >
-              <MinusCircle size={18} />
-              Despesa
+              <UserRound size={18} />
+              Pagar funcionário
             </button>
-          </div>
-        </div>
 
-        {/* SALDO */}
-        <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
-              <Wallet size={25} />
-            </div>
+            <button
+              onClick={() => abrirNovo("Pró-labore")}
+              className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white"
+            >
+              <Wallet size={18} />
+              Pró-labore
+            </button>
 
-            <div>
-              <p className="text-sm text-gray-500">
-                Saldo atual do caixa
-              </p>
-
-              <p className="text-3xl font-bold text-gray-900">
-                {money(totals.saldo)}
-              </p>
-            </div>
+            <button
+              onClick={() => abrirNovo("Entrada")}
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
+            >
+              <Plus size={18} />
+              Nova movimentação
+            </button>
           </div>
         </div>
 
         {/* RESUMO */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <ArrowUpCircle
-                className="text-green-600"
-                size={22}
-              />
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">
+                Saldo atual
+              </span>
+              <Wallet className="text-blue-600" size={22} />
+            </div>
 
-              <p className="text-sm text-gray-500">
+            <p className="mt-3 text-2xl font-bold text-slate-900">
+              {dinheiro(saldo)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">
                 Entradas
-              </p>
+              </span>
+              <ArrowUpCircle className="text-emerald-600" size={22} />
             </div>
 
-            <p className="mt-2 text-xl font-bold text-green-600">
-              {money(totals.entradas)}
+            <p className="mt-3 text-xl font-bold text-emerald-600">
+              {dinheiro(entradas)}
             </p>
           </div>
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <ArrowDownCircle
-                className="text-red-600"
-                size={22}
-              />
-
-              <p className="text-sm text-gray-500">
-                Saídas
-              </p>
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">
+                Despesas
+              </span>
+              <ArrowDownCircle className="text-red-600" size={22} />
             </div>
 
-            <p className="mt-2 text-xl font-bold text-red-600">
-              {money(totals.saidas)}
+            <p className="mt-3 text-xl font-bold text-red-600">
+              {dinheiro(despesas)}
             </p>
           </div>
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">
-              Sangrias
-            </p>
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">
+                Funcionários
+              </span>
+              <UserRound className="text-blue-600" size={22} />
+            </div>
 
-            <p className="mt-2 text-xl font-bold text-red-600">
-              {money(totals.sangrias)}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">
-              Funcionários
-            </p>
-
-            <p className="mt-2 text-xl font-bold text-orange-600">
-              {money(totals.salarios)}
+            <p className="mt-3 text-xl font-bold text-blue-600">
+              {dinheiro(pagamentosFuncionarios)}
             </p>
           </div>
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">
-              Pró-labore
-            </p>
+          <div className="rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">
+                Pró-labore
+              </span>
+              <Banknote className="text-purple-600" size={22} />
+            </div>
 
-            <p className="mt-2 text-xl font-bold text-purple-600">
-              {money(totals.proLabore)}
+            <p className="mt-3 text-xl font-bold text-purple-600">
+              {dinheiro(proLabore)}
             </p>
           </div>
         </div>
 
-        {/* AÇÕES */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* SEGUNDO RESUMO */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+            <p className="text-sm font-medium text-orange-700">
+              Total de sangrias
+            </p>
+            <p className="mt-1 text-xl font-bold text-orange-800">
+              {dinheiro(sangrias)}
+            </p>
+          </div>
 
-          <button
-            type="button"
-            onClick={() =>
-              openNewForm("Sangria")
-            }
-            className="flex items-center justify-center gap-3 rounded-2xl border bg-white p-5 text-left shadow-sm hover:bg-red-50"
-          >
-            <Banknote
-              className="text-red-600"
-              size={25}
-            />
-
-            <div>
-              <p className="font-bold text-gray-900">
-                Nova sangria
-              </p>
-
-              <p className="text-xs text-gray-500">
-                Retirada de dinheiro do caixa
-              </p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              openNewForm(
-                "Pagamento funcionário"
-              )
-            }
-            className="flex items-center justify-center gap-3 rounded-2xl border bg-white p-5 text-left shadow-sm hover:bg-orange-50"
-          >
-            <User
-              className="text-orange-600"
-              size={25}
-            />
-
-            <div>
-              <p className="font-bold text-gray-900">
-                Pagar funcionário
-              </p>
-
-              <p className="text-xs text-gray-500">
-                Registrar salário ou pagamento
-              </p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              openNewForm("Pró-labore")
-            }
-            className="flex items-center justify-center gap-3 rounded-2xl border bg-white p-5 text-left shadow-sm hover:bg-purple-50"
-          >
-            <Wallet
-              className="text-purple-600"
-              size={25}
-            />
-
-            <div>
-              <p className="font-bold text-gray-900">
-                Pró-labore
-              </p>
-
-              <p className="text-xs text-gray-500">
-                Retirada do administrador
-              </p>
-            </div>
-          </button>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-500">
+              Total de saídas
+            </p>
+            <p className="mt-1 text-xl font-bold text-red-600">
+              {dinheiro(saidas)}
+            </p>
+          </div>
         </div>
 
         {/* PESQUISA */}
-        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
           <div className="relative">
             <Search
               size={19}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
 
             <input
-              value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value
-                )
-              }
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
               placeholder="Pesquisar movimentações..."
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 outline-none focus:border-blue-500"
             />
           </div>
         </div>
 
-        {/* MOVIMENTAÇÕES */}
-        <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        {/* LISTAGEM */}
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+          <div className="border-b border-slate-100 p-5">
+            <h2 className="font-bold text-slate-900">
+              Movimentações do caixa
+            </h2>
+          </div>
 
           {loading ? (
-            <div className="p-10 text-center text-gray-500">
-              Carregando caixa...
+            <div className="p-8 text-center text-slate-500">
+              Carregando...
             </div>
-          ) : filteredMovements.length ===
-            0 ? (
+          ) : filtrados.length === 0 ? (
             <div className="p-10 text-center">
-              <Receipt
-                size={42}
-                className="mx-auto text-gray-300"
+              <Calculator
+                size={40}
+                className="mx-auto text-slate-300"
               />
 
-              <p className="mt-3 font-semibold text-gray-700">
-                Nenhuma movimentação
-              </p>
-
-              <p className="mt-1 text-sm text-gray-400">
-                As entradas e saídas aparecerão
-                aqui.
+              <p className="mt-3 font-medium text-slate-600">
+                Nenhuma movimentação encontrada.
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b bg-gray-50">
+              <table className="w-full min-w-[950px] text-sm">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-5 py-4">
+                    <th className="px-4 py-3 text-left">
                       Data
                     </th>
-
-                    <th className="px-5 py-4">
+                    <th className="px-4 py-3 text-left">
                       Tipo
                     </th>
-
-                    <th className="px-5 py-4">
+                    <th className="px-4 py-3 text-left">
                       Descrição
                     </th>
-
-                    <th className="px-5 py-4">
+                    <th className="px-4 py-3 text-left">
                       Funcionário
                     </th>
-
-                    <th className="px-5 py-4">
+                    <th className="px-4 py-3 text-left">
                       Forma
                     </th>
-
-                    <th className="px-5 py-4">
+                    <th className="px-4 py-3 text-right">
                       Valor
                     </th>
-
-                    <th className="px-5 py-4 text-right">
+                    <th className="px-4 py-3 text-right">
                       Ações
                     </th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y">
-                  {filteredMovements.map(
-                    (movement) => (
+                <tbody>
+                  {filtrados.map((item) => {
+                    const entrada = item.tipo === "Entrada";
+
+                    return (
                       <tr
-                        key={movement.id}
-                        className="hover:bg-gray-50"
+                        key={item.id}
+                        className="border-t border-slate-100"
                       >
-                        <td className="px-5 py-4 whitespace-nowrap">
-                          {dateBR(
-                            movement.data_movimento
-                          )}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {item.data_movimento
+                            ? new Date(
+                                `${item.data_movimento}T12:00:00`
+                              ).toLocaleDateString("pt-BR")
+                            : "-"}
                         </td>
 
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-4">
                           <span
-                            className={`rounded-full border px-3 py-1 text-xs font-semibold ${typeClass(
-                              movement.tipo
-                            )}`}
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                              item.tipo === "Entrada"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : item.tipo === "Sangria"
+                                ? "bg-orange-100 text-orange-700"
+                                : item.tipo === "Pagamento funcionário"
+                                ? "bg-blue-100 text-blue-700"
+                                : item.tipo === "Pró-labore"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
                           >
-                            {movement.tipo}
+                            {item.tipo}
                           </span>
                         </td>
 
-                        <td className="px-5 py-4">
-                          <p className="font-medium text-gray-900">
-                            {movement.descricao}
-                          </p>
+                        <td className="px-4 py-4">
+                          <div className="font-medium text-slate-800">
+                            {item.descricao || "-"}
+                          </div>
 
-                          {movement.motivo && (
-                            <p className="mt-1 text-xs text-gray-500">
-                              {movement.motivo}
-                            </p>
+                          {item.referencia && (
+                            <div className="text-xs text-slate-400">
+                              {item.referencia}
+                            </div>
+                          )}
+
+                          {item.motivo && (
+                            <div className="text-xs text-slate-400">
+                              Motivo: {item.motivo}
+                            </div>
                           )}
                         </td>
 
-                        <td className="px-5 py-4">
-                          {movement.funcionario_nome ||
-                            "-"}
+                        <td className="px-4 py-4">
+                          {item.funcionario_nome || "-"}
                         </td>
 
-                        <td className="px-5 py-4">
-                          {movement.forma_pagamento ||
-                            "-"}
+                        <td className="px-4 py-4">
+                          {item.forma_pagamento || "-"}
                         </td>
 
                         <td
-                          className={`px-5 py-4 font-bold ${
-                            isIncome(
-                              movement.tipo
-                            )
-                              ? "text-green-600"
+                          className={`px-4 py-4 text-right font-bold ${
+                            entrada
+                              ? "text-emerald-600"
                               : "text-red-600"
                           }`}
                         >
-                          {isIncome(
-                            movement.tipo
-                          )
-                            ? "+"
-                            : "-"}{" "}
-                          {money(
-                            movement.valor
-                          )}
+                          {entrada ? "+" : "-"}
+                          {dinheiro(Number(item.valor || 0))}
                         </td>
 
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-4">
                           <div className="flex justify-end gap-2">
                             <button
-                              type="button"
-                              onClick={() =>
-                                openEditForm(
-                                  movement
-                                )
-                              }
-                              className="rounded-lg border p-2 text-gray-600 hover:bg-gray-100"
+                              onClick={() => abrirEditar(item)}
+                              className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                              title="Editar"
                             >
                               <Edit size={17} />
                             </button>
 
                             <button
-                              type="button"
-                              onClick={() =>
-                                deleteMovement(
-                                  movement
-                                )
-                              }
+                              onClick={() => excluir(item)}
                               className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                              title="Excluir"
                             >
-                              <Trash2
-                                size={17}
-                              />
+                              <Trash2 size={17} />
                             </button>
                           </div>
                         </td>
                       </tr>
-                    )
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -957,333 +819,366 @@ export default function CaixaPage() {
       </div>
 
       {/* MODAL */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
-          <div className="mx-auto my-4 max-w-2xl rounded-2xl bg-white shadow-2xl">
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-xl">
 
-            <div className="flex items-center justify-between border-b p-5">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-5">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">
-                  {editingId
+                <h2 className="text-xl font-bold text-slate-900">
+                  {editando
                     ? "Editar movimentação"
                     : "Nova movimentação"}
                 </h2>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Registre corretamente toda saída
-                  ou entrada da empresa.
+                <p className="text-sm text-slate-500">
+                  Registre a movimentação financeira.
                 </p>
               </div>
 
               <button
-                type="button"
-                onClick={() =>
-                  setShowForm(false)
-                }
-                className="rounded-xl p-2 text-gray-500 hover:bg-gray-100"
+                onClick={() => {
+                  setModal(false);
+                  limparFormulario();
+                }}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
               >
                 <X size={22} />
               </button>
             </div>
 
-            <div className="max-h-[75vh] space-y-5 overflow-y-auto p-5">
+            <div className="space-y-5 p-5">
 
               {/* TIPO */}
               <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-700">
-                  Tipo da movimentação
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Tipo
                 </label>
 
                 <select
-                  value={form.tipo}
-                  onChange={(event) =>
-                    handleTypeChange(
-                      event.target
-                        .value as MovementType
-                    )
-                  }
-                  className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500"
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
                 >
-                  <option value="Entrada">
-                    Entrada
-                  </option>
-
-                  <option value="Despesa">
-                    Despesa
-                  </option>
-
-                  <option value="Sangria">
-                    Sangria
-                  </option>
-
-                  <option value="Pagamento funcionário">
-                    Pagamento funcionário
-                  </option>
-
-                  <option value="Pró-labore">
-                    Pró-labore
-                  </option>
+                  {TIPOS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              {/* FUNCIONÁRIO */}
-              {form.tipo ===
-                "Pagamento funcionário" && (
-                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Funcionário
-                  </label>
+              {/* PAGAMENTO FUNCIONÁRIO */}
+              {tipo === "Pagamento funcionário" && (
+                <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
 
-                  <select
-                    value={
-                      form.funcionario_id
-                    }
-                    onChange={(event) =>
-                      handleEmployeeChange(
-                        event.target.value
-                      )
-                    }
-                    className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-orange-500"
-                  >
-                    <option value="">
-                      Selecione o funcionário
-                    </option>
+                  <div className="flex items-center gap-2 font-bold text-blue-800">
+                    <UserRound size={19} />
+                    Dados do pagamento
+                  </div>
 
-                    {employees.map(
-                      (employee) => (
-                        <option
-                          key={employee.id}
-                          value={employee.id}
-                        >
-                          {employee.nome} —{" "}
-                          {money(
-                            employee.salario
-                          )}
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      Funcionário *
+                    </label>
+
+                    <select
+                      value={funcionarioId}
+                      onChange={(e) =>
+                        setFuncionarioId(e.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500"
+                    >
+                      <option value="">
+                        Selecione o funcionário
+                      </option>
+
+                      {funcionarios.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.nome}
+                          {f.cargo ? ` — ${f.cargo}` : ""}
                         </option>
-                      )
-                    )}
-                  </select>
+                      ))}
+                    </select>
+                  </div>
 
-                  {form.funcionario_id && (
-                    <p className="mt-2 text-xs text-orange-700">
-                      O salário cadastrado foi
-                      preenchido automaticamente.
-                    </p>
-                  )}
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      Referência
+                    </label>
+
+                    <input
+                      value={referencia}
+                      onChange={(e) =>
+                        setReferencia(e.target.value)
+                      }
+                      placeholder="Ex.: Setembro/2026"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Salário-base
+                      </label>
+
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={salarioBase}
+                        onChange={(e) =>
+                          setSalarioBase(e.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Adicionais
+                      </label>
+
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={adicionais}
+                        onChange={(e) =>
+                          setAdicionais(e.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Descontos
+                      </label>
+
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={descontos}
+                        onChange={(e) =>
+                          setDescontos(e.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Adiantamento
+                      </label>
+
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={adiantamento}
+                        onChange={(e) =>
+                          setAdiantamento(e.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
+                      />
+                    </div>
+
+                  </div>
+
+                  <div className="rounded-xl bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-600">
+                        Valor líquido a pagar
+                      </span>
+
+                      <span className="text-2xl font-bold text-blue-700">
+                        {dinheiro(valorCalculadoFuncionario)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* VALOR */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-700">
-                  Valor
-                </label>
-
-                <input
-                  value={form.valor}
-                  onChange={(event) =>
-                    updateField(
-                      "valor",
-                      event.target.value
-                    )
-                  }
-                  placeholder="0,00"
-                  inputMode="decimal"
-                  className="w-full rounded-xl border px-4 py-3 text-lg font-semibold outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* DATA + FORMA */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Data
-                  </label>
-
-                  <div className="relative">
-                    <CalendarDays
-                      size={18}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                    />
-
-                    <input
-                      type="date"
-                      value={
-                        form.data_movimento
-                      }
-                      onChange={(event) =>
-                        updateField(
-                          "data_movimento",
-                          event.target.value
-                        )
-                      }
-                      className="w-full rounded-xl border py-3 pl-10 pr-4 outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Forma de pagamento
-                  </label>
-
-                  <select
-                    value={
-                      form.forma_pagamento
-                    }
-                    onChange={(event) =>
-                      updateField(
-                        "forma_pagamento",
-                        event.target.value
-                      )
-                    }
-                    className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
-                  >
-                    <option value="">
-                      Selecionar
-                    </option>
-
-                    <option value="Dinheiro">
-                      Dinheiro
-                    </option>
-
-                    <option value="Pix">
-                      Pix
-                    </option>
-
-                    <option value="Transferência">
-                      Transferência
-                    </option>
-
-                    <option value="Cartão">
-                      Cartão
-                    </option>
-
-                    <option value="Boleto">
-                      Boleto
-                    </option>
-                  </select>
-                </div>
-              </div>
-
               {/* DESCRIÇÃO */}
               <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-700">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Descrição
                 </label>
 
                 <input
-                  value={form.descricao}
-                  onChange={(event) =>
-                    updateField(
-                      "descricao",
-                      event.target.value
-                    )
+                  value={descricao}
+                  onChange={(e) =>
+                    setDescricao(e.target.value)
                   }
-                  placeholder="Ex.: Compra de material"
-                  className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500"
+                  placeholder="Descrição da movimentação"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
                 />
+              </div>
+
+              {/* VALOR */}
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Valor *
+                </label>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  value={valor}
+                  onChange={(e) =>
+                    setValor(e.target.value)
+                  }
+                  disabled={tipo === "Pagamento funcionário"}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-lg font-bold outline-none focus:border-blue-500 disabled:bg-slate-100"
+                />
+
+                {tipo === "Pagamento funcionário" && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Calculado automaticamente pelo salário,
+                    adicionais, descontos e adiantamento.
+                  </p>
+                )}
+              </div>
+
+              {/* DATA + FORMA */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Data
+                  </label>
+
+                  <input
+                    type="date"
+                    value={dataMovimento}
+                    onChange={(e) =>
+                      setDataMovimento(e.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Forma de pagamento
+                  </label>
+
+                  <select
+                    value={formaPagamento}
+                    onChange={(e) =>
+                      setFormaPagamento(e.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    <option value="">
+                      Selecione
+                    </option>
+                    <option value="Pix">Pix</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Transferência">
+                      Transferência
+                    </option>
+                    <option value="Débito">
+                      Cartão de débito
+                    </option>
+                    <option value="Crédito">
+                      Cartão de crédito
+                    </option>
+                    <option value="Boleto">
+                      Boleto
+                    </option>
+                    <option value="Outro">
+                      Outro
+                    </option>
+                  </select>
+                </div>
+
               </div>
 
               {/* CATEGORIA */}
               <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-700">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Categoria
                 </label>
 
                 <input
-                  value={form.categoria}
-                  onChange={(event) =>
-                    updateField(
-                      "categoria",
-                      event.target.value
-                    )
+                  value={categoria}
+                  onChange={(e) =>
+                    setCategoria(e.target.value)
                   }
-                  placeholder="Ex.: Material, combustível, salário..."
-                  className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500"
+                  placeholder="Ex.: Material, combustível, aluguel..."
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
                 />
               </div>
 
               {/* MOTIVO */}
-              {(form.tipo === "Sangria" ||
-                form.tipo === "Pró-labore") && (
+              {(tipo === "Sangria" ||
+                tipo === "Pró-labore") && (
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-gray-700">
-                    Motivo da retirada *
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Motivo
                   </label>
 
                   <input
-                    value={form.motivo}
-                    onChange={(event) =>
-                      updateField(
-                        "motivo",
-                        event.target.value
-                      )
+                    value={motivo}
+                    onChange={(e) =>
+                      setMotivo(e.target.value)
                     }
                     placeholder={
-                      form.tipo === "Sangria"
-                        ? "Ex.: Compra de material"
-                        : "Ex.: Pró-labore referente ao mês"
+                      tipo === "Sangria"
+                        ? "Ex.: Retirada para pagamento de fornecedor"
+                        : "Ex.: Pró-labore do mês"
                     }
-                    className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
                   />
                 </div>
               )}
 
               {/* OBSERVAÇÕES */}
               <div>
-                <label className="mb-2 block text-sm font-semibold text-gray-700">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Observações
                 </label>
 
                 <textarea
-                  value={form.observacoes}
-                  onChange={(event) =>
-                    updateField(
-                      "observacoes",
-                      event.target.value
-                    )
+                  value={observacoes}
+                  onChange={(e) =>
+                    setObservacoes(e.target.value)
                   }
-                  rows={4}
-                  placeholder="Observações..."
-                  className="w-full resize-none rounded-xl border px-4 py-3 outline-none focus:border-blue-500"
+                  rows={3}
+                  placeholder="Informações adicionais..."
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
                 />
               </div>
 
-              {/* AVISO */}
-              {form.tipo !== "Entrada" && (
-                <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                  <strong>Atenção:</strong>{" "}
-                  esta movimentação será registrada
-                  como saída e reduzirá o saldo do
-                  caixa.
-                </div>
-              )}
-            </div>
+              {/* BOTÕES */}
+              <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
 
-            <div className="flex flex-col-reverse gap-3 border-t bg-gray-50 p-5 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() =>
-                  setShowForm(false)
-                }
-                className="rounded-xl border bg-white px-5 py-3 font-semibold text-gray-700 hover:bg-gray-100"
-              >
-                Cancelar
-              </button>
+                <button
+                  onClick={() => {
+                    setModal(false);
+                    limparFormulario();
+                  }}
+                  className="rounded-xl border border-slate-200 px-5 py-3 font-semibold text-slate-700"
+                >
+                  Cancelar
+                </button>
 
-              <button
-                type="button"
-                onClick={saveMovement}
-                disabled={saving}
-                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                {saving
-                  ? "Salvando..."
-                  : editingId
-                  ? "Salvar alterações"
-                  : "Registrar movimentação"}
-              </button>
+                <button
+                  onClick={salvar}
+                  disabled={salvando}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-50"
+                >
+                  <CheckCircle2 size={18} />
+
+                  {salvando
+                    ? "Salvando..."
+                    : editando
+                    ? "Salvar alterações"
+                    : "Salvar movimentação"}
+                </button>
+
+              </div>
             </div>
           </div>
         </div>
