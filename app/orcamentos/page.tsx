@@ -16,7 +16,12 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type BudgetStatus =
@@ -49,6 +54,8 @@ type Budget = {
   discountValue: number;
   referenceValue: number;
   finalValue: number;
+  materialsValue: number;
+  totalValue: number;
 };
 
 type Client = {
@@ -78,13 +85,6 @@ function money(value: number) {
   });
 }
 
-/*
- * Converte valores digitados em:
- * 250
- * 250,50
- * 1.250,50
- * R$ 1.250,50
- */
 function toNumber(value: string | number | null | undefined) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -152,6 +152,11 @@ export default function OrcamentosPage() {
   const [discountPercent, setDiscountPercent] = useState("");
   const [desiredAmount, setDesiredAmount] = useState("");
 
+  /*
+   * MATERIAL SEPARADO DOS SERVIÇOS
+   */
+  const [materialsValue, setMaterialsValue] = useState("");
+
   const [negotiationMessage, setNegotiationMessage] =
     useState("");
 
@@ -166,7 +171,7 @@ export default function OrcamentosPage() {
   );
 
   /*
-   * SOMA AUTOMÁTICA DOS ITENS
+   * SOMA AUTOMÁTICA DOS SERVIÇOS
    */
   const subtotal = useMemo(() => {
     return items.reduce(
@@ -183,6 +188,9 @@ export default function OrcamentosPage() {
   const discountValue =
     subtotal * (discountNumber / 100);
 
+  /*
+   * VALOR FINAL DOS SERVIÇOS
+   */
   const finalValue = Math.max(
     0,
     subtotal - discountValue
@@ -191,14 +199,27 @@ export default function OrcamentosPage() {
   const desiredNumber = toNumber(desiredAmount);
 
   /*
-   * Exemplo:
-   * Quero receber 450
-   * desconto 10%
-   * referência = 450 / 0,90 = 500
+   * MATERIAL
+   */
+  const materialsNumber = Math.max(
+    0,
+    toNumber(materialsValue)
+  );
+
+  /*
+   * TOTAL GERAL
+   */
+  const grandTotal = finalValue + materialsNumber;
+
+  /*
+   * CALCULADORA DE NEGOCIAÇÃO
    */
   const calculatedReference =
-    discountNumber > 0 && desiredNumber > 0
-      ? desiredNumber / (1 - discountNumber / 100)
+    discountNumber > 0 &&
+    discountNumber < 100 &&
+    desiredNumber > 0
+      ? desiredNumber /
+        (1 - discountNumber / 100)
       : 0;
 
   async function loadData() {
@@ -224,6 +245,7 @@ export default function OrcamentosPage() {
 
     if (budgetsResult.error) {
       console.error(budgetsResult.error);
+
       alert(
         "Não foi possível carregar os orçamentos."
       );
@@ -231,12 +253,17 @@ export default function OrcamentosPage() {
 
     if (clientsResult.error) {
       console.error(clientsResult.error);
-      alert("Não foi possível carregar os clientes.");
+
+      alert(
+        "Não foi possível carregar os clientes."
+      );
     }
 
     const formattedBudgets: Budget[] =
       (budgetsResult.data ?? []).map((item) => {
-        const legacyValue = Number(item.valor ?? 0);
+        const legacyValue = Number(
+          item.valor ?? 0
+        );
 
         let loadedItems: BudgetItem[] = [];
 
@@ -255,17 +282,19 @@ export default function OrcamentosPage() {
               },
               index: number
             ) => ({
-              id:
-                String(
-                  entry.id ??
-                    `legacy-${item.id}-${index}`
-                ),
+              id: String(
+                entry.id ??
+                  `legacy-${item.id}-${index}`
+              ),
+
               description: String(
                 entry.description ?? ""
               ),
+
               quantity: String(
                 entry.quantity ?? 1
               ),
+
               unitValue: String(
                 entry.unitValue ?? 0
               ),
@@ -274,7 +303,7 @@ export default function OrcamentosPage() {
         }
 
         /*
-         * Compatibilidade com orçamentos antigos.
+         * COMPATIBILIDADE COM ORÇAMENTOS ANTIGOS
          */
         if (loadedItems.length === 0) {
           loadedItems = [
@@ -283,7 +312,9 @@ export default function OrcamentosPage() {
               description:
                 item.servico ?? "Serviço",
               quantity: "1",
-              unitValue: String(legacyValue),
+              unitValue: String(
+                legacyValue
+              ),
             },
           ];
         }
@@ -305,13 +336,16 @@ export default function OrcamentosPage() {
           );
 
         const loadedDiscountValue =
-          Number(item.desconto_valor ?? 0) ||
+          Number(
+            item.desconto_valor ?? 0
+          ) ||
           loadedSubtotal *
             (loadedDiscountPercent / 100);
 
         const loadedReference =
-          Number(item.valor_referencia ?? 0) ||
-          loadedSubtotal;
+          Number(
+            item.valor_referencia ?? 0
+          ) || loadedSubtotal;
 
         const loadedFinal =
           Number(item.valor_final ?? 0) ||
@@ -322,22 +356,51 @@ export default function OrcamentosPage() {
                 loadedDiscountValue
           );
 
+        /*
+         * MATERIAL DOS ORÇAMENTOS NOVOS
+         *
+         * Orçamentos antigos recebem 0.
+         */
+        const loadedMaterials =
+          Math.max(
+            0,
+            Number(
+              item.materiais_valor ?? 0
+            )
+          );
+
+        const loadedTotal =
+          Number(
+            item.total_geral ?? 0
+          ) ||
+          loadedFinal +
+            loadedMaterials;
+
         return {
           id: item.id,
+
           number: item.numero,
+
           client: item.cliente_nome,
+
           clientId: item.cliente_id,
+
           city: item.cidade ?? "",
+
           service:
             item.servico ??
             loadedItems
               .map(
-                (entry) => entry.description
+                (entry) =>
+                  entry.description
               )
               .join(", "),
+
           equipment:
             item.equipamentos ?? "",
+
           value: loadedFinal,
+
           date: item.data
             ? new Date(
                 `${item.data}T00:00:00`
@@ -345,21 +408,36 @@ export default function OrcamentosPage() {
                 "pt-BR"
               )
             : "",
+
           status:
             item.status as BudgetStatus,
+
           items: loadedItems,
+
           subtotal: loadedSubtotal,
+
           discountPercent:
             loadedDiscountPercent,
+
           discountValue:
             loadedDiscountValue,
+
           referenceValue:
             loadedReference,
-          finalValue: loadedFinal,
+
+          finalValue:
+            loadedFinal,
+
+          materialsValue:
+            loadedMaterials,
+
+          totalValue:
+            loadedTotal,
         };
       });
 
     setBudgets(formattedBudgets);
+
     setClients(
       (clientsResult.data ??
         []) as Client[]
@@ -370,16 +448,23 @@ export default function OrcamentosPage() {
 
   function clearForm() {
     setClientId("");
+
     setCity("");
+
     setEquipment("");
+
     setDate("");
 
     setItems([newItem()]);
 
     setDiscountPercent("");
+
     setDesiredAmount("");
 
+    setMaterialsValue("");
+
     setNegotiationMessage("");
+
     setShowNegotiation(false);
   }
 
@@ -447,6 +532,7 @@ export default function OrcamentosPage() {
 
   function openNewBudget() {
     clearForm();
+
     setShowForm(true);
   }
 
@@ -464,11 +550,6 @@ export default function OrcamentosPage() {
     }
   }
 
-  /*
-   * ATUALIZA QUALQUER CAMPO DO ITEM
-   * SEM CONVERTER PARA NÚMERO DURANTE A DIGITAÇÃO.
-   * Isso resolve o problema no celular.
-   */
   function updateItem(
     id: string,
     field:
@@ -511,23 +592,14 @@ export default function OrcamentosPage() {
   }
 
   /*
-   * APLICA A NEGOCIAÇÃO
-   *
-   * Exemplo:
-   * subtotal atual = 600
-   * quero receber = 450
-   * desconto = 10%
-   *
-   * referência necessária = 500
-   *
-   * Os valores dos itens são ajustados
-   * proporcionalmente para chegar nos R$500.
+   * NEGOCIAÇÃO INTERNA
    */
   function applyNegotiation() {
     if (desiredNumber <= 0) {
       setNegotiationMessage(
         "Informe quanto você quer receber."
       );
+
       return;
     }
 
@@ -535,6 +607,15 @@ export default function OrcamentosPage() {
       setNegotiationMessage(
         "Informe a porcentagem de desconto."
       );
+
+      return;
+    }
+
+    if (discountNumber >= 100) {
+      setNegotiationMessage(
+        "Para usar a calculadora de negociação, o desconto deve ser menor que 100%."
+      );
+
       return;
     }
 
@@ -542,6 +623,7 @@ export default function OrcamentosPage() {
       setNegotiationMessage(
         "Não foi possível calcular o valor de referência."
       );
+
       return;
     }
 
@@ -552,6 +634,7 @@ export default function OrcamentosPage() {
       setNegotiationMessage(
         "O valor de referência precisa ser maior que o valor final."
       );
+
       return;
     }
 
@@ -559,28 +642,34 @@ export default function OrcamentosPage() {
       setNegotiationMessage(
         "Adicione serviços e valores antes de aplicar a negociação."
       );
+
       return;
     }
 
     const factor =
-      calculatedReference / subtotal;
+      calculatedReference /
+      subtotal;
 
     setItems((current) =>
       current.map((item) => {
-        const oldValue = toNumber(
-          item.unitValue
-        );
+        const oldValue =
+          toNumber(
+            item.unitValue
+          );
 
         const newValue =
           oldValue * factor;
 
         return {
           ...item,
+
           unitValue:
-            newValue.toFixed(2).replace(
-              ".",
-              ","
-            ),
+            newValue
+              .toFixed(2)
+              .replace(
+                ".",
+                ","
+              ),
         };
       })
     );
@@ -699,6 +788,7 @@ export default function OrcamentosPage() {
       alert(
         "O orçamento precisa estar aprovado para gerar uma OS."
       );
+
       return;
     }
 
@@ -706,6 +796,7 @@ export default function OrcamentosPage() {
       alert(
         "Este orçamento não possui cliente vinculado."
       );
+
       return;
     }
 
@@ -714,8 +805,14 @@ export default function OrcamentosPage() {
         `Gerar Ordem de Serviço para ${budget.client}?\n\n` +
           `Orçamento: ${budget.number}\n` +
           `Serviços: ${budget.service}\n` +
-          `Valor final: ${money(
+          `Valor dos serviços: ${money(
             budget.finalValue
+          )}\n` +
+          `Materiais: ${money(
+            budget.materialsValue
+          )}\n` +
+          `Total geral: ${money(
+            budget.totalValue
           )}`
       );
 
@@ -760,6 +857,7 @@ export default function OrcamentosPage() {
         alert(
           "A Ordem de Serviço deste orçamento já foi gerada."
         );
+
         return;
       }
 
@@ -785,34 +883,59 @@ export default function OrcamentosPage() {
           budget.service
         );
 
+      const materialDescription =
+        budget.materialsValue > 0
+          ? `\nMateriais: ${money(
+              budget.materialsValue
+            )}`
+          : "";
+
       const { error } =
         await supabase
           .from("ordens_servico")
           .insert({
             numero: number,
+
             cliente_id:
               budget.clientId,
+
             cliente_nome:
               budget.client,
+
             equipamento:
               budget.equipment ||
               "Não informado",
+
             cidade:
               budget.city,
+
             tipo_servico:
               serviceType,
+
             descricao:
-              serviceDescription ||
-              budget.service,
+              (
+                serviceDescription ||
+                budget.service
+              ) +
+              materialDescription,
+
             data: new Date()
               .toISOString()
               .slice(0, 10),
+
             tecnico: null,
+
             valor:
               budget.finalValue,
+
             status: "Aberta",
+
             observacoes:
-              `Gerada automaticamente a partir do orçamento ${budget.number}.`,
+              `Gerada automaticamente a partir do orçamento ${budget.number}. Materiais previstos: ${money(
+                budget.materialsValue
+              )}. Total geral do orçamento: ${money(
+                budget.totalValue
+              )}.`,
           });
 
       if (error) {
@@ -839,7 +962,7 @@ export default function OrcamentosPage() {
   }
 
   async function saveBudget(
-    event: React.FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -847,6 +970,7 @@ export default function OrcamentosPage() {
       alert(
         "Selecione um cliente."
       );
+
       return;
     }
 
@@ -854,6 +978,7 @@ export default function OrcamentosPage() {
       alert(
         "Informe a cidade."
       );
+
       return;
     }
 
@@ -873,6 +998,15 @@ export default function OrcamentosPage() {
       alert(
         "Adicione pelo menos um serviço com descrição, quantidade e valor."
       );
+
+      return;
+    }
+
+    if (discountNumber >= 100) {
+      alert(
+        "O desconto deve ser menor que 100%."
+      );
+
       return;
     }
 
@@ -886,6 +1020,7 @@ export default function OrcamentosPage() {
       alert(
         "Cliente não encontrado."
       );
+
       return;
     }
 
@@ -896,16 +1031,20 @@ export default function OrcamentosPage() {
         validItems.map(
           (item) => ({
             id: item.id,
+
             description:
               item.description.trim(),
+
             quantity:
               toNumber(
                 item.quantity
               ),
+
             unitValue:
               toNumber(
                 item.unitValue
               ),
+
             total:
               itemTotal(item),
           })
@@ -929,6 +1068,18 @@ export default function OrcamentosPage() {
             calculatedDiscount
         );
 
+      const calculatedMaterials =
+        Math.max(
+          0,
+          toNumber(
+            materialsValue
+          )
+        );
+
+      const calculatedTotal =
+        calculatedFinal +
+        calculatedMaterials;
+
       const number =
         generateNumber();
 
@@ -945,21 +1096,35 @@ export default function OrcamentosPage() {
           .from("orcamentos")
           .insert({
             numero: number,
+
             cliente_id:
               selected.id,
+
             cliente_nome:
               selected.nome,
+
             cidade:
               city.trim(),
+
             servico:
               serviceDescription,
+
             equipamentos:
               equipment.trim() ||
               null,
+
+            /*
+             * Mantemos "valor" como
+             * valor final dos serviços
+             * para compatibilidade
+             * com o sistema atual.
+             */
             valor:
               calculatedFinal,
+
             data:
               date || null,
+
             status:
               "Rascunho",
 
@@ -980,6 +1145,12 @@ export default function OrcamentosPage() {
 
             valor_final:
               calculatedFinal,
+
+            materiais_valor:
+              calculatedMaterials,
+
+            total_geral:
+              calculatedTotal,
           });
 
       if (error) {
@@ -1096,11 +1267,17 @@ export default function OrcamentosPage() {
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
+
       <head>
+
         <meta charset="UTF-8">
-        <title>${budget.number}</title>
+
+        <title>
+          ${budget.number}
+        </title>
 
         <style>
+
           * {
             box-sizing: border-box;
           }
@@ -1159,7 +1336,7 @@ export default function OrcamentosPage() {
           }
 
           .totals {
-            width: 320px;
+            width: 340px;
             margin-left: auto;
             margin-top: 25px;
           }
@@ -1168,6 +1345,10 @@ export default function OrcamentosPage() {
             display: flex;
             justify-content: space-between;
             padding: 7px 0;
+          }
+
+          .materials {
+            color: #2563eb;
           }
 
           .final {
@@ -1184,68 +1365,122 @@ export default function OrcamentosPage() {
             color: #6b7280;
             text-align: center;
           }
+
         </style>
+
       </head>
 
       <body>
 
         <div class="header">
+
           <div>
-            <h1>Nando's Ar-Condicionado</h1>
+
+            <h1>
+              Nando's Ar-Condicionado
+            </h1>
 
             <div class="muted">
               Qualidade e confiança em todos os detalhes.
             </div>
+
           </div>
 
           <div>
-            <strong>ORÇAMENTO</strong>
+
+            <strong>
+              ORÇAMENTO
+            </strong>
+
             <br>
+
             ${budget.number}
+
             <br>
+
             ${
               budget.date ||
               new Date().toLocaleDateString(
                 "pt-BR"
               )
             }
+
           </div>
+
         </div>
 
         <div class="client">
-          <strong>Cliente:</strong>
+
+          <strong>
+            Cliente:
+          </strong>
+
           ${budget.client}
 
           <br>
 
-          <strong>Cidade:</strong>
+          <strong>
+            Cidade:
+          </strong>
+
           ${budget.city}
+
+          ${
+            budget.equipment
+              ? `
+                <br>
+                <strong>
+                  Equipamento:
+                </strong>
+                ${budget.equipment}
+              `
+              : ""
+          }
+
         </div>
 
         <h2>
-          Serviços e itens
+          Serviços
         </h2>
 
         <table>
+
           <thead>
+
             <tr>
-              <th>Descrição</th>
-              <th>Qtd.</th>
-              <th>Valor unit.</th>
-              <th>Total</th>
+
+              <th>
+                Descrição
+              </th>
+
+              <th>
+                Qtd.
+              </th>
+
+              <th>
+                Valor unit.
+              </th>
+
+              <th>
+                Total
+              </th>
+
             </tr>
+
           </thead>
 
           <tbody>
             ${itemsHtml}
           </tbody>
+
         </table>
 
         <div class="totals">
 
           <div class="row">
+
             <span>
-              Subtotal
+              Subtotal dos serviços
             </span>
 
             <strong>
@@ -1253,6 +1488,7 @@ export default function OrcamentosPage() {
                 budget.referenceValue
               )}
             </strong>
+
           </div>
 
           ${
@@ -1260,6 +1496,7 @@ export default function OrcamentosPage() {
             0
               ? `
                 <div class="row">
+
                   <span>
                     Desconto especial
                     (${budget.discountPercent.toFixed(
@@ -1272,14 +1509,16 @@ export default function OrcamentosPage() {
                       budget.discountValue
                     )}
                   </strong>
+
                 </div>
               `
               : ""
           }
 
-          <div class="row final">
+          <div class="row">
+
             <span>
-              Total
+              Serviços com desconto
             </span>
 
             <strong>
@@ -1287,17 +1526,58 @@ export default function OrcamentosPage() {
                 budget.finalValue
               )}
             </strong>
+
+          </div>
+
+          ${
+            budget.materialsValue >
+            0
+              ? `
+                <div class="row materials">
+
+                  <span>
+                    Materiais
+                  </span>
+
+                  <strong>
+                    ${money(
+                      budget.materialsValue
+                    )}
+                  </strong>
+
+                </div>
+              `
+              : ""
+          }
+
+          <div class="row final">
+
+            <span>
+              Total geral
+            </span>
+
+            <strong>
+              ${money(
+                budget.totalValue
+              )}
+            </strong>
+
           </div>
 
         </div>
 
         <div class="footer">
+
           Nando's Ar-Condicionado
+
           <br>
+
           Qualidade e confiança em todos os detalhes.
+
         </div>
 
       </body>
+
       </html>
     `;
 
@@ -1344,8 +1624,9 @@ export default function OrcamentosPage() {
       `Olá, ${budget.client}! 👋\n\n` +
       `Segue o orçamento da Nando's Ar-Condicionado.\n\n` +
       `*Orçamento ${budget.number}*\n\n` +
+      `*Serviços:*\n` +
       `${lines}\n\n` +
-      `Subtotal: ${money(
+      `Subtotal dos serviços: ${money(
         budget.referenceValue
       )}\n` +
       `${
@@ -1355,11 +1636,22 @@ export default function OrcamentosPage() {
               2
             )}% (-${money(
               budget.discountValue
-            )})\n`
+            )})\n` +
+            `Serviços com desconto: ${money(
+              budget.finalValue
+            )}\n`
           : ""
       }` +
-      `*Total: ${money(
-        budget.finalValue
+      `${
+        budget.materialsValue >
+        0
+          ? `Materiais: ${money(
+              budget.materialsValue
+            )}\n`
+          : ""
+      }` +
+      `*Total geral: ${money(
+        budget.totalValue
       )}*\n\n` +
       `Qualidade e confiança em todos os detalhes.`;
 
@@ -1374,7 +1666,7 @@ export default function OrcamentosPage() {
   const totalValue =
     budgets.reduce(
       (sum, budget) =>
-        sum + budget.finalValue,
+        sum + budget.totalValue,
       0
     );
 
@@ -1404,14 +1696,16 @@ export default function OrcamentosPage() {
         <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
 
           <div>
+
             <h1 className="text-2xl font-bold md:text-3xl">
               Orçamentos
             </h1>
 
             <p className="mt-1 text-sm text-slate-400">
               Controle de propostas,
-              serviços e negociações.
+              serviços, materiais e negociações.
             </p>
+
           </div>
 
           <button
@@ -1420,8 +1714,11 @@ export default function OrcamentosPage() {
             }
             className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-400"
           >
+
             <Plus className="h-5 w-5" />
+
             Novo orçamento
+
           </button>
 
         </div>
@@ -1431,6 +1728,7 @@ export default function OrcamentosPage() {
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+
             <p className="text-xs text-slate-500">
               Total
             </p>
@@ -1438,9 +1736,11 @@ export default function OrcamentosPage() {
             <p className="mt-1 text-2xl font-bold">
               {budgets.length}
             </p>
+
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+
             <p className="text-xs text-slate-500">
               Aprovados
             </p>
@@ -1448,9 +1748,11 @@ export default function OrcamentosPage() {
             <p className="mt-1 text-2xl font-bold text-emerald-400">
               {approvedBudgets}
             </p>
+
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+
             <p className="text-xs text-slate-500">
               Pendentes
             </p>
@@ -1458,9 +1760,11 @@ export default function OrcamentosPage() {
             <p className="mt-1 text-2xl font-bold text-blue-400">
               {pendingBudgets}
             </p>
+
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+
             <p className="text-xs text-slate-500">
               Valor total
             </p>
@@ -1468,6 +1772,7 @@ export default function OrcamentosPage() {
             <p className="mt-1 text-xl font-bold">
               {money(totalValue)}
             </p>
+
           </div>
 
         </div>
@@ -1506,6 +1811,7 @@ export default function OrcamentosPage() {
             }
             className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm outline-none"
           >
+
             <option value="Todos">
               Todos os status
             </option>
@@ -1520,6 +1826,7 @@ export default function OrcamentosPage() {
                 </option>
               )
             )}
+
           </select>
 
         </div>
@@ -1527,11 +1834,16 @@ export default function OrcamentosPage() {
         {/* LISTA */}
 
         {loading ? (
+
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center text-slate-400">
+
             Carregando orçamentos...
+
           </div>
+
         ) : filteredBudgets.length ===
           0 ? (
+
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center">
 
             <FileText className="mx-auto mb-3 h-10 w-10 text-slate-600" />
@@ -1545,11 +1857,14 @@ export default function OrcamentosPage() {
             </p>
 
           </div>
+
         ) : (
+
           <div className="space-y-3">
 
             {filteredBudgets.map(
               (budget) => (
+
                 <div
                   key={budget.id}
                   className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
@@ -1573,24 +1888,46 @@ export default function OrcamentosPage() {
 
                         {budget.items.length >
                           1 && (
+
                           <span className="rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-400">
+
                             {
                               budget
                                 .items
                                 .length
                             }{" "}
                             itens
+
                           </span>
+
                         )}
 
                         {budget.discountPercent >
                           0 && (
+
                           <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-400">
+
                             {budget.discountPercent.toFixed(
                               2
                             )}
                             % desconto
+
                           </span>
+
+                        )}
+
+                        {budget.materialsValue >
+                          0 && (
+
+                          <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-400">
+
+                            Materiais{" "}
+                            {money(
+                              budget.materialsValue
+                            )}
+
+                          </span>
+
                         )}
 
                       </div>
@@ -1598,36 +1935,44 @@ export default function OrcamentosPage() {
                       <div className="grid gap-2 text-sm text-slate-300 md:grid-cols-2">
 
                         <div className="flex items-start gap-2">
+
                           <User className="mt-0.5 h-4 w-4 text-cyan-400" />
 
                           <span>
                             {budget.client}
                           </span>
+
                         </div>
 
                         <div className="flex items-start gap-2">
+
                           <Wrench className="mt-0.5 h-4 w-4 text-cyan-400" />
 
                           <span className="line-clamp-2">
                             {budget.service}
                           </span>
+
                         </div>
 
                         <div className="flex items-start gap-2">
+
                           <ClipboardList className="mt-0.5 h-4 w-4 text-cyan-400" />
 
                           <span>
                             {budget.city}
                           </span>
+
                         </div>
 
                         <div className="flex items-start gap-2">
+
                           <CalendarDays className="mt-0.5 h-4 w-4 text-cyan-400" />
 
                           <span>
                             {budget.date ||
                               "Sem data"}
                           </span>
+
                         </div>
 
                       </div>
@@ -1636,20 +1981,41 @@ export default function OrcamentosPage() {
 
                     <div className="flex flex-col gap-3 lg:items-end">
 
-                      <div className="text-xl font-bold">
+                      <div className="text-xl font-bold text-emerald-400">
+                        {money(
+                          budget.totalValue
+                        )}
+                      </div>
+
+                      <div className="text-xs text-slate-500">
+                        Serviços:{" "}
                         {money(
                           budget.finalValue
                         )}
                       </div>
 
+                      {budget.materialsValue >
+                        0 && (
+
+                        <div className="text-xs text-blue-400">
+                          Materiais:{" "}
+                          {money(
+                            budget.materialsValue
+                          )}
+                        </div>
+
+                      )}
+
                       {budget.discountPercent >
                         0 && (
+
                         <div className="text-xs text-slate-500">
                           Referência:{" "}
                           {money(
                             budget.referenceValue
                           )}
                         </div>
+
                       )}
 
                       <div className="flex flex-wrap gap-2">
@@ -1662,8 +2028,11 @@ export default function OrcamentosPage() {
                           }
                           className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
                         >
+
                           <Eye className="h-4 w-4" />
+
                           Visualizar
+
                         </button>
 
                         <button
@@ -1674,8 +2043,11 @@ export default function OrcamentosPage() {
                           }
                           className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
                         >
+
                           <FileText className="h-4 w-4" />
+
                           Imprimir
+
                         </button>
 
                         <button
@@ -1686,12 +2058,16 @@ export default function OrcamentosPage() {
                           }
                           className="flex items-center gap-2 rounded-lg border border-emerald-700/50 px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10"
                         >
+
                           <MessageCircle className="h-4 w-4" />
+
                           WhatsApp
+
                         </button>
 
                         {budget.status ===
                           "Aprovado" && (
+
                           <button
                             onClick={() =>
                               generateServiceOrder(
@@ -1704,13 +2080,16 @@ export default function OrcamentosPage() {
                             }
                             className="flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
                           >
+
                             <CheckCircle2 className="h-4 w-4" />
 
                             {generatingOrderId ===
                             budget.id
                               ? "Gerando..."
                               : "Gerar OS"}
+
                           </button>
+
                         )}
 
                         <select
@@ -1729,10 +2108,12 @@ export default function OrcamentosPage() {
                           }
                           className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs outline-none"
                         >
+
                           {statuses.map(
                             (
                               status
                             ) => (
+
                               <option
                                 key={
                                   status
@@ -1743,8 +2124,10 @@ export default function OrcamentosPage() {
                               >
                                 {status}
                               </option>
+
                             )
                           )}
+
                         </select>
 
                         <button
@@ -1756,7 +2139,9 @@ export default function OrcamentosPage() {
                           className="rounded-lg border border-red-900/50 p-2 text-red-400 hover:bg-red-500/10"
                           title="Excluir"
                         >
+
                           <Trash2 className="h-4 w-4" />
+
                         </button>
 
                       </div>
@@ -1766,10 +2151,12 @@ export default function OrcamentosPage() {
                   </div>
 
                 </div>
+
               )
             )}
 
           </div>
+
         )}
 
       </div>
@@ -1777,6 +2164,7 @@ export default function OrcamentosPage() {
       {/* MODAL NOVO ORÇAMENTO */}
 
       {showForm && (
+
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-3 md:p-6">
 
           <div className="mx-auto my-4 max-w-5xl rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl md:my-10">
@@ -1784,13 +2172,15 @@ export default function OrcamentosPage() {
             <div className="flex items-center justify-between border-b border-slate-800 p-5">
 
               <div>
+
                 <h2 className="text-xl font-bold">
                   Novo orçamento
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Adicione quantos serviços forem necessários.
+                  Adicione serviços e informe os materiais separadamente.
                 </p>
+
               </div>
 
               <button
@@ -1799,7 +2189,9 @@ export default function OrcamentosPage() {
                 }
                 className="rounded-lg p-2 hover:bg-slate-800"
               >
+
                 <X className="h-5 w-5" />
+
               </button>
 
             </div>
@@ -1845,6 +2237,7 @@ export default function OrcamentosPage() {
 
                       {clients.map(
                         (client) => (
+
                           <option
                             key={
                               client.id
@@ -1857,6 +2250,7 @@ export default function OrcamentosPage() {
                               client.nome
                             }
                           </option>
+
                         )
                       )}
 
@@ -1941,20 +2335,22 @@ export default function OrcamentosPage() {
 
                 </div>
 
-                {/* ITENS */}
+                {/* SERVIÇOS */}
 
                 <div>
 
                   <div className="mb-3 flex items-center justify-between gap-3">
 
                     <div>
+
                       <h3 className="font-semibold">
                         Serviços / itens
                       </h3>
 
                       <p className="text-xs text-slate-500">
-                        A quantidade e os valores são calculados automaticamente.
+                        Adicione quantos serviços forem necessários.
                       </p>
+
                     </div>
 
                     <button
@@ -1964,8 +2360,11 @@ export default function OrcamentosPage() {
                       }
                       className="flex items-center gap-2 rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
                     >
+
                       <Plus className="h-4 w-4" />
+
                       Adicionar item
+
                     </button>
 
                   </div>
@@ -1995,6 +2394,7 @@ export default function OrcamentosPage() {
 
                             {items.length >
                               1 && (
+
                               <button
                                 type="button"
                                 onClick={() =>
@@ -2004,8 +2404,11 @@ export default function OrcamentosPage() {
                                 }
                                 className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
                               >
+
                                 <Trash2 className="h-4 w-4" />
+
                               </button>
+
                             )}
 
                           </div>
@@ -2104,11 +2507,13 @@ export default function OrcamentosPage() {
                               </label>
 
                               <div className="rounded-lg border border-cyan-500/20 bg-slate-950 px-3 py-3 text-sm font-bold text-cyan-400">
+
                                 {money(
                                   itemTotal(
                                     item
                                   )
                                 )}
+
                               </div>
 
                             </div>
@@ -2119,6 +2524,73 @@ export default function OrcamentosPage() {
 
                       )
                     )}
+
+                  </div>
+
+                </div>
+
+                {/* MATERIAIS */}
+
+                <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-5">
+
+                  <div className="mb-4">
+
+                    <h3 className="font-semibold text-blue-300">
+                      Materiais
+                    </h3>
+
+                    <p className="mt-1 text-xs text-blue-200/60">
+                      Informe separadamente o valor dos materiais. Esse valor será apresentado ao cliente no orçamento.
+                    </p>
+
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+
+                    <div>
+
+                      <label className="mb-2 block text-sm font-medium">
+                        Valor dos materiais
+                      </label>
+
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          materialsValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setMaterialsValue(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        placeholder="Ex.: 250,00"
+                        className="w-full rounded-xl border border-blue-500/20 bg-slate-950 px-4 py-3 text-lg font-semibold outline-none focus:border-blue-400"
+                      />
+
+                    </div>
+
+                    <div className="rounded-xl bg-slate-950 p-4">
+
+                      <p className="text-xs text-slate-500">
+                        Materiais
+                      </p>
+
+                      <p className="mt-1 text-2xl font-bold text-blue-400">
+                        {money(
+                          materialsNumber
+                        )}
+                      </p>
+
+                      <p className="mt-2 text-xs text-slate-500">
+                        O pagamento antecipado e o QR Code Pix serão adicionados na próxima etapa.
+                      </p>
+
+                    </div>
 
                   </div>
 
@@ -2135,13 +2607,15 @@ export default function OrcamentosPage() {
                       <Percent className="h-5 w-5 text-cyan-400" />
 
                       <div>
+
                         <h3 className="font-semibold">
                           Desconto
                         </h3>
 
                         <p className="text-xs text-slate-500">
-                          O desconto será apresentado ao cliente.
+                          O desconto será aplicado somente aos serviços.
                         </p>
+
                       </div>
 
                     </div>
@@ -2172,8 +2646,9 @@ export default function OrcamentosPage() {
                     <div className="mt-4 space-y-2 text-sm">
 
                       <div className="flex justify-between">
+
                         <span className="text-slate-400">
-                          Subtotal
+                          Subtotal dos serviços
                         </span>
 
                         <strong>
@@ -2181,9 +2656,11 @@ export default function OrcamentosPage() {
                             subtotal
                           )}
                         </strong>
+
                       </div>
 
                       <div className="flex justify-between">
+
                         <span className="text-slate-400">
                           Desconto
                         </span>
@@ -2194,17 +2671,46 @@ export default function OrcamentosPage() {
                             discountValue
                           )}
                         </strong>
+
+                      </div>
+
+                      <div className="flex justify-between">
+
+                        <span className="text-slate-400">
+                          Serviços com desconto
+                        </span>
+
+                        <strong>
+                          {money(
+                            finalValue
+                          )}
+                        </strong>
+
+                      </div>
+
+                      <div className="flex justify-between">
+
+                        <span className="text-slate-400">
+                          Materiais
+                        </span>
+
+                        <strong className="text-blue-400">
+                          {money(
+                            materialsNumber
+                          )}
+                        </strong>
+
                       </div>
 
                       <div className="mt-3 flex justify-between border-t border-slate-800 pt-3 text-lg">
 
                         <span>
-                          Total
+                          Total geral
                         </span>
 
                         <strong className="text-emerald-400">
                           {money(
-                            finalValue
+                            grandTotal
                           )}
                         </strong>
 
@@ -2243,9 +2749,11 @@ export default function OrcamentosPage() {
                       }
                       className="mb-3 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-300"
                     >
+
                       {showNegotiation
                         ? "Ocultar calculadora"
                         : "Abrir calculadora de negociação"}
+
                     </button>
 
                     {showNegotiation && (
@@ -2335,11 +2843,13 @@ export default function OrcamentosPage() {
                         </button>
 
                         {negotiationMessage && (
+
                           <p className="rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
                             {
                               negotiationMessage
                             }
                           </p>
+
                         )}
 
                       </div>
@@ -2358,15 +2868,16 @@ export default function OrcamentosPage() {
 
                     <Calculator className="mt-0.5 h-5 w-5 text-cyan-400" />
 
-                    <div>
+                    <div className="flex-1">
 
                       <p className="font-semibold">
                         Resumo do orçamento
                       </p>
 
-                      <div className="mt-2 grid gap-2 text-sm md:grid-cols-3">
+                      <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
 
                         <div>
+
                           <span className="text-slate-500">
                             Itens
                           </span>
@@ -2374,30 +2885,49 @@ export default function OrcamentosPage() {
                           <p className="font-semibold">
                             {items.length}
                           </p>
+
                         </div>
 
                         <div>
+
                           <span className="text-slate-500">
-                            Valor de referência
+                            Serviços
                           </span>
 
                           <p className="font-semibold">
                             {money(
-                              subtotal
-                            )}
-                          </p>
-                        </div>
-
-                        <div>
-                          <span className="text-slate-500">
-                            Total final
-                          </span>
-
-                          <p className="font-semibold text-emerald-400">
-                            {money(
                               finalValue
                             )}
                           </p>
+
+                        </div>
+
+                        <div>
+
+                          <span className="text-slate-500">
+                            Materiais
+                          </span>
+
+                          <p className="font-semibold text-blue-400">
+                            {money(
+                              materialsNumber
+                            )}
+                          </p>
+
+                        </div>
+
+                        <div>
+
+                          <span className="text-slate-500">
+                            Total geral
+                          </span>
+
+                          <p className="text-xl font-bold text-emerald-400">
+                            {money(
+                              grandTotal
+                            )}
+                          </p>
+
                         </div>
 
                       </div>
@@ -2434,6 +2964,7 @@ export default function OrcamentosPage() {
                       alert(
                         "Selecione um cliente."
                       );
+
                       return;
                     }
 
@@ -2453,12 +2984,36 @@ export default function OrcamentosPage() {
                       alert(
                         "Adicione pelo menos um serviço válido."
                       );
+
                       return;
                     }
+
+                    const tempItems =
+                      items
+                        .filter(
+                          (
+                            item
+                          ) =>
+                            item.description.trim() &&
+                            toNumber(
+                              item.quantity
+                            ) > 0 &&
+                            toNumber(
+                              item.unitValue
+                            ) > 0
+                        )
+                        .map(
+                          (
+                            item
+                          ) => ({
+                            ...item,
+                          })
+                        );
 
                     const tempBudget: Budget =
                       {
                         id: "preview",
+
                         number:
                           "PRÉVIA",
 
@@ -2471,13 +3026,7 @@ export default function OrcamentosPage() {
                         city,
 
                         service:
-                          items
-                            .filter(
-                              (
-                                item
-                              ) =>
-                                item.description.trim()
-                            )
+                          tempItems
                             .map(
                               (
                                 item
@@ -2507,20 +3056,7 @@ export default function OrcamentosPage() {
                           "Rascunho",
 
                         items:
-                          items
-                            .filter(
-                              (
-                                item
-                              ) =>
-                                item.description.trim()
-                            )
-                            .map(
-                              (
-                                item
-                              ) => ({
-                                ...item,
-                              })
-                            ),
+                          tempItems,
 
                         subtotal,
 
@@ -2533,6 +3069,12 @@ export default function OrcamentosPage() {
                           subtotal,
 
                         finalValue,
+
+                        materialsValue:
+                          materialsNumber,
+
+                        totalValue:
+                          grandTotal,
                       };
 
                     setPreviewBudget(
@@ -2545,8 +3087,11 @@ export default function OrcamentosPage() {
                   }}
                   className="flex items-center justify-center gap-2 rounded-xl border border-cyan-500/40 px-5 py-3 text-sm font-semibold text-cyan-400 hover:bg-cyan-500/10"
                 >
+
                   <Eye className="h-4 w-4" />
+
                   Ver como cliente
+
                 </button>
 
                 <button
@@ -2556,9 +3101,11 @@ export default function OrcamentosPage() {
                   }
                   className="rounded-xl bg-cyan-500 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
                 >
+
                   {saving
                     ? "Salvando..."
                     : "Salvar orçamento"}
+
                 </button>
 
               </div>
@@ -2568,6 +3115,7 @@ export default function OrcamentosPage() {
           </div>
 
         </div>
+
       )}
 
       {/* VISUALIZAÇÃO DO CLIENTE */}
@@ -2604,7 +3152,9 @@ export default function OrcamentosPage() {
                   }
                   className="rounded-lg p-2 hover:bg-slate-100"
                 >
+
                   <X className="h-5 w-5" />
+
                 </button>
 
               </div>
@@ -2660,6 +3210,22 @@ export default function OrcamentosPage() {
                       previewBudget.city
                     }
                   </p>
+
+                  {previewBudget.equipment && (
+
+                    <p className="mt-2 text-sm text-slate-600">
+
+                      <strong>
+                        Equipamento:
+                      </strong>{" "}
+
+                      {
+                        previewBudget.equipment
+                      }
+
+                    </p>
+
+                  )}
 
                 </div>
 
@@ -2743,7 +3309,7 @@ export default function OrcamentosPage() {
                   <div className="flex justify-between text-sm">
 
                     <span className="text-slate-500">
-                      Subtotal
+                      Subtotal dos serviços
                     </span>
 
                     <strong>
@@ -2778,15 +3344,48 @@ export default function OrcamentosPage() {
 
                   )}
 
+                  <div className="flex justify-between text-sm">
+
+                    <span className="text-slate-500">
+                      Serviços com desconto
+                    </span>
+
+                    <strong>
+                      {money(
+                        previewBudget.finalValue
+                      )}
+                    </strong>
+
+                  </div>
+
+                  {previewBudget.materialsValue >
+                    0 && (
+
+                    <div className="flex justify-between text-sm">
+
+                      <span className="text-slate-500">
+                        Materiais
+                      </span>
+
+                      <strong className="text-blue-600">
+                        {money(
+                          previewBudget.materialsValue
+                        )}
+                      </strong>
+
+                    </div>
+
+                  )}
+
                   <div className="flex justify-between border-t border-slate-300 pt-3 text-xl">
 
                     <span className="font-bold">
-                      Total
+                      Total geral
                     </span>
 
                     <strong className="text-emerald-600">
                       {money(
-                        previewBudget.finalValue
+                        previewBudget.totalValue
                       )}
                     </strong>
 
@@ -2795,9 +3394,13 @@ export default function OrcamentosPage() {
                 </div>
 
                 <div className="border-t border-slate-200 pt-5 text-center text-xs text-slate-500">
+
                   Nando's Ar-Condicionado
+
                   <br />
+
                   Qualidade e confiança em todos os detalhes.
+
                 </div>
 
               </div>
@@ -2823,8 +3426,11 @@ export default function OrcamentosPage() {
                   }
                   className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white"
                 >
+
                   <FileText className="h-4 w-4" />
+
                   Imprimir / PDF
+
                 </button>
 
                 <button
@@ -2835,8 +3441,11 @@ export default function OrcamentosPage() {
                   }
                   className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-white"
                 >
+
                   <MessageCircle className="h-4 w-4" />
+
                   Enviar WhatsApp
+
                 </button>
 
               </div>
