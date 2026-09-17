@@ -1,113 +1,88 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  CalendarDays,
-  RefreshCw,
-  Wallet,
-} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  ArrowLeft,
+  BarChart3,
+  CalendarDays,
+  DollarSign,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 
 type Movimento = {
+  id: string;
   tipo: string;
+  descricao: string;
   valor: number;
   data_movimento: string;
+  forma_pagamento: string;
+  categoria: string;
 };
 
-type ContaPagar = {
-  valor: number;
+type Pagamento = {
+  valor_pago: number;
+  data_pagamento: string | null;
   status: string;
-  vencimento: string | null;
 };
 
-type ContaReceber = {
-  valor: number;
-  status: string;
-  vencimento: string | null;
-};
+const supabase = createClient();
 
-function moeda(valor: number) {
-  return valor.toLocaleString("pt-BR", {
+function dinheiro(valor: number) {
+  return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
   });
 }
 
-function primeiroDiaMes() {
-  const d = new Date();
-  d.setDate(1);
-  return d.toISOString().slice(0, 10);
-}
-
-function hoje() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function RelatoriosFinanceirosPage() {
-  const supabase = createClient();
-
-  const [inicio, setInicio] = useState(primeiroDiaMes());
-  const [fim, setFim] = useState(hoje());
-
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
-  const [contasPagar, setContasPagar] = useState<ContaPagar[]>([]);
-  const [contasReceber, setContasReceber] = useState<ContaReceber[]>([]);
-
-  const [loading, setLoading] = useState(true);
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
+  const [mes, setMes] = useState(
+    new Date().toISOString().slice(0, 7)
+  );
+  const [carregando, setCarregando] = useState(true);
 
   async function carregar() {
-    setLoading(true);
+    setCarregando(true);
 
-    const [
-      movimentosResult,
-      pagarResult,
-      receberResult,
-    ] = await Promise.all([
+    const inicio = `${mes}-01`;
+    const [ano, mesNumero] = mes.split("-").map(Number);
+
+    const ultimoDia = new Date(
+      ano,
+      mesNumero,
+      0
+    ).getDate();
+
+    const fim = `${mes}-${String(ultimoDia).padStart(2, "0")}`;
+
+    const [movRes, pagRes] = await Promise.all([
       supabase
         .from("caixa_movimentacoes")
-        .select("tipo,valor,data_movimento")
+        .select("*")
         .gte("data_movimento", inicio)
-        .lte("data_movimento", fim),
+        .lte("data_movimento", fim)
+        .order("data_movimento", { ascending: true }),
 
       supabase
-        .from("contas_pagar")
-        .select("valor,status,vencimento")
-        .gte("vencimento", inicio)
-        .lte("vencimento", fim),
-
-      supabase
-        .from("contas_receber")
-        .select("valor,status,vencimento")
-        .gte("vencimento", inicio)
-        .lte("vencimento", fim),
+        .from("pagamentos_funcionarios")
+        .select("valor_pago,data_pagamento,status")
+        .gte("data_pagamento", inicio)
+        .lte("data_pagamento", fim),
     ]);
 
-    if (!movimentosResult.error) {
-      setMovimentos(
-        (movimentosResult.data || []) as Movimento[]
-      );
-    }
+    if (movRes.data) setMovimentos(movRes.data);
+    if (pagRes.data) setPagamentos(pagRes.data);
 
-    if (!pagarResult.error) {
-      setContasPagar(
-        (pagarResult.data || []) as ContaPagar[]
-      );
-    }
-
-    if (!receberResult.error) {
-      setContasReceber(
-        (receberResult.data || []) as ContaReceber[]
-      );
-    }
-
-    setLoading(false);
+    setCarregando(false);
   }
 
   useEffect(() => {
     carregar();
-  }, [inicio, fim]);
+  }, [mes]);
 
   const entradas = useMemo(
     () =>
@@ -135,12 +110,10 @@ export default function RelatoriosFinanceirosPage() {
 
   const funcionarios = useMemo(
     () =>
-      movimentos
-        .filter(
-          (m) => m.tipo === "Pagamento funcionário"
-        )
-        .reduce((s, m) => s + Number(m.valor || 0), 0),
-    [movimentos]
+      pagamentos
+        .filter((p) => p.status === "Pago")
+        .reduce((s, p) => s + Number(p.valor_pago || 0), 0),
+    [pagamentos]
   );
 
   const proLabore = useMemo(
@@ -151,329 +124,200 @@ export default function RelatoriosFinanceirosPage() {
     [movimentos]
   );
 
-  const saidas =
+  const totalSaidas =
     despesas +
     sangrias +
     funcionarios +
     proLabore;
 
-  const resultado = entradas - saidas;
-
-  const pagarPendente = contasPagar
-    .filter((c) => c.status === "Pendente")
-    .reduce((s, c) => s + Number(c.valor || 0), 0);
-
-  const receberPendente = contasReceber
-    .filter((c) => c.status === "Pendente")
-    .reduce((s, c) => s + Number(c.valor || 0), 0);
-
-  const pago = contasPagar
-    .filter((c) => c.status === "Pago")
-    .reduce((s, c) => s + Number(c.valor || 0), 0);
-
-  const recebido = contasReceber
-    .filter((c) => c.status === "Recebido")
-    .reduce((s, c) => s + Number(c.valor || 0), 0);
+  const resultado = entradas - totalSaidas;
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <main className="min-h-screen bg-slate-950 text-white p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold">
-              Relatórios financeiros
+            <a
+              href="/financeiro"
+              className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-3"
+            >
+              <ArrowLeft size={18} />
+              Financeiro
+            </a>
+
+            <h1 className="text-3xl font-bold">
+              Relatórios Financeiros
             </h1>
 
-            <p className="text-sm text-slate-500">
-              Visão geral da movimentação financeira da empresa.
+            <p className="text-slate-400">
+              Visão financeira mensal da empresa.
             </p>
           </div>
 
-          <button
-            onClick={carregar}
-            className="flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-3 font-semibold"
-          >
-            <RefreshCw size={18} />
-            Atualizar
-          </button>
-        </div>
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center gap-3">
+            <CalendarDays size={20} className="text-slate-400" />
 
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center gap-2 font-semibold">
-            <CalendarDays size={19} />
-            Período
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm text-slate-500">
-                Início
-              </label>
-
-              <input
-                type="date"
-                value={inicio}
-                onChange={(e) => setInicio(e.target.value)}
-                className="w-full rounded-xl border p-3"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm text-slate-500">
-                Fim
-              </label>
-
-              <input
-                type="date"
-                value={fim}
-                onChange={(e) => setFim(e.target.value)}
-                className="w-full rounded-xl border p-3"
-              />
-            </div>
+            <input
+              type="month"
+              value={mes}
+              onChange={(e) => setMes(e.target.value)}
+              className="bg-transparent outline-none"
+            />
           </div>
         </div>
 
-        {loading ? (
-          <div className="rounded-2xl bg-white p-10 text-center">
+        {carregando ? (
+          <div className="text-center p-10 text-slate-400">
             Carregando relatório...
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-              <div className="rounded-2xl bg-emerald-50 p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-emerald-700">
-                    Entradas
-                  </span>
-                  <ArrowUpCircle
-                    size={22}
-                    className="text-emerald-600"
-                  />
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <TrendingUp size={19} />
+                  Entradas
                 </div>
 
-                <p className="mt-3 text-2xl font-bold text-emerald-700">
-                  {moeda(entradas)}
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-red-50 p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-red-700">
-                    Saídas
-                  </span>
-                  <ArrowDownCircle
-                    size={22}
-                    className="text-red-600"
-                  />
+                <div className="text-2xl font-bold mt-2 text-green-400">
+                  {dinheiro(entradas)}
                 </div>
-
-                <p className="mt-3 text-2xl font-bold text-red-700">
-                  {moeda(saidas)}
-                </p>
               </div>
 
-              <div className="rounded-2xl bg-blue-50 p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-blue-700">
-                    Resultado
-                  </span>
-                  <Wallet
-                    size={22}
-                    className="text-blue-600"
-                  />
-                </div>
-
-                <p
-                  className={`mt-3 text-2xl font-bold ${
-                    resultado >= 0
-                      ? "text-blue-700"
-                      : "text-red-700"
-                  }`}
-                >
-                  {moeda(resultado)}
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-purple-50 p-5">
-                <span className="text-sm text-purple-700">
-                  Funcionários
-                </span>
-
-                <p className="mt-3 text-2xl font-bold text-purple-700">
-                  {moeda(funcionarios)}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm">
-                <p className="text-sm text-slate-500">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <TrendingDown size={19} />
                   Despesas
-                </p>
+                </div>
 
-                <p className="mt-2 text-xl font-bold text-red-600">
-                  {moeda(despesas)}
-                </p>
+                <div className="text-2xl font-bold mt-2">
+                  {dinheiro(despesas)}
+                </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 shadow-sm">
-                <p className="text-sm text-slate-500">
-                  Sangrias
-                </p>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <Users size={19} />
+                  Funcionários
+                </div>
 
-                <p className="mt-2 text-xl font-bold text-orange-600">
-                  {moeda(sangrias)}
-                </p>
+                <div className="text-2xl font-bold mt-2">
+                  {dinheiro(funcionarios)}
+                </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 shadow-sm">
-                <p className="text-sm text-slate-500">
-                  Pró-labore
-                </p>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <DollarSign size={19} />
+                  Resultado
+                </div>
 
-                <p className="mt-2 text-xl font-bold text-purple-600">
-                  {moeda(proLabore)}
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm">
-                <p className="text-sm text-slate-500">
-                  Total movimentações
-                </p>
-
-                <p className="mt-2 text-xl font-bold">
-                  {movimentos.length}
-                </p>
+                <div className="text-2xl font-bold mt-2">
+                  {dinheiro(resultado)}
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <BarChart3 />
+                  <h2 className="text-xl font-bold">
+                    Resumo do mês
+                  </h2>
+                </div>
 
-              <div className="rounded-2xl bg-white p-6 shadow-sm">
-                <h2 className="font-bold text-slate-900">
-                  Contas a pagar
-                </h2>
-
-                <div className="mt-5 space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">
-                      Pendentes
+                <div className="space-y-4">
+                  <div className="flex justify-between border-b border-slate-800 pb-3">
+                    <span className="text-slate-400">
+                      Entradas
                     </span>
-                    <strong className="text-orange-600">
-                      {moeda(pagarPendente)}
+                    <strong className="text-green-400">
+                      {dinheiro(entradas)}
                     </strong>
                   </div>
 
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">
-                      Pagas
+                  <div className="flex justify-between border-b border-slate-800 pb-3">
+                    <span className="text-slate-400">
+                      Despesas
                     </span>
-                    <strong className="text-emerald-600">
-                      {moeda(pago)}
+                    <strong>
+                      {dinheiro(despesas)}
+                    </strong>
+                  </div>
+
+                  <div className="flex justify-between border-b border-slate-800 pb-3">
+                    <span className="text-slate-400">
+                      Sangrias
+                    </span>
+                    <strong>
+                      {dinheiro(sangrias)}
+                    </strong>
+                  </div>
+
+                  <div className="flex justify-between border-b border-slate-800 pb-3">
+                    <span className="text-slate-400">
+                      Pagamentos de funcionários
+                    </span>
+                    <strong>
+                      {dinheiro(funcionarios)}
+                    </strong>
+                  </div>
+
+                  <div className="flex justify-between border-b border-slate-800 pb-3">
+                    <span className="text-slate-400">
+                      Pró-labore
+                    </span>
+                    <strong>
+                      {dinheiro(proLabore)}
+                    </strong>
+                  </div>
+
+                  <div className="flex justify-between text-lg pt-2">
+                    <span>Resultado</span>
+                    <strong>
+                      {dinheiro(resultado)}
                     </strong>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-6 shadow-sm">
-                <h2 className="font-bold text-slate-900">
-                  Contas a receber
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                <h2 className="text-xl font-bold mb-6">
+                  Movimentações do período
                 </h2>
 
-                <div className="mt-5 space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">
-                      Pendentes
-                    </span>
-                    <strong className="text-orange-600">
-                      {moeda(receberPendente)}
-                    </strong>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">
-                      Recebidas
-                    </span>
-                    <strong className="text-emerald-600">
-                      {moeda(recebido)}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-bold">
-                Resumo do período
-              </h2>
-
-              <div className="mt-5 overflow-x-auto">
-                <table className="w-full min-w-[650px]">
-                  <tbody>
-                    <tr className="border-b">
-                      <td className="py-3">
-                        Entradas
-                      </td>
-                      <td className="py-3 text-right font-bold text-emerald-600">
-                        {moeda(entradas)}
-                      </td>
-                    </tr>
-
-                    <tr className="border-b">
-                      <td className="py-3">
-                        Despesas
-                      </td>
-                      <td className="py-3 text-right font-bold text-red-600">
-                        {moeda(despesas)}
-                      </td>
-                    </tr>
-
-                    <tr className="border-b">
-                      <td className="py-3">
-                        Sangrias
-                      </td>
-                      <td className="py-3 text-right font-bold text-orange-600">
-                        {moeda(sangrias)}
-                      </td>
-                    </tr>
-
-                    <tr className="border-b">
-                      <td className="py-3">
-                        Pagamentos de funcionários
-                      </td>
-                      <td className="py-3 text-right font-bold text-blue-600">
-                        {moeda(funcionarios)}
-                      </td>
-                    </tr>
-
-                    <tr className="border-b">
-                      <td className="py-3">
-                        Pró-labore
-                      </td>
-                      <td className="py-3 text-right font-bold text-purple-600">
-                        {moeda(proLabore)}
-                      </td>
-                    </tr>
-
-                    <tr>
-                      <td className="py-4 font-bold">
-                        Resultado líquido
-                      </td>
-                      <td
-                        className={`py-4 text-right text-xl font-bold ${
-                          resultado >= 0
-                            ? "text-emerald-600"
-                            : "text-red-600"
-                        }`}
+                {movimentos.length === 0 ? (
+                  <p className="text-slate-400">
+                    Nenhuma movimentação encontrada.
+                  </p>
+                ) : (
+                  <div className="space-y-3 max-h-[450px] overflow-y-auto">
+                    {movimentos.map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex justify-between gap-4 border-b border-slate-800 pb-3"
                       >
-                        {moeda(resultado)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                        <div>
+                          <div className="font-medium">
+                            {m.descricao || m.tipo}
+                          </div>
+
+                          <div className="text-xs text-slate-500">
+                            {new Date(
+                              m.data_movimento + "T00:00:00"
+                            ).toLocaleDateString("pt-BR")}{" "}
+                            · {m.tipo}
+                          </div>
+                        </div>
+
+                        <div className="font-semibold whitespace-nowrap">
+                          {dinheiro(m.valor)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </>
