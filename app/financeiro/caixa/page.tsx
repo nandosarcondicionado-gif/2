@@ -1,29 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  Banknote,
-  Calculator,
-  CheckCircle2,
-  Edit,
+  ArrowLeft,
   Plus,
   Search,
+  Pencil,
   Trash2,
-  UserRound,
   Wallet,
-  X,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  UserRound,
+  Banknote,
+  RefreshCw,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 
 type Funcionario = {
   id: string;
   nome: string;
-  cargo?: string;
-  salario?: number;
-  forma_pagamento?: string;
-  chave_pix?: string;
+  salario: number | null;
+  status: string;
 };
 
 type Movimento = {
@@ -40,10 +38,6 @@ type Movimento = {
   observacoes: string;
   criado_por: string;
   referencia: string;
-  salario_base: number;
-  adicionais: number;
-  descontos: number;
-  adiantamento: number;
   created_at: string;
 };
 
@@ -55,16 +49,11 @@ const TIPOS = [
   "Pró-labore",
 ];
 
-function dinheiro(valor: number) {
-  return valor.toLocaleString("pt-BR", {
+function moeda(valor: number) {
+  return Number(valor || 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
   });
-}
-
-function numero(valor: string) {
-  const n = Number(valor.replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
 }
 
 function hoje() {
@@ -76,34 +65,32 @@ export default function CaixaPage() {
 
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [busca, setBusca] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
-  const [busca, setBusca] = useState("");
   const [modal, setModal] = useState(false);
-  const [editando, setEditando] = useState<Movimento | null>(null);
+  const [editando, setEditando] = useState<string | null>(null);
 
-  const [tipo, setTipo] = useState("Entrada");
-  const [descricao, setDescricao] = useState("");
-  const [valor, setValor] = useState("");
-  const [dataMovimento, setDataMovimento] = useState(hoje());
-  const [formaPagamento, setFormaPagamento] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [funcionarioId, setFuncionarioId] = useState("");
-  const [motivo, setMotivo] = useState("");
-  const [observacoes, setObservacoes] = useState("");
-
-  const [referencia, setReferencia] = useState("");
-  const [salarioBase, setSalarioBase] = useState("");
-  const [adicionais, setAdicionais] = useState("");
-  const [descontos, setDescontos] = useState("");
-  const [adiantamento, setAdiantamento] = useState("");
+  const [form, setForm] = useState({
+    tipo: "Entrada",
+    descricao: "",
+    valor: "",
+    data_movimento: hoje(),
+    forma_pagamento: "Pix",
+    categoria: "",
+    funcionario_id: "",
+    funcionario_nome: "",
+    motivo: "",
+    observacoes: "",
+    referencia: "",
+  });
 
   async function carregar() {
     setLoading(true);
 
-    const [movResult, funcResult] = await Promise.all([
+    const [movRes, funcRes] = await Promise.all([
       supabase
         .from("caixa_movimentacoes")
         .select("*")
@@ -112,17 +99,18 @@ export default function CaixaPage() {
 
       supabase
         .from("funcionarios")
-        .select("*")
-        .eq("status", "Ativo")
+        .select("id,nome,salario,status")
         .order("nome"),
     ]);
 
-    if (!movResult.error) {
-      setMovimentos((movResult.data || []) as Movimento[]);
+    if (movRes.error) {
+      alert("Erro ao carregar o caixa: " + movRes.error.message);
+    } else {
+      setMovimentos((movRes.data || []) as Movimento[]);
     }
 
-    if (!funcResult.error) {
-      setFuncionarios((funcResult.data || []) as Funcionario[]);
+    if (!funcRes.error) {
+      setFuncionarios((funcRes.data || []) as Funcionario[]);
     }
 
     setLoading(false);
@@ -132,316 +120,245 @@ export default function CaixaPage() {
     carregar();
   }, []);
 
-  function limparFormulario() {
-    setTipo("Entrada");
-    setDescricao("");
-    setValor("");
-    setDataMovimento(hoje());
-    setFormaPagamento("");
-    setCategoria("");
-    setFuncionarioId("");
-    setMotivo("");
-    setObservacoes("");
-    setReferencia("");
-    setSalarioBase("");
-    setAdicionais("");
-    setDescontos("");
-    setAdiantamento("");
+  function abrirNovo(tipo = "Entrada") {
     setEditando(null);
-  }
 
-  function abrirNovo(tipoInicial = "Entrada") {
-    limparFormulario();
-    setTipo(tipoInicial);
-
-    if (tipoInicial === "Pagamento funcionário") {
-      setReferencia(new Date().toLocaleDateString("pt-BR", {
-        month: "long",
-        year: "numeric",
-      }));
-    }
+    setForm({
+      tipo,
+      descricao:
+        tipo === "Sangria"
+          ? "Sangria de caixa"
+          : tipo === "Pagamento funcionário"
+            ? "Pagamento de funcionário"
+            : tipo === "Pró-labore"
+              ? "Pró-labore"
+              : "",
+      valor: "",
+      data_movimento: hoje(),
+      forma_pagamento: "Pix",
+      categoria: "",
+      funcionario_id: "",
+      funcionario_nome: "",
+      motivo: "",
+      observacoes: "",
+      referencia: "",
+    });
 
     setModal(true);
   }
 
   function abrirEditar(item: Movimento) {
-    setEditando(item);
+    setEditando(item.id);
 
-    setTipo(item.tipo);
-    setDescricao(item.descricao || "");
-    setValor(String(item.valor ?? ""));
-    setDataMovimento(item.data_movimento || hoje());
-    setFormaPagamento(item.forma_pagamento || "");
-    setCategoria(item.categoria || "");
-    setFuncionarioId(item.funcionario_id || "");
-    setMotivo(item.motivo || "");
-    setObservacoes(item.observacoes || "");
-
-    setReferencia(item.referencia || "");
-    setSalarioBase(String(item.salario_base ?? ""));
-    setAdicionais(String(item.adicionais ?? ""));
-    setDescontos(String(item.descontos ?? ""));
-    setAdiantamento(String(item.adiantamento ?? ""));
+    setForm({
+      tipo: item.tipo,
+      descricao: item.descricao || "",
+      valor: String(item.valor || ""),
+      data_movimento: item.data_movimento || hoje(),
+      forma_pagamento: item.forma_pagamento || "Pix",
+      categoria: item.categoria || "",
+      funcionario_id: item.funcionario_id || "",
+      funcionario_nome: item.funcionario_nome || "",
+      motivo: item.motivo || "",
+      observacoes: item.observacoes || "",
+      referencia: item.referencia || "",
+    });
 
     setModal(true);
   }
 
-  const funcionarioSelecionado = useMemo(
-    () => funcionarios.find((f) => f.id === funcionarioId),
-    [funcionarios, funcionarioId]
-  );
+  function selecionarFuncionario(id: string) {
+    const funcionario = funcionarios.find((f) => f.id === id);
 
-  const valorCalculadoFuncionario =
-    numero(salarioBase) +
-    numero(adicionais) -
-    numero(descontos) -
-    numero(adiantamento);
-
-  useEffect(() => {
-    if (
-      tipo === "Pagamento funcionário" &&
-      funcionarioSelecionado &&
-      !editando
-    ) {
-      setSalarioBase(String(funcionarioSelecionado.salario || 0));
-
-      if (!formaPagamento && funcionarioSelecionado.forma_pagamento) {
-        setFormaPagamento(funcionarioSelecionado.forma_pagamento);
-      }
-    }
-  }, [funcionarioSelecionado, tipo, editando]);
-
-  useEffect(() => {
-    if (tipo === "Pagamento funcionário" && !editando) {
-      setValor(String(valorCalculadoFuncionario || ""));
-    }
-  }, [
-    salarioBase,
-    adicionais,
-    descontos,
-    adiantamento,
-    tipo,
-    editando,
-  ]);
+    setForm((old) => ({
+      ...old,
+      funcionario_id: id,
+      funcionario_nome: funcionario?.nome || "",
+      valor:
+        old.tipo === "Pagamento funcionário" && funcionario?.salario
+          ? String(funcionario.salario)
+          : old.valor,
+    }));
+  }
 
   async function salvar() {
-    if (salvando) return;
-
-    const valorNumerico =
-      tipo === "Pagamento funcionário"
-        ? valorCalculadoFuncionario
-        : numero(valor);
-
-    if (valorNumerico <= 0) {
-      alert("Informe um valor maior que zero.");
+    if (!form.descricao.trim()) {
+      alert("Informe a descrição.");
       return;
     }
 
-    if (tipo === "Pagamento funcionário" && !funcionarioId) {
+    const valor = Number(form.valor.replace(",", "."));
+
+    if (!valor || valor <= 0) {
+      alert("Informe um valor válido.");
+      return;
+    }
+
+    if (
+      form.tipo === "Pagamento funcionário" &&
+      !form.funcionario_id
+    ) {
       alert("Selecione o funcionário.");
       return;
     }
 
     setSalvando(true);
 
-    const funcionarioNome = funcionarioSelecionado?.nome || "";
-
-    const dados = {
-      tipo,
-      descricao:
-        descricao ||
-        (tipo === "Pagamento funcionário"
-          ? `Pagamento de funcionário - ${funcionarioNome}`
-          : tipo),
-      valor: valorNumerico,
-      data_movimento: dataMovimento,
-      forma_pagamento: formaPagamento,
-      categoria,
-      funcionario_id: funcionarioId || null,
-      funcionario_nome: funcionarioNome,
-      motivo,
-      observacoes,
-
-      referencia,
-      salario_base:
-        tipo === "Pagamento funcionário" ? numero(salarioBase) : 0,
-      adicionais:
-        tipo === "Pagamento funcionário" ? numero(adicionais) : 0,
-      descontos:
-        tipo === "Pagamento funcionário" ? numero(descontos) : 0,
-      adiantamento:
-        tipo === "Pagamento funcionário" ? numero(adiantamento) : 0,
-    };
-
     try {
-      /*
-       * EDIÇÃO
-       */
+      const payload = {
+        tipo: form.tipo,
+        descricao: form.descricao,
+        valor,
+        data_movimento: form.data_movimento,
+        forma_pagamento: form.forma_pagamento,
+        categoria: form.categoria,
+        funcionario_id: form.funcionario_id || null,
+        funcionario_nome: form.funcionario_nome,
+        motivo: form.motivo,
+        observacoes: form.observacoes,
+        referencia: form.referencia,
+      };
+
+      let movimentoId = editando;
+
       if (editando) {
         const { error } = await supabase
           .from("caixa_movimentacoes")
-          .update(dados)
-          .eq("id", editando.id);
+          .update(payload)
+          .eq("id", editando);
 
         if (error) throw error;
-
-        /*
-         * Se era pagamento de funcionário, sincroniza o histórico.
-         */
-        if (
-          editando.tipo === "Pagamento funcionário" &&
-          editando.funcionario_id
-        ) {
-          const { data: pagamentoExistente } = await supabase
-            .from("pagamentos_funcionarios")
-            .select("id")
-            .eq("funcionario_id", editando.funcionario_id)
-            .eq("valor_pago", editando.valor)
-            .eq("data_pagamento", editando.data_movimento)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (pagamentoExistente) {
-            await supabase
-              .from("pagamentos_funcionarios")
-              .update({
-                funcionario_id: funcionarioId,
-                funcionario_nome: funcionarioNome,
-                referencia,
-                salario_base: numero(salarioBase),
-                adicionais: numero(adicionais),
-                descontos: numero(descontos),
-                adiantamento: numero(adiantamento),
-                valor_pago: valorNumerico,
-                data_pagamento: dataMovimento,
-                forma_pagamento: formaPagamento,
-                status: "Pago",
-                observacoes,
-              })
-              .eq("id", pagamentoExistente.id);
-          }
-        }
-
-        /*
-         * Se transformou outro movimento em pagamento,
-         * cria o histórico.
-         */
-        if (
-          editando.tipo !== "Pagamento funcionário" &&
-          tipo === "Pagamento funcionário"
-        ) {
-          await supabase.from("pagamentos_funcionarios").insert({
-            funcionario_id: funcionarioId,
-            funcionario_nome: funcionarioNome,
-            referencia,
-            salario_base: numero(salarioBase),
-            adicionais: numero(adicionais),
-            descontos: numero(descontos),
-            adiantamento: numero(adiantamento),
-            valor_pago: valorNumerico,
-            data_pagamento: dataMovimento,
-            forma_pagamento: formaPagamento,
-            status: "Pago",
-            observacoes,
-          });
-        }
       } else {
-        /*
-         * NOVO MOVIMENTO
-         */
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("caixa_movimentacoes")
-          .insert(dados);
+          .insert(payload)
+          .select("id")
+          .single();
 
         if (error) throw error;
 
-        /*
-         * Pagamento de funcionário também entra
-         * automaticamente no histórico da folha.
-         */
-        if (tipo === "Pagamento funcionário") {
-          const { error: pagamentoError } = await supabase
+        movimentoId = data.id;
+      }
+
+      /*
+       * PAGAMENTO DE FUNCIONÁRIO
+       */
+      if (
+        form.tipo === "Pagamento funcionário" &&
+        form.funcionario_id &&
+        movimentoId
+      ) {
+        const funcionario = funcionarios.find(
+          (f) => f.id === form.funcionario_id
+        );
+
+        const { data: existente } = await supabase
+          .from("pagamentos_funcionarios")
+          .select("id")
+          .eq("caixa_movimentacao_id", movimentoId)
+          .maybeSingle();
+
+        const pagamento = {
+          funcionario_id: form.funcionario_id,
+          funcionario_nome:
+            funcionario?.nome || form.funcionario_nome,
+          referencia: form.referencia,
+          salario_base: valor,
+          adicionais: 0,
+          descontos: 0,
+          adiantamento: 0,
+          valor_pago: valor,
+          data_pagamento: form.data_movimento,
+          forma_pagamento: form.forma_pagamento,
+          status: "Pago",
+          observacoes: form.observacoes,
+          caixa_movimentacao_id: movimentoId,
+        };
+
+        if (existente) {
+          const { error } = await supabase
             .from("pagamentos_funcionarios")
-            .insert({
-              funcionario_id: funcionarioId,
-              funcionario_nome: funcionarioNome,
-              referencia,
-              salario_base: numero(salarioBase),
-              adicionais: numero(adicionais),
-              descontos: numero(descontos),
-              adiantamento: numero(adiantamento),
-              valor_pago: valorNumerico,
-              data_pagamento: dataMovimento,
-              forma_pagamento: formaPagamento,
-              status: "Pago",
-              observacoes,
-            });
+            .update(pagamento)
+            .eq("id", existente.id);
 
-          if (pagamentoError) {
-            console.error(
-              "Erro ao registrar histórico do funcionário:",
-              pagamentoError
-            );
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from("pagamentos_funcionarios")
+            .insert(pagamento);
 
-            alert(
-              "O pagamento foi lançado no Caixa, mas houve um problema ao salvar o histórico do funcionário."
-            );
-          }
+          if (error) throw error;
         }
       }
 
-      setModal(false);
-      limparFormulario();
-      await carregar();
+      /*
+       * PRÓ-LABORE
+       */
+      if (form.tipo === "Pró-labore" && movimentoId) {
+        const { data: existente } = await supabase
+          .from("pro_labore")
+          .select("id")
+          .eq("caixa_movimentacao_id", movimentoId)
+          .maybeSingle();
 
-      alert("Movimentação salva com sucesso!");
+        const proLabore = {
+          referencia: form.referencia,
+          valor,
+          data_pagamento: form.data_movimento,
+          forma_pagamento: form.forma_pagamento,
+          status: "Pago",
+          observacoes: form.observacoes,
+          caixa_movimentacao_id: movimentoId,
+        };
+
+        if (existente) {
+          const { error } = await supabase
+            .from("pro_labore")
+            .update(proLabore)
+            .eq("id", existente.id);
+
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from("pro_labore")
+            .insert(proLabore);
+
+          if (error) throw error;
+        }
+      }
+
+      alert(editando ? "Movimentação atualizada!" : "Movimentação registrada!");
+
+      setModal(false);
+      await carregar();
     } catch (error: any) {
-      console.error(error);
-      alert(
-        error?.message ||
-          "Não foi possível salvar a movimentação."
-      );
+      alert("Erro ao salvar: " + error.message);
     } finally {
       setSalvando(false);
     }
   }
 
   async function excluir(item: Movimento) {
-    const confirmar = confirm(
-      `Deseja realmente excluir esta movimentação?\n\n${item.descricao}\n${dinheiro(
-        item.valor
-      )}`
-    );
-
-    if (!confirmar) return;
+    if (!confirm("Deseja realmente excluir esta movimentação?")) {
+      return;
+    }
 
     try {
       /*
-       * Se for pagamento de funcionário,
-       * tenta localizar o histórico correspondente
-       * antes de excluir o lançamento do Caixa.
+       * Primeiro removemos os registros vinculados.
        */
-      if (
-        item.tipo === "Pagamento funcionário" &&
-        item.funcionario_id
-      ) {
-        const { data: pagamentoExistente } = await supabase
+      if (item.tipo === "Pagamento funcionário") {
+        await supabase
           .from("pagamentos_funcionarios")
-          .select("id")
-          .eq("funcionario_id", item.funcionario_id)
-          .eq("valor_pago", item.valor)
-          .eq("data_pagamento", item.data_movimento)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .delete()
+          .eq("caixa_movimentacao_id", item.id);
+      }
 
-        if (pagamentoExistente) {
-          await supabase
-            .from("pagamentos_funcionarios")
-            .delete()
-            .eq("id", pagamentoExistente.id);
-        }
+      if (item.tipo === "Pró-labore") {
+        await supabase
+          .from("pro_labore")
+          .delete()
+          .eq("caixa_movimentacao_id", item.id);
       }
 
       const { error } = await supabase
@@ -452,714 +369,540 @@ export default function CaixaPage() {
       if (error) throw error;
 
       await carregar();
-
-      alert("Movimentação excluída com sucesso!");
     } catch (error: any) {
-      console.error(error);
-      alert(
-        error?.message ||
-          "Não foi possível excluir a movimentação."
-      );
+      alert("Erro ao excluir: " + error.message);
     }
   }
 
-  const filtrados = movimentos.filter((item) => {
-    const texto = [
-      item.tipo,
-      item.descricao,
-      item.funcionario_nome,
-      item.categoria,
-      item.motivo,
-      item.referencia,
-      item.observacoes,
-    ]
-      .join(" ")
-      .toLowerCase();
+  const filtrados = useMemo(() => {
+    const texto = busca.toLowerCase().trim();
 
-    return texto.includes(busca.toLowerCase());
-  });
+    if (!texto) return movimentos;
 
-  const entradas = movimentos
-    .filter((m) => m.tipo === "Entrada")
-    .reduce((s, m) => s + Number(m.valor || 0), 0);
+    return movimentos.filter((item) =>
+      [
+        item.tipo,
+        item.descricao,
+        item.funcionario_nome,
+        item.categoria,
+        item.motivo,
+        item.referencia,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(texto)
+    );
+  }, [movimentos, busca]);
 
-  const despesas = movimentos
-    .filter((m) => m.tipo === "Despesa")
-    .reduce((s, m) => s + Number(m.valor || 0), 0);
+  const resumo = useMemo(() => {
+    let entradas = 0;
+    let saidas = 0;
 
-  const sangrias = movimentos
-    .filter((m) => m.tipo === "Sangria")
-    .reduce((s, m) => s + Number(m.valor || 0), 0);
+    for (const item of movimentos) {
+      if (item.tipo === "Entrada") {
+        entradas += Number(item.valor || 0);
+      } else {
+        saidas += Number(item.valor || 0);
+      }
+    }
 
-  const pagamentosFuncionarios = movimentos
-    .filter((m) => m.tipo === "Pagamento funcionário")
-    .reduce((s, m) => s + Number(m.valor || 0), 0);
+    const sangrias = movimentos
+      .filter((x) => x.tipo === "Sangria")
+      .reduce((a, x) => a + Number(x.valor || 0), 0);
 
-  const proLabore = movimentos
-    .filter((m) => m.tipo === "Pró-labore")
-    .reduce((s, m) => s + Number(m.valor || 0), 0);
+    const pagamentos = movimentos
+      .filter((x) => x.tipo === "Pagamento funcionário")
+      .reduce((a, x) => a + Number(x.valor || 0), 0);
 
-  const saidas =
-    despesas +
-    sangrias +
-    pagamentosFuncionarios +
-    proLabore;
+    const proLabore = movimentos
+      .filter((x) => x.tipo === "Pró-labore")
+      .reduce((a, x) => a + Number(x.valor || 0), 0);
 
-  const saldo = entradas - saidas;
+    return {
+      entradas,
+      saidas,
+      saldo: entradas - saidas,
+      sangrias,
+      pagamentos,
+      proLabore,
+    };
+  }, [movimentos]);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen bg-slate-950 text-white p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
 
-        {/* CABEÇALHO */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Caixa
-            </h1>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/financeiro"
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700"
+            >
+              <ArrowLeft size={20} />
+            </Link>
 
-            <p className="text-sm text-slate-500">
-              Controle financeiro, sangrias, funcionários e pró-labore.
-            </p>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold">
+                Caixa
+              </h1>
+              <p className="text-slate-400">
+                Controle financeiro da empresa
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => abrirNovo("Sangria")}
-              className="flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-3 text-sm font-semibold text-white"
+              className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 font-semibold"
             >
-              <ArrowDownCircle size={18} />
               Nova sangria
             </button>
 
             <button
               onClick={() => abrirNovo("Pagamento funcionário")}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white"
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold"
             >
-              <UserRound size={18} />
               Pagar funcionário
             </button>
 
             <button
               onClick={() => abrirNovo("Pró-labore")}
-              className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-semibold text-white"
+              className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 font-semibold"
             >
-              <Wallet size={18} />
               Pró-labore
             </button>
 
             <button
               onClick={() => abrirNovo("Entrada")}
-              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold flex items-center gap-2"
             >
               <Plus size={18} />
-              Nova movimentação
+              Nova entrada
             </button>
           </div>
         </div>
 
-        {/* RESUMO */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                Saldo atual
-              </span>
-              <Wallet className="text-blue-600" size={22} />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <Wallet />
+              <span className="text-slate-400">Saldo</span>
             </div>
-
-            <p className="mt-3 text-2xl font-bold text-slate-900">
-              {dinheiro(saldo)}
-            </p>
+            <strong className="block text-2xl mt-3">
+              {moeda(resumo.saldo)}
+            </strong>
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                Entradas
-              </span>
-              <ArrowUpCircle className="text-emerald-600" size={22} />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <ArrowUpCircle className="text-emerald-400" />
+              <span className="text-slate-400">Entradas</span>
             </div>
-
-            <p className="mt-3 text-xl font-bold text-emerald-600">
-              {dinheiro(entradas)}
-            </p>
+            <strong className="block text-2xl mt-3">
+              {moeda(resumo.entradas)}
+            </strong>
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                Despesas
-              </span>
-              <ArrowDownCircle className="text-red-600" size={22} />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <ArrowDownCircle className="text-red-400" />
+              <span className="text-slate-400">Saídas</span>
             </div>
-
-            <p className="mt-3 text-xl font-bold text-red-600">
-              {dinheiro(despesas)}
-            </p>
+            <strong className="block text-2xl mt-3">
+              {moeda(resumo.saidas)}
+            </strong>
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                Funcionários
-              </span>
-              <UserRound className="text-blue-600" size={22} />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <Banknote />
+              <span className="text-slate-400">Funcionários</span>
             </div>
-
-            <p className="mt-3 text-xl font-bold text-blue-600">
-              {dinheiro(pagamentosFuncionarios)}
-            </p>
+            <strong className="block text-2xl mt-3">
+              {moeda(resumo.pagamentos)}
+            </strong>
           </div>
 
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                Pró-labore
-              </span>
-              <Banknote className="text-purple-600" size={22} />
-            </div>
-
-            <p className="mt-3 text-xl font-bold text-purple-600">
-              {dinheiro(proLabore)}
-            </p>
-          </div>
         </div>
 
-        {/* SEGUNDO RESUMO */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
-            <p className="text-sm font-medium text-orange-700">
-              Total de sangrias
-            </p>
-            <p className="mt-1 text-xl font-bold text-orange-800">
-              {dinheiro(sangrias)}
-            </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <p className="text-slate-400 text-sm">Sangrias</p>
+            <strong>{moeda(resumo.sangrias)}</strong>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-sm font-medium text-slate-500">
-              Total de saídas
-            </p>
-            <p className="mt-1 text-xl font-bold text-red-600">
-              {dinheiro(saidas)}
-            </p>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <p className="text-slate-400 text-sm">Pagamentos funcionários</p>
+            <strong>{moeda(resumo.pagamentos)}</strong>
           </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <p className="text-slate-400 text-sm">Pró-labore</p>
+            <strong>{moeda(resumo.proLabore)}</strong>
+          </div>
+
         </div>
 
-        {/* PESQUISA */}
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="relative">
-            <Search
-              size={19}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-6">
+          <div className="flex gap-3 items-center">
+            <Search size={20} className="text-slate-400" />
             <input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Pesquisar movimentações..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 outline-none focus:border-blue-500"
+              className="bg-transparent outline-none w-full"
             />
+
+            <button
+              onClick={carregar}
+              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700"
+            >
+              <RefreshCw size={18} />
+            </button>
           </div>
         </div>
 
-        {/* LISTAGEM */}
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-5">
-            <h2 className="font-bold text-slate-900">
-              Movimentações do caixa
-            </h2>
-          </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
 
           {loading ? (
-            <div className="p-8 text-center text-slate-500">
-              Carregando...
+            <div className="p-10 text-center text-slate-400">
+              Carregando caixa...
             </div>
           ) : filtrados.length === 0 ? (
-            <div className="p-10 text-center">
-              <Calculator
-                size={40}
-                className="mx-auto text-slate-300"
-              />
-
-              <p className="mt-3 font-medium text-slate-600">
-                Nenhuma movimentação encontrada.
-              </p>
+            <div className="p-10 text-center text-slate-400">
+              Nenhuma movimentação encontrada.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[950px] text-sm">
-                <thead className="bg-slate-50">
+
+              <table className="w-full text-sm">
+                <thead className="bg-slate-800">
                   <tr>
-                    <th className="px-4 py-3 text-left">
-                      Data
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      Tipo
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      Descrição
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      Funcionário
-                    </th>
-                    <th className="px-4 py-3 text-left">
-                      Forma
-                    </th>
-                    <th className="px-4 py-3 text-right">
-                      Valor
-                    </th>
-                    <th className="px-4 py-3 text-right">
-                      Ações
-                    </th>
+                    <th className="text-left p-4">Data</th>
+                    <th className="text-left p-4">Tipo</th>
+                    <th className="text-left p-4">Descrição</th>
+                    <th className="text-left p-4">Responsável</th>
+                    <th className="text-left p-4">Forma</th>
+                    <th className="text-right p-4">Valor</th>
+                    <th className="text-right p-4">Ações</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {filtrados.map((item) => {
-                    const entrada = item.tipo === "Entrada";
+                  {filtrados.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="border-t border-slate-800"
+                    >
+                      <td className="p-4 whitespace-nowrap">
+                        {item.data_movimento
+                          ? new Date(
+                              item.data_movimento + "T12:00:00"
+                            ).toLocaleDateString("pt-BR")
+                          : "-"}
+                      </td>
 
-                    return (
-                      <tr
-                        key={item.id}
-                        className="border-t border-slate-100"
+                      <td className="p-4">
+                        <span className="px-2 py-1 rounded-lg bg-slate-800">
+                          {item.tipo}
+                        </span>
+                      </td>
+
+                      <td className="p-4">
+                        <div className="font-medium">
+                          {item.descricao}
+                        </div>
+
+                        {item.referencia && (
+                          <div className="text-xs text-slate-500">
+                            {item.referencia}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="p-4">
+                        {item.funcionario_nome || "-"}
+                      </td>
+
+                      <td className="p-4">
+                        {item.forma_pagamento || "-"}
+                      </td>
+
+                      <td
+                        className={`p-4 text-right font-bold ${
+                          item.tipo === "Entrada"
+                            ? "text-emerald-400"
+                            : "text-red-400"
+                        }`}
                       >
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          {item.data_movimento
-                            ? new Date(
-                                `${item.data_movimento}T12:00:00`
-                              ).toLocaleDateString("pt-BR")
-                            : "-"}
-                        </td>
+                        {item.tipo === "Entrada" ? "+" : "-"}
+                        {moeda(Number(item.valor))}
+                      </td>
 
-                        <td className="px-4 py-4">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                              item.tipo === "Entrada"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : item.tipo === "Sangria"
-                                ? "bg-orange-100 text-orange-700"
-                                : item.tipo === "Pagamento funcionário"
-                                ? "bg-blue-100 text-blue-700"
-                                : item.tipo === "Pró-labore"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
+                      <td className="p-4">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => abrirEditar(item)}
+                            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700"
                           >
-                            {item.tipo}
-                          </span>
-                        </td>
+                            <Pencil size={16} />
+                          </button>
 
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-slate-800">
-                            {item.descricao || "-"}
-                          </div>
-
-                          {item.referencia && (
-                            <div className="text-xs text-slate-400">
-                              {item.referencia}
-                            </div>
-                          )}
-
-                          {item.motivo && (
-                            <div className="text-xs text-slate-400">
-                              Motivo: {item.motivo}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          {item.funcionario_nome || "-"}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          {item.forma_pagamento || "-"}
-                        </td>
-
-                        <td
-                          className={`px-4 py-4 text-right font-bold ${
-                            entrada
-                              ? "text-emerald-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {entrada ? "+" : "-"}
-                          {dinheiro(Number(item.valor || 0))}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => abrirEditar(item)}
-                              className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                              title="Editar"
-                            >
-                              <Edit size={17} />
-                            </button>
-
-                            <button
-                              onClick={() => excluir(item)}
-                              className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                              title="Excluir"
-                            >
-                              <Trash2 size={17} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          <button
+                            onClick={() => excluir(item)}
+                            className="p-2 rounded-lg bg-red-900/40 hover:bg-red-900"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
+
             </div>
           )}
+
         </div>
-      </div>
 
-      {/* MODAL */}
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-xl">
+        {modal && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
 
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-5">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  {editando
-                    ? "Editar movimentação"
-                    : "Nova movimentação"}
-                </h2>
+            <div className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl p-5 max-h-[90vh] overflow-y-auto">
 
-                <p className="text-sm text-slate-500">
-                  Registre a movimentação financeira.
-                </p>
-              </div>
+              <h2 className="text-xl font-bold mb-5">
+                {editando ? "Editar movimentação" : "Nova movimentação"}
+              </h2>
 
-              <button
-                onClick={() => {
-                  setModal(false);
-                  limparFormulario();
-                }}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-              >
-                <X size={22} />
-              </button>
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-            <div className="space-y-5 p-5">
+                <label className="block">
+                  <span className="text-sm text-slate-400">
+                    Tipo
+                  </span>
 
-              {/* TIPO */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Tipo
+                  <select
+                    value={form.tipo}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        tipo: e.target.value,
+                      })
+                    }
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                  >
+                    {TIPOS.map((tipo) => (
+                      <option key={tipo}>{tipo}</option>
+                    ))}
+                  </select>
                 </label>
 
-                <select
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
-                >
-                  {TIPOS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* PAGAMENTO FUNCIONÁRIO */}
-              {tipo === "Pagamento funcionário" && (
-                <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-
-                  <div className="flex items-center gap-2 font-bold text-blue-800">
-                    <UserRound size={19} />
-                    Dados do pagamento
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700">
-                      Funcionário *
-                    </label>
-
-                    <select
-                      value={funcionarioId}
-                      onChange={(e) =>
-                        setFuncionarioId(e.target.value)
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500"
-                    >
-                      <option value="">
-                        Selecione o funcionário
-                      </option>
-
-                      {funcionarios.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.nome}
-                          {f.cargo ? ` — ${f.cargo}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700">
-                      Referência
-                    </label>
-
-                    <input
-                      value={referencia}
-                      onChange={(e) =>
-                        setReferencia(e.target.value)
-                      }
-                      placeholder="Ex.: Setembro/2026"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700">
-                        Salário-base
-                      </label>
-
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={salarioBase}
-                        onChange={(e) =>
-                          setSalarioBase(e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700">
-                        Adicionais
-                      </label>
-
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={adicionais}
-                        onChange={(e) =>
-                          setAdicionais(e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700">
-                        Descontos
-                      </label>
-
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={descontos}
-                        onChange={(e) =>
-                          setDescontos(e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700">
-                        Adiantamento
-                      </label>
-
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={adiantamento}
-                        onChange={(e) =>
-                          setAdiantamento(e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3"
-                      />
-                    </div>
-
-                  </div>
-
-                  <div className="rounded-xl bg-white p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-600">
-                        Valor líquido a pagar
-                      </span>
-
-                      <span className="text-2xl font-bold text-blue-700">
-                        {dinheiro(valorCalculadoFuncionario)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* DESCRIÇÃO */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Descrição
-                </label>
-
-                <input
-                  value={descricao}
-                  onChange={(e) =>
-                    setDescricao(e.target.value)
-                  }
-                  placeholder="Descrição da movimentação"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* VALOR */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Valor *
-                </label>
-
-                <input
-                  type="number"
-                  step="0.01"
-                  value={valor}
-                  onChange={(e) =>
-                    setValor(e.target.value)
-                  }
-                  disabled={tipo === "Pagamento funcionário"}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-lg font-bold outline-none focus:border-blue-500 disabled:bg-slate-100"
-                />
-
-                {tipo === "Pagamento funcionário" && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Calculado automaticamente pelo salário,
-                    adicionais, descontos e adiantamento.
-                  </p>
-                )}
-              </div>
-
-              {/* DATA + FORMA */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                <label className="block">
+                  <span className="text-sm text-slate-400">
                     Data
-                  </label>
+                  </span>
 
                   <input
                     type="date"
-                    value={dataMovimento}
+                    value={form.data_movimento}
                     onChange={(e) =>
-                      setDataMovimento(e.target.value)
+                      setForm({
+                        ...form,
+                        data_movimento: e.target.value,
+                      })
                     }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
                   />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Forma de pagamento
-                  </label>
-
-                  <select
-                    value={formaPagamento}
-                    onChange={(e) =>
-                      setFormaPagamento(e.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                  >
-                    <option value="">
-                      Selecione
-                    </option>
-                    <option value="Pix">Pix</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                    <option value="Transferência">
-                      Transferência
-                    </option>
-                    <option value="Débito">
-                      Cartão de débito
-                    </option>
-                    <option value="Crédito">
-                      Cartão de crédito
-                    </option>
-                    <option value="Boleto">
-                      Boleto
-                    </option>
-                    <option value="Outro">
-                      Outro
-                    </option>
-                  </select>
-                </div>
-
-              </div>
-
-              {/* CATEGORIA */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Categoria
                 </label>
 
-                <input
-                  value={categoria}
-                  onChange={(e) =>
-                    setCategoria(e.target.value)
-                  }
-                  placeholder="Ex.: Material, combustível, aluguel..."
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                />
-              </div>
-
-              {/* MOTIVO */}
-              {(tipo === "Sangria" ||
-                tipo === "Pró-labore") && (
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Motivo
-                  </label>
+                <label className="block md:col-span-2">
+                  <span className="text-sm text-slate-400">
+                    Descrição
+                  </span>
 
                   <input
-                    value={motivo}
+                    value={form.descricao}
                     onChange={(e) =>
-                      setMotivo(e.target.value)
+                      setForm({
+                        ...form,
+                        descricao: e.target.value,
+                      })
                     }
-                    placeholder={
-                      tipo === "Sangria"
-                        ? "Ex.: Retirada para pagamento de fornecedor"
-                        : "Ex.: Pró-labore do mês"
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
                   />
-                </div>
-              )}
-
-              {/* OBSERVAÇÕES */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Observações
                 </label>
 
-                <textarea
-                  value={observacoes}
-                  onChange={(e) =>
-                    setObservacoes(e.target.value)
-                  }
-                  rows={3}
-                  placeholder="Informações adicionais..."
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                />
+                {form.tipo === "Pagamento funcionário" && (
+                  <label className="block md:col-span-2">
+                    <span className="text-sm text-slate-400">
+                      Funcionário
+                    </span>
+
+                    <div className="relative">
+                      <UserRound
+                        size={18}
+                        className="absolute left-3 top-3.5 text-slate-500"
+                      />
+
+                      <select
+                        value={form.funcionario_id}
+                        onChange={(e) =>
+                          selecionarFuncionario(e.target.value)
+                        }
+                        className="mt-1 w-full bg-slate-800 rounded-xl p-3 pl-10"
+                      >
+                        <option value="">
+                          Selecione o funcionário
+                        </option>
+
+                        {funcionarios
+                          .filter((f) => f.status === "Ativo")
+                          .map((funcionario) => (
+                            <option
+                              key={funcionario.id}
+                              value={funcionario.id}
+                            >
+                              {funcionario.nome}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </label>
+                )}
+
+                <label className="block">
+                  <span className="text-sm text-slate-400">
+                    Valor
+                  </span>
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.valor}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        valor: e.target.value,
+                      })
+                    }
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm text-slate-400">
+                    Forma de pagamento
+                  </span>
+
+                  <select
+                    value={form.forma_pagamento}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        forma_pagamento: e.target.value,
+                      })
+                    }
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                  >
+                    <option>Pix</option>
+                    <option>Dinheiro</option>
+                    <option>Transferência</option>
+                    <option>Cartão</option>
+                    <option>Boleto</option>
+                    <option>Outro</option>
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-sm text-slate-400">
+                    Categoria
+                  </span>
+
+                  <input
+                    value={form.categoria}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        categoria: e.target.value,
+                      })
+                    }
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                    placeholder="Ex.: combustível"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm text-slate-400">
+                    Referência
+                  </span>
+
+                  <input
+                    value={form.referencia}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        referencia: e.target.value,
+                      })
+                    }
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                    placeholder="Ex.: Setembro/2026"
+                  />
+                </label>
+
+                {(form.tipo === "Sangria" ||
+                  form.tipo === "Pró-labore") && (
+                  <label className="block md:col-span-2">
+                    <span className="text-sm text-slate-400">
+                      Motivo
+                    </span>
+
+                    <input
+                      value={form.motivo}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          motivo: e.target.value,
+                        })
+                      }
+                      className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                      placeholder={
+                        form.tipo === "Sangria"
+                          ? "Ex.: retirada para compra de material"
+                          : "Ex.: pró-labore mensal"
+                      }
+                    />
+                  </label>
+                )}
+
+                <label className="block md:col-span-2">
+                  <span className="text-sm text-slate-400">
+                    Observações
+                  </span>
+
+                  <textarea
+                    value={form.observacoes}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        observacoes: e.target.value,
+                      })
+                    }
+                    rows={3}
+                    className="mt-1 w-full bg-slate-800 rounded-xl p-3"
+                  />
+                </label>
+
               </div>
 
-              {/* BOTÕES */}
-              <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
+              <div className="flex justify-end gap-3 mt-6">
 
                 <button
-                  onClick={() => {
-                    setModal(false);
-                    limparFormulario();
-                  }}
-                  className="rounded-xl border border-slate-200 px-5 py-3 font-semibold text-slate-700"
+                  onClick={() => setModal(false)}
+                  className="px-5 py-3 rounded-xl bg-slate-800"
                 >
                   Cancelar
                 </button>
@@ -1167,22 +910,19 @@ export default function CaixaPage() {
                 <button
                   onClick={salvar}
                   disabled={salvando}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-50"
+                  className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold"
                 >
-                  <CheckCircle2 size={18} />
-
-                  {salvando
-                    ? "Salvando..."
-                    : editando
-                    ? "Salvar alterações"
-                    : "Salvar movimentação"}
+                  {salvando ? "Salvando..." : "Salvar"}
                 </button>
 
               </div>
+
             </div>
+
           </div>
-        </div>
-      )}
+        )}
+
+      </div>
     </main>
   );
 }
