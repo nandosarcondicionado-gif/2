@@ -1,7 +1,11 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
-  Edit,
+  BriefcaseBusiness,
+  Calendar,
+  CheckCircle2,
+  Edit3,
   Mail,
   MapPin,
   Phone,
@@ -9,14 +13,15 @@ import {
   Search,
   Trash2,
   User,
+  UserCheck,
+  UserX,
+  Wallet,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
-type EmployeeStatus = "Ativo" | "Inativo";
+import { supabase } from "@/lib/supabase";
 
-type Employee = {
+type Funcionario = {
   id: string;
   nome: string;
   cpf: string;
@@ -24,1377 +29,1450 @@ type Employee = {
   telefone: string;
   whatsapp: string;
   email: string;
-
   endereco: string;
   numero: string;
   complemento: string;
   bairro: string;
   cidade: string;
   cep: string;
-
   cargo: string;
   tipo_vinculo: string;
-
   data_nascimento: string | null;
   data_admissao: string | null;
-
   salario: number;
-
   forma_pagamento: string;
   chave_pix: string;
-
-  status: EmployeeStatus;
+  status: "Ativo" | "Inativo";
   observacoes: string;
-
-  created_at?: string;
-  updated_at?: string;
+  created_at: string;
+  updated_at: string;
 };
 
-type EmployeeForm = {
+type FuncionarioForm = {
   nome: string;
   cpf: string;
   rg: string;
   telefone: string;
   whatsapp: string;
   email: string;
-
   endereco: string;
   numero: string;
   complemento: string;
   bairro: string;
   cidade: string;
   cep: string;
-
   cargo: string;
   tipo_vinculo: string;
-
   data_nascimento: string;
   data_admissao: string;
-
   salario: string;
-
   forma_pagamento: string;
   chave_pix: string;
-
-  status: EmployeeStatus;
+  status: "Ativo" | "Inativo";
   observacoes: string;
 };
 
-const emptyForm: EmployeeForm = {
+const emptyForm: FuncionarioForm = {
   nome: "",
   cpf: "",
   rg: "",
   telefone: "",
   whatsapp: "",
   email: "",
-
   endereco: "",
   numero: "",
   complemento: "",
   bairro: "",
   cidade: "",
   cep: "",
-
   cargo: "",
   tipo_vinculo: "Funcionário",
-
   data_nascimento: "",
   data_admissao: "",
-
   salario: "",
-
-  forma_pagamento: "",
+  forma_pagamento: "PIX",
   chave_pix: "",
-
   status: "Ativo",
   observacoes: "",
 };
 
-function normalizarStatus(status: unknown): EmployeeStatus {
-  return String(status || "").toLowerCase() === "inativo"
-    ? "Inativo"
-    : "Ativo";
-}
-
-function formatCurrency(value: number) {
+function money(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
   }).format(Number(value || 0));
 }
 
-function parseMoney(value: string) {
-  const cleaned = value
-    .replace(/[^\d,.-]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
+function dateBR(value: string | null) {
+  if (!value) return "—";
 
-  const number = Number(cleaned);
+  const parts = value.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
 
-  return Number.isFinite(number) ? number : 0;
+  return value;
 }
 
-function formatDate(date: string | null) {
-  if (!date) return "-";
-
-  const parts = date.split("-");
-
-  if (parts.length !== 3) return date;
-
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "");
 }
 
-function maskCpf(value: string) {
-  const numbers = value.replace(/\D/g, "").slice(0, 11);
-
-  if (numbers.length <= 3) return numbers;
-  if (numbers.length <= 6) {
-    return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
-  }
-  if (numbers.length <= 9) {
-    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(
-      6
-    )}`;
-  }
-
-  return `${numbers.slice(0, 3)}.${numbers.slice(
-    3,
-    6
-  )}.${numbers.slice(6, 9)}-${numbers.slice(9)}`;
-}
-
-function maskPhone(value: string) {
-  const numbers = value.replace(/\D/g, "").slice(0, 11);
-
-  if (numbers.length <= 2) return numbers;
-
-  if (numbers.length <= 7) {
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-  }
-
-  if (numbers.length <= 10) {
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(
-      2,
-      6
-    )}-${numbers.slice(6)}`;
-  }
-
-  return `(${numbers.slice(0, 2)}) ${numbers.slice(
-    2,
-    7
-  )}-${numbers.slice(7)}`;
+function normalizeFuncionario(row: any): Funcionario {
+  return {
+    id: row.id,
+    nome: row.nome ?? "",
+    cpf: row.cpf ?? "",
+    rg: row.rg ?? "",
+    telefone: row.telefone ?? "",
+    whatsapp: row.whatsapp ?? "",
+    email: row.email ?? "",
+    endereco: row.endereco ?? "",
+    numero: row.numero ?? "",
+    complemento: row.complemento ?? "",
+    bairro: row.bairro ?? "",
+    cidade: row.cidade ?? "",
+    cep: row.cep ?? "",
+    cargo: row.cargo ?? "",
+    tipo_vinculo: row.tipo_vinculo ?? "Funcionário",
+    data_nascimento: row.data_nascimento ?? null,
+    data_admissao: row.data_admissao ?? null,
+    salario: Number(row.salario ?? 0),
+    forma_pagamento: row.forma_pagamento ?? "",
+    chave_pix: row.chave_pix ?? "",
+    status: row.status === "Inativo" ? "Inativo" : "Ativo",
+    observacoes: row.observacoes ?? "",
+    created_at: row.created_at ?? "",
+    updated_at: row.updated_at ?? "",
+  };
 }
 
 export default function FuncionariosPage() {
-  const supabase = createClient();
-
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "Todos" | EmployeeStatus
+    "Todos" | "Ativo" | "Inativo"
   >("Todos");
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedFuncionario, setSelectedFuncionario] =
+    useState<Funcionario | null>(null);
 
-  const [form, setForm] = useState<EmployeeForm>(emptyForm);
+  const [form, setForm] = useState<FuncionarioForm>(emptyForm);
 
-  const [saving, setSaving] = useState(false);
+  async function loadFuncionarios() {
+    try {
+      setLoading(true);
 
-  async function loadEmployees() {
-    setLoading(true);
+      const { data, error } = await supabase
+        .from("funcionarios")
+        .select("*")
+        .order("nome", { ascending: true });
 
-    const { data, error } = await supabase
-      .from("funcionarios")
-      .select("*")
-      .order("nome", {
-        ascending: true,
-      });
+      if (error) {
+        console.error("Erro ao carregar funcionários:", error);
+        alert(`Não foi possível carregar os funcionários.\n\n${error.message}`);
+        return;
+      }
 
-    if (error) {
-      console.error("Erro ao carregar funcionários:", error);
+      setFuncionarios((data ?? []).map(normalizeFuncionario));
+    } catch (error: any) {
+      console.error("Erro inesperado ao carregar funcionários:", error);
       alert(
-        `Não foi possível carregar os funcionários.\n\n${error.message}`
+        `Erro inesperado ao carregar funcionários.\n\n${
+          error?.message ?? "Erro desconhecido."
+        }`
       );
-      setEmployees([]);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const normalized: Employee[] = (data || []).map((item) => ({
-      id: item.id,
-      nome: item.nome || "",
-      cpf: item.cpf || "",
-      rg: item.rg || "",
-      telefone: item.telefone || "",
-      whatsapp: item.whatsapp || "",
-      email: item.email || "",
-
-      endereco: item.endereco || "",
-      numero: item.numero || "",
-      complemento: item.complemento || "",
-      bairro: item.bairro || "",
-      cidade: item.cidade || "",
-      cep: item.cep || "",
-
-      cargo: item.cargo || "",
-      tipo_vinculo: item.tipo_vinculo || "Funcionário",
-
-      data_nascimento: item.data_nascimento || null,
-      data_admissao: item.data_admissao || null,
-
-      salario: Number(item.salario || 0),
-
-      forma_pagamento: item.forma_pagamento || "",
-      chave_pix: item.chave_pix || "",
-
-      status: normalizarStatus(item.status),
-
-      observacoes: item.observacoes || "",
-
-      created_at: item.created_at,
-      updated_at: item.updated_at,
-    }));
-
-    setEmployees(normalized);
-    setLoading(false);
   }
 
   useEffect(() => {
-    loadEmployees();
+    loadFuncionarios();
   }, []);
 
-  const filteredEmployees = useMemo(() => {
-    const term = search.trim().toLowerCase();
+  const filteredFuncionarios = useMemo(() => {
+    const term = search.toLowerCase().trim();
 
-    return employees.filter((employee) => {
+    return funcionarios.filter((funcionario) => {
       const matchesSearch =
         !term ||
-        employee.nome.toLowerCase().includes(term) ||
-        employee.cpf.toLowerCase().includes(term) ||
-        employee.telefone.toLowerCase().includes(term) ||
-        employee.cargo.toLowerCase().includes(term) ||
-        employee.cidade.toLowerCase().includes(term);
+        funcionario.nome.toLowerCase().includes(term) ||
+        funcionario.cpf.toLowerCase().includes(term) ||
+        funcionario.telefone.toLowerCase().includes(term) ||
+        funcionario.whatsapp.toLowerCase().includes(term) ||
+        funcionario.email.toLowerCase().includes(term) ||
+        funcionario.cargo.toLowerCase().includes(term) ||
+        funcionario.cidade.toLowerCase().includes(term);
 
       const matchesStatus =
         statusFilter === "Todos" ||
-        employee.status === statusFilter;
+        funcionario.status === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
-  }, [employees, search, statusFilter]);
+  }, [funcionarios, search, statusFilter]);
 
-  const activeCount = employees.filter(
-    (employee) => employee.status === "Ativo"
+  const ativos = funcionarios.filter(
+    (funcionario) => funcionario.status === "Ativo"
   ).length;
 
-  const inactiveCount = employees.filter(
-    (employee) => employee.status === "Inativo"
+  const inativos = funcionarios.filter(
+    (funcionario) => funcionario.status === "Inativo"
   ).length;
 
-  const totalSalaries = employees
-    .filter((employee) => employee.status === "Ativo")
-    .reduce(
-      (total, employee) => total + Number(employee.salario || 0),
-      0
-    );
+  const folhaAtiva = funcionarios
+    .filter((funcionario) => funcionario.status === "Ativo")
+    .reduce((total, funcionario) => total + Number(funcionario.salario || 0), 0);
 
-  function openNewForm() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setShowForm(true);
-  }
-
-  function openEditForm(employee: Employee) {
-    setEditingId(employee.id);
-
-    setForm({
-      nome: employee.nome,
-      cpf: employee.cpf,
-      rg: employee.rg,
-      telefone: employee.telefone,
-      whatsapp: employee.whatsapp,
-      email: employee.email,
-
-      endereco: employee.endereco,
-      numero: employee.numero,
-      complemento: employee.complemento,
-      bairro: employee.bairro,
-      cidade: employee.cidade,
-      cep: employee.cep,
-
-      cargo: employee.cargo,
-      tipo_vinculo: employee.tipo_vinculo,
-
-      data_nascimento: employee.data_nascimento || "",
-      data_admissao: employee.data_admissao || "",
-
-      salario: employee.salario
-        ? String(employee.salario)
-        : "",
-
-      forma_pagamento: employee.forma_pagamento,
-      chave_pix: employee.chave_pix,
-
-      status: employee.status,
-      observacoes: employee.observacoes,
-    });
-
-    setShowForm(true);
-  }
-
-  function updateField<K extends keyof EmployeeForm>(
+  function updateField<K extends keyof FuncionarioForm>(
     field: K,
-    value: EmployeeForm[K]
+    value: FuncionarioForm[K]
   ) {
-    setForm((current) => ({
-      ...current,
+    setForm((old) => ({
+      ...old,
       [field]: value,
     }));
   }
 
-  async function saveEmployee() {
-    if (!form.nome.trim()) {
-      alert("Informe o nome do funcionário.");
+  function openNew() {
+    setEditingId(null);
+    setSelectedFuncionario(null);
+    setForm({ ...emptyForm });
+    setShowForm(true);
+  }
+
+  function openEdit(funcionario: Funcionario) {
+    setEditingId(funcionario.id);
+    setSelectedFuncionario(null);
+
+    setForm({
+      nome: funcionario.nome,
+      cpf: funcionario.cpf,
+      rg: funcionario.rg,
+      telefone: funcionario.telefone,
+      whatsapp: funcionario.whatsapp,
+      email: funcionario.email,
+      endereco: funcionario.endereco,
+      numero: funcionario.numero,
+      complemento: funcionario.complemento,
+      bairro: funcionario.bairro,
+      cidade: funcionario.cidade,
+      cep: funcionario.cep,
+      cargo: funcionario.cargo,
+      tipo_vinculo: funcionario.tipo_vinculo,
+      data_nascimento: funcionario.data_nascimento ?? "",
+      data_admissao: funcionario.data_admissao ?? "",
+      salario:
+        funcionario.salario > 0
+          ? String(funcionario.salario)
+          : "",
+      forma_pagamento: funcionario.forma_pagamento || "PIX",
+      chave_pix: funcionario.chave_pix,
+      status: funcionario.status,
+      observacoes: funcionario.observacoes,
+    });
+
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    if (saving) return;
+
+    setShowForm(false);
+    setEditingId(null);
+    setForm({ ...emptyForm });
+  }
+
+  async function saveFuncionario() {
+    const nome = form.nome.trim();
+
+    if (!nome) {
+      alert("Digite o nome do funcionário.");
       return;
     }
 
-    setSaving(true);
+    if (!form.cargo.trim()) {
+      alert("Digite o cargo do funcionário.");
+      return;
+    }
 
-    const payload = {
-      nome: form.nome.trim(),
+    let salario = 0;
+
+    if (form.salario.trim()) {
+      const normalized = form.salario
+        .replace(/\s/g, "")
+        .replace(/\./g, "")
+        .replace(",", ".");
+
+      salario = Number(normalized);
+
+      if (Number.isNaN(salario) || salario < 0) {
+        alert("Digite um salário válido.");
+        return;
+      }
+    }
+
+    const funcionarioData = {
+      nome,
       cpf: form.cpf.trim(),
       rg: form.rg.trim(),
       telefone: form.telefone.trim(),
       whatsapp: form.whatsapp.trim(),
       email: form.email.trim(),
-
       endereco: form.endereco.trim(),
       numero: form.numero.trim(),
       complemento: form.complemento.trim(),
       bairro: form.bairro.trim(),
       cidade: form.cidade.trim(),
       cep: form.cep.trim(),
-
       cargo: form.cargo.trim(),
-      tipo_vinculo: form.tipo_vinculo.trim(),
-
-      data_nascimento:
-        form.data_nascimento || null,
-
-      data_admissao:
-        form.data_admissao || null,
-
-      salario: parseMoney(form.salario),
-
-      forma_pagamento:
-        form.forma_pagamento.trim(),
-
-      chave_pix:
-        form.chave_pix.trim(),
-
+      tipo_vinculo: form.tipo_vinculo.trim() || "Funcionário",
+      data_nascimento: form.data_nascimento || null,
+      data_admissao: form.data_admissao || null,
+      salario,
+      forma_pagamento: form.forma_pagamento.trim(),
+      chave_pix: form.chave_pix.trim(),
       status: form.status,
-
-      observacoes:
-        form.observacoes.trim(),
-
+      observacoes: form.observacoes.trim(),
       updated_at: new Date().toISOString(),
     };
 
-    let error;
+    try {
+      setSaving(true);
 
-    if (editingId) {
-      const result = await supabase
-        .from("funcionarios")
-        .update(payload)
-        .eq("id", editingId);
+      if (editingId) {
+        const { data, error } = await supabase
+          .from("funcionarios")
+          .update(funcionarioData)
+          .eq("id", editingId)
+          .select("*")
+          .single();
 
-      error = result.error;
-    } else {
-      const result = await supabase
+        if (error) {
+          console.error("Erro ao atualizar funcionário:", error);
+          alert(
+            `Não foi possível atualizar o funcionário.\n\n${error.message}`
+          );
+          return;
+        }
+
+        const updated = normalizeFuncionario(data);
+
+        setFuncionarios((old) =>
+          old.map((item) =>
+            item.id === editingId ? updated : item
+          )
+        );
+
+        setSelectedFuncionario(null);
+        closeForm();
+
+        alert("Funcionário atualizado com sucesso.");
+        return;
+      }
+
+      const { data, error } = await supabase
         .from("funcionarios")
         .insert({
-          ...payload,
+          ...funcionarioData,
           created_at: new Date().toISOString(),
-        });
+        })
+        .select("*")
+        .single();
 
-      error = result.error;
-    }
+      if (error) {
+        console.error("Erro ao cadastrar funcionário:", error);
 
-    setSaving(false);
+        alert(
+          `Não foi possível cadastrar o funcionário.\n\n${error.message}`
+        );
 
-    if (error) {
-      console.error("Erro ao salvar funcionário:", error);
+        return;
+      }
+
+      if (!data) {
+        alert(
+          "O funcionário foi enviado, mas o Supabase não retornou o cadastro. Atualize a página para verificar."
+        );
+
+        await loadFuncionarios();
+        closeForm();
+        return;
+      }
+
+      const novoFuncionario = normalizeFuncionario(data);
+
+      setFuncionarios((old) => [
+        novoFuncionario,
+        ...old,
+      ]);
+
+      closeForm();
+
+      alert("Funcionário cadastrado com sucesso.");
+    } catch (error: any) {
+      console.error("Erro inesperado ao salvar funcionário:", error);
 
       alert(
-        `Não foi possível salvar o funcionário.\n\n${error.message}`
+        `Erro inesperado ao salvar funcionário.\n\n${
+          error?.message ?? "Erro desconhecido."
+        }`
       );
-
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    alert(
-      editingId
-        ? "Funcionário atualizado com sucesso!"
-        : "Funcionário cadastrado com sucesso!"
-    );
-
-    setShowForm(false);
-    setEditingId(null);
-    setForm(emptyForm);
-
-    await loadEmployees();
   }
 
-  async function deleteEmployee(employee: Employee) {
-    const confirmed = window.confirm(
-      `Deseja realmente excluir o funcionário "${employee.nome}"?\n\n` +
-        `Se ele já possuir pagamentos registrados, recomendamos apenas colocá-lo como Inativo.`
+  async function deleteFuncionario(funcionario: Funcionario) {
+    const confirmar = window.confirm(
+      `Excluir o funcionário "${funcionario.nome}"?\n\nEssa ação também poderá excluir registros de pagamentos vinculados a ele.`
     );
 
-    if (!confirmed) return;
+    if (!confirmar) return;
 
-    const { error } = await supabase
-      .from("funcionarios")
-      .delete()
-      .eq("id", employee.id);
+    try {
+      const { error } = await supabase
+        .from("funcionarios")
+        .delete()
+        .eq("id", funcionario.id);
 
-    if (error) {
-      console.error("Erro ao excluir funcionário:", error);
+      if (error) {
+        console.error("Erro ao excluir funcionário:", error);
 
-      alert(
-        `Não foi possível excluir o funcionário.\n\n${error.message}`
+        alert(
+          `Não foi possível excluir o funcionário.\n\n${error.message}`
+        );
+
+        return;
+      }
+
+      setFuncionarios((old) =>
+        old.filter((item) => item.id !== funcionario.id)
       );
 
-      return;
-    }
+      if (selectedFuncionario?.id === funcionario.id) {
+        setSelectedFuncionario(null);
+      }
 
-    await loadEmployees();
+      alert("Funcionário excluído com sucesso.");
+    } catch (error: any) {
+      console.error("Erro inesperado ao excluir funcionário:", error);
+
+      alert(
+        `Erro inesperado ao excluir funcionário.\n\n${
+          error?.message ?? "Erro desconhecido."
+        }`
+      );
+    }
   }
 
-  async function toggleStatus(employee: Employee) {
-    const nextStatus =
-      employee.status === "Ativo"
-        ? "Inativo"
-        : "Ativo";
+  async function toggleStatus(funcionario: Funcionario) {
+    const novoStatus =
+      funcionario.status === "Ativo" ? "Inativo" : "Ativo";
 
-    const { error } = await supabase
-      .from("funcionarios")
-      .update({
-        status: nextStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", employee.id);
+    try {
+      const { data, error } = await supabase
+        .from("funcionarios")
+        .update({
+          status: novoStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", funcionario.id)
+        .select("*")
+        .single();
 
-    if (error) {
-      alert(
-        `Não foi possível alterar o status.\n\n${error.message}`
+      if (error) {
+        console.error("Erro ao alterar status:", error);
+
+        alert(
+          `Não foi possível alterar o status.\n\n${error.message}`
+        );
+
+        return;
+      }
+
+      const updated = normalizeFuncionario(data);
+
+      setFuncionarios((old) =>
+        old.map((item) =>
+          item.id === funcionario.id ? updated : item
+        )
       );
-      return;
-    }
 
-    await loadEmployees();
+      if (selectedFuncionario?.id === funcionario.id) {
+        setSelectedFuncionario(updated);
+      }
+    } catch (error: any) {
+      console.error("Erro inesperado ao alterar status:", error);
+
+      alert(
+        `Erro inesperado ao alterar status.\n\n${
+          error?.message ?? "Erro desconhecido."
+        }`
+      );
+    }
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
         {/* CABEÇALHO */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Funcionários
-            </h1>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-cyan-500/10 p-3 text-cyan-400">
+                <BriefcaseBusiness className="h-7 w-7" />
+              </div>
 
-            <p className="mt-1 text-sm text-gray-500">
-              Cadastro, dados pessoais, cargos e salários.
-            </p>
+              <div>
+                <h1 className="text-2xl font-bold sm:text-3xl">
+                  Funcionários
+                </h1>
+
+                <p className="text-sm text-slate-400">
+                  Cadastro e controle dos funcionários da empresa
+                </p>
+              </div>
+            </div>
           </div>
 
           <button
-            type="button"
-            onClick={openNewForm}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            onClick={openNew}
+            className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400"
           >
-            <Plus size={20} />
+            <Plus className="h-5 w-5" />
             Novo funcionário
           </button>
         </div>
 
         {/* RESUMO */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">
-              Funcionários ativos
-            </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-400">
+                Funcionários ativos
+              </span>
 
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {activeCount}
-            </p>
-          </div>
+              <UserCheck className="h-5 w-5 text-emerald-400" />
+            </div>
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">
-              Funcionários inativos
-            </p>
-
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {inactiveCount}
+            <p className="mt-3 text-3xl font-bold">
+              {ativos}
             </p>
           </div>
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">
-              Folha mensal cadastrada
-            </p>
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-400">
+                Funcionários inativos
+              </span>
 
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {formatCurrency(totalSalaries)}
-            </p>
+              <UserX className="h-5 w-5 text-red-400" />
+            </div>
 
-            <p className="mt-1 text-xs text-gray-400">
-              Apenas funcionários ativos
+            <p className="mt-3 text-3xl font-bold">
+              {inativos}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-400">
+                Salários ativos
+              </span>
+
+              <Wallet className="h-5 w-5 text-cyan-400" />
+            </div>
+
+            <p className="mt-3 text-2xl font-bold">
+              {money(folhaAtiva)}
             </p>
           </div>
         </div>
 
         {/* FILTROS */}
-        <div className="rounded-2xl border bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row">
-            <div className="relative flex-1">
-              <Search
-                size={19}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
 
-              <input
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Pesquisar funcionário..."
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <select
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(
-                  event.target.value as
-                    | "Todos"
-                    | EmployeeStatus
-                )
-              }
-              className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
-            >
-              <option value="Todos">
-                Todos os status
-              </option>
-
-              <option value="Ativo">
-                Ativos
-              </option>
-
-              <option value="Inativo">
-                Inativos
-              </option>
-            </select>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nome, CPF, telefone, cargo..."
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 outline-none transition focus:border-cyan-500"
+            />
           </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) =>
+              setStatusFilter(
+                e.target.value as "Todos" | "Ativo" | "Inativo"
+              )
+            }
+            className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+          >
+            <option value="Todos">Todos os status</option>
+            <option value="Ativo">Ativos</option>
+            <option value="Inativo">Inativos</option>
+          </select>
         </div>
 
         {/* LISTA */}
-        <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold">
+                  Lista de funcionários
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {filteredFuncionarios.length} funcionário(s)
+                  encontrado(s)
+                </p>
+              </div>
+            </div>
+          </div>
+
           {loading ? (
-            <div className="p-10 text-center text-gray-500">
+            <div className="p-10 text-center text-slate-400">
               Carregando funcionários...
             </div>
-          ) : filteredEmployees.length === 0 ? (
+          ) : filteredFuncionarios.length === 0 ? (
             <div className="p-10 text-center">
-              <User
-                size={42}
-                className="mx-auto text-gray-300"
-              />
+              <User className="mx-auto h-10 w-10 text-slate-600" />
 
-              <p className="mt-3 font-semibold text-gray-700">
+              <p className="mt-3 font-medium">
                 Nenhum funcionário encontrado
               </p>
 
-              <p className="mt-1 text-sm text-gray-400">
+              <p className="mt-1 text-sm text-slate-500">
                 Cadastre o primeiro funcionário para começar.
               </p>
+
+              <button
+                onClick={openNew}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950"
+              >
+                <Plus className="h-5 w-5" />
+                Cadastrar funcionário
+              </button>
             </div>
           ) : (
-            <>
-              {/* DESKTOP */}
-              <div className="hidden overflow-x-auto md:block">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b bg-gray-50">
-                    <tr>
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Funcionário
-                      </th>
-
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Cargo
-                      </th>
-
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Telefone
-                      </th>
-
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Salário
-                      </th>
-
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Status
-                      </th>
-
-                      <th className="px-5 py-4 text-right font-semibold text-gray-600">
-                        Ações
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y">
-                    {filteredEmployees.map(
-                      (employee) => (
-                        <tr
-                          key={employee.id}
-                          className="transition hover:bg-gray-50"
-                        >
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                                <User size={20} />
-                              </div>
-
-                              <div>
-                                <p className="font-semibold text-gray-900">
-                                  {employee.nome}
-                                </p>
-
-                                <p className="text-xs text-gray-500">
-                                  {employee.cpf ||
-                                    "CPF não informado"}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <p className="font-medium text-gray-800">
-                              {employee.cargo ||
-                                "Não informado"}
-                            </p>
-
-                            <p className="text-xs text-gray-500">
-                              {employee.tipo_vinculo}
-                            </p>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            {employee.whatsapp ||
-                              employee.telefone ||
-                              "-"}
-                          </td>
-
-                          <td className="px-5 py-4 font-semibold">
-                            {formatCurrency(
-                              employee.salario
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleStatus(employee)
-                              }
-                              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                                employee.status ===
-                                "Ativo"
-                                  ? "border-green-200 bg-green-50 text-green-700"
-                                  : "border-gray-200 bg-gray-100 text-gray-600"
-                              }`}
-                            >
-                              {employee.status}
-                            </button>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openEditForm(employee)
-                                }
-                                className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
-                                title="Editar"
-                              >
-                                <Edit size={17} />
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  deleteEmployee(
-                                    employee
-                                  )
-                                }
-                                className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                                title="Excluir"
-                              >
-                                <Trash2 size={17} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* MOBILE */}
-              <div className="divide-y md:hidden">
-                {filteredEmployees.map(
-                  (employee) => (
-                    <div
-                      key={employee.id}
-                      className="p-4"
+            <div className="divide-y divide-slate-800">
+              {filteredFuncionarios.map((funcionario) => (
+                <div
+                  key={funcionario.id}
+                  className="p-5 transition hover:bg-slate-800/40"
+                >
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedFuncionario(funcionario)
+                      }
+                      className="min-w-0 text-left"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                            <User size={21} />
+                      <div className="flex items-start gap-4">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                          <User className="h-6 w-6" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <h3 className="truncate font-semibold">
+                            {funcionario.nome}
+                          </h3>
+
+                          <p className="mt-1 text-sm text-slate-400">
+                            {funcionario.cargo || "Cargo não informado"}
+                          </p>
+
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                            {funcionario.telefone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="h-3.5 w-3.5" />
+                                {funcionario.telefone}
+                              </span>
+                            )}
+
+                            {funcionario.email && (
+                              <span className="inline-flex items-center gap-1">
+                                <Mail className="h-3.5 w-3.5" />
+                                {funcionario.email}
+                              </span>
+                            )}
+
+                            {funcionario.cidade && (
+                              <span className="inline-flex items-center gap-1">
+                                <MapPin className="h-3.5 w-3.5" />
+                                {funcionario.cidade}
+                              </span>
+                            )}
                           </div>
-
-                          <div>
-                            <p className="font-semibold text-gray-900">
-                              {employee.nome}
-                            </p>
-
-                            <p className="text-xs text-gray-500">
-                              {employee.cargo ||
-                                "Cargo não informado"}
-                            </p>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                            employee.status ===
-                            "Ativo"
-                              ? "border-green-200 bg-green-50 text-green-700"
-                              : "border-gray-200 bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {employee.status}
-                        </span>
-                      </div>
-
-                      <div className="mt-4 space-y-2 text-sm text-gray-600">
-                        <div className="flex items-center gap-2">
-                          <Phone size={16} />
-                          {employee.whatsapp ||
-                            employee.telefone ||
-                            "Telefone não informado"}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <Mail size={16} />
-                          {employee.email ||
-                            "E-mail não informado"}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <MapPin size={16} />
-                          {employee.cidade ||
-                            "Cidade não informada"}
                         </div>
                       </div>
+                    </button>
 
-                      <div className="mt-4 rounded-xl bg-gray-50 p-3">
-                        <p className="text-xs text-gray-500">
-                          Salário
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="sm:text-right">
+                        <p className="font-semibold text-cyan-400">
+                          {money(funcionario.salario)}
                         </p>
 
-                        <p className="mt-1 font-bold text-gray-900">
-                          {formatCurrency(
-                            employee.salario
-                          )}
+                        <p className="text-xs text-slate-500">
+                          {funcionario.tipo_vinculo}
                         </p>
                       </div>
 
-                      <div className="mt-4 flex gap-2">
+                      <span
+                        className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
+                          funcionario.status === "Ativo"
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : "bg-red-500/10 text-red-400"
+                        }`}
+                      >
+                        {funcionario.status}
+                      </span>
+
+                      <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() =>
-                            openEditForm(employee)
+                            openEdit(funcionario)
                           }
-                          className="flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-gray-700"
+                          title="Editar"
+                          className="rounded-lg border border-slate-700 p-2 text-slate-300 transition hover:bg-slate-800 hover:text-white"
                         >
-                          <Edit size={17} />
-                          Editar
+                          <Edit3 className="h-4 w-4" />
                         </button>
 
                         <button
                           type="button"
                           onClick={() =>
-                            deleteEmployee(employee)
+                            toggleStatus(funcionario)
                           }
-                          className="rounded-xl border border-red-200 px-4 py-3 text-red-600"
+                          title={
+                            funcionario.status === "Ativo"
+                              ? "Inativar"
+                              : "Ativar"
+                          }
+                          className="rounded-lg border border-slate-700 p-2 text-slate-300 transition hover:bg-slate-800 hover:text-white"
                         >
-                          <Trash2 size={17} />
+                          {funcionario.status === "Ativo" ? (
+                            <UserX className="h-4 w-4" />
+                          ) : (
+                            <UserCheck className="h-4 w-4" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            deleteFuncionario(funcionario)
+                          }
+                          title="Excluir"
+                          className="rounded-lg border border-red-900/50 p-2 text-red-400 transition hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
-                  )
-                )}
-              </div>
-            </>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
+        </section>
       </div>
 
-      {/* MODAL */}
+      {/* MODAL CADASTRO / EDIÇÃO */}
       {showForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
-          <div className="mx-auto my-4 max-w-4xl rounded-2xl bg-white shadow-2xl md:my-8">
-            {/* CABEÇALHO MODAL */}
-            <div className="flex items-center justify-between border-b p-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-5">
+          <div className="max-h-[95vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-slate-900 p-5">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 className="text-xl font-bold">
                   {editingId
                     ? "Editar funcionário"
                     : "Novo funcionário"}
                 </h2>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Preencha os dados para manter o cadastro
-                  organizado.
+                <p className="mt-1 text-sm text-slate-500">
+                  Preencha os dados do funcionário
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
-                className="rounded-xl p-2 text-gray-500 hover:bg-gray-100"
+                onClick={closeForm}
+                disabled={saving}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-50"
               >
-                <X size={22} />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="max-h-[75vh] overflow-y-auto p-5">
-              <div className="space-y-6">
-                {/* DADOS PESSOAIS */}
-                <section>
-                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+            <div className="space-y-7 p-5">
+              {/* DADOS PESSOAIS */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <User className="h-5 w-5 text-cyan-400" />
+                  <h3 className="font-semibold text-cyan-400">
                     Dados pessoais
                   </h3>
+                </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Nome completo *
-                      </label>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="lg:col-span-2">
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Nome completo *
+                    </span>
 
-                      <input
-                        value={form.nome}
-                        onChange={(event) =>
-                          updateField(
-                            "nome",
-                            event.target.value
-                          )
-                        }
-                        placeholder="Nome completo"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.nome}
+                      onChange={(e) =>
+                        updateField("nome", e.target.value)
+                      }
+                      placeholder="Nome completo"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        CPF
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      CPF
+                    </span>
 
-                      <input
-                        value={form.cpf}
-                        onChange={(event) =>
-                          updateField(
-                            "cpf",
-                            maskCpf(
-                              event.target.value
-                            )
-                          )
-                        }
-                        placeholder="000.000.000-00"
-                        inputMode="numeric"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.cpf}
+                      onChange={(e) =>
+                        updateField("cpf", e.target.value)
+                      }
+                      inputMode="numeric"
+                      placeholder="CPF"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        RG
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      RG
+                    </span>
 
-                      <input
-                        value={form.rg}
-                        onChange={(event) =>
-                          updateField(
-                            "rg",
-                            event.target.value
-                          )
-                        }
-                        placeholder="RG"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.rg}
+                      onChange={(e) =>
+                        updateField("rg", e.target.value)
+                      }
+                      placeholder="RG"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Data de nascimento
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Data de nascimento
+                    </span>
 
-                      <input
-                        type="date"
-                        value={
-                          form.data_nascimento
-                        }
-                        onChange={(event) =>
-                          updateField(
-                            "data_nascimento",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      type="date"
+                      value={form.data_nascimento}
+                      onChange={(e) =>
+                        updateField(
+                          "data_nascimento",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                    />
+                  </label>
+                </div>
+              </section>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Data de admissão
-                      </label>
-
-                      <input
-                        type="date"
-                        value={
-                          form.data_admissao
-                        }
-                        onChange={(event) =>
-                          updateField(
-                            "data_admissao",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                {/* CONTATO */}
-                <section>
-                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+              {/* CONTATO */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <Phone className="h-5 w-5 text-cyan-400" />
+                  <h3 className="font-semibold text-cyan-400">
                     Contato
                   </h3>
+                </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Telefone
-                      </label>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Telefone
+                    </span>
 
-                      <input
-                        value={form.telefone}
-                        onChange={(event) =>
-                          updateField(
-                            "telefone",
-                            maskPhone(
-                              event.target.value
-                            )
-                          )
-                        }
-                        placeholder="(00) 0000-0000"
-                        inputMode="tel"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.telefone}
+                      onChange={(e) =>
+                        updateField(
+                          "telefone",
+                          e.target.value
+                        )
+                      }
+                      inputMode="tel"
+                      placeholder="Telefone"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        WhatsApp
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      WhatsApp
+                    </span>
 
-                      <input
-                        value={form.whatsapp}
-                        onChange={(event) =>
-                          updateField(
-                            "whatsapp",
-                            maskPhone(
-                              event.target.value
-                            )
-                          )
-                        }
-                        placeholder="(00) 00000-0000"
-                        inputMode="tel"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.whatsapp}
+                      onChange={(e) =>
+                        updateField(
+                          "whatsapp",
+                          e.target.value
+                        )
+                      }
+                      inputMode="tel"
+                      placeholder="WhatsApp"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        E-mail
-                      </label>
+                  <label className="sm:col-span-2">
+                    <span className="mb-1 block text-sm text-slate-400">
+                      E-mail
+                    </span>
 
-                      <input
-                        type="email"
-                        value={form.email}
-                        onChange={(event) =>
-                          updateField(
-                            "email",
-                            event.target.value
-                          )
-                        }
-                        placeholder="email@exemplo.com"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
-                  </div>
-                </section>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) =>
+                        updateField("email", e.target.value)
+                      }
+                      placeholder="email@exemplo.com"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
+                </div>
+              </section>
 
-                {/* ENDEREÇO */}
-                <section>
-                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+              {/* ENDEREÇO */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-cyan-400" />
+                  <h3 className="font-semibold text-cyan-400">
                     Endereço
                   </h3>
+                </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
-                    <div className="md:col-span-4">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Endereço
-                      </label>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="lg:col-span-2">
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Endereço
+                    </span>
 
-                      <input
-                        value={form.endereco}
-                        onChange={(event) =>
-                          updateField(
-                            "endereco",
-                            event.target.value
-                          )
-                        }
-                        placeholder="Rua / Avenida"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.endereco}
+                      onChange={(e) =>
+                        updateField(
+                          "endereco",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Rua / Avenida"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Número
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Número
+                    </span>
 
-                      <input
-                        value={form.numero}
-                        onChange={(event) =>
-                          updateField(
-                            "numero",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.numero}
+                      onChange={(e) =>
+                        updateField("numero", e.target.value)
+                      }
+                      placeholder="Número"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        CEP
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      CEP
+                    </span>
 
-                      <input
-                        value={form.cep}
-                        onChange={(event) =>
-                          updateField(
-                            "cep",
-                            event.target.value
-                          )
-                        }
-                        placeholder="00000-000"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.cep}
+                      onChange={(e) =>
+                        updateField("cep", e.target.value)
+                      }
+                      inputMode="numeric"
+                      placeholder="CEP"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Bairro
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Bairro
+                    </span>
 
-                      <input
-                        value={form.bairro}
-                        onChange={(event) =>
-                          updateField(
-                            "bairro",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.bairro}
+                      onChange={(e) =>
+                        updateField("bairro", e.target.value)
+                      }
+                      placeholder="Bairro"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Cidade
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Cidade
+                    </span>
 
-                      <input
-                        value={form.cidade}
-                        onChange={(event) =>
-                          updateField(
-                            "cidade",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.cidade}
+                      onChange={(e) =>
+                        updateField("cidade", e.target.value)
+                      }
+                      placeholder="Cidade"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Complemento
-                      </label>
+                  <label className="lg:col-span-2">
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Complemento
+                    </span>
 
-                      <input
-                        value={form.complemento}
-                        onChange={(event) =>
-                          updateField(
-                            "complemento",
-                            event.target.value
-                          )
-                        }
-                        placeholder="Apartamento, casa, sala..."
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
-                  </div>
-                </section>
+                    <input
+                      value={form.complemento}
+                      onChange={(e) =>
+                        updateField(
+                          "complemento",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Apartamento, bloco, referência..."
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
+                </div>
+              </section>
 
-                {/* DADOS PROFISSIONAIS */}
-                <section>
-                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
+              {/* PROFISSIONAL */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <BriefcaseBusiness className="h-5 w-5 text-cyan-400" />
+                  <h3 className="font-semibold text-cyan-400">
                     Dados profissionais
                   </h3>
+                </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Cargo
-                      </label>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="lg:col-span-2">
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Cargo *
+                    </span>
 
-                      <input
-                        value={form.cargo}
-                        onChange={(event) =>
-                          updateField(
-                            "cargo",
-                            event.target.value
-                          )
-                        }
-                        placeholder="Ex.: Técnico de climatização"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
+                    <input
+                      value={form.cargo}
+                      onChange={(e) =>
+                        updateField("cargo", e.target.value)
+                      }
+                      placeholder="Ex.: Técnico de Ar-Condicionado"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Tipo de vínculo
-                      </label>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Tipo de vínculo
+                    </span>
 
-                      <select
-                        value={
-                          form.tipo_vinculo
-                        }
-                        onChange={(event) =>
-                          updateField(
-                            "tipo_vinculo",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
-                      >
-                        <option>
-                          Funcionário
-                        </option>
+                    <select
+                      value={form.tipo_vinculo}
+                      onChange={(e) =>
+                        updateField(
+                          "tipo_vinculo",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                    >
+                      <option>Funcionário</option>
+                      <option>CLT</option>
+                      <option>Autônomo</option>
+                      <option>Prestador</option>
+                      <option>Temporário</option>
+                      <option>Freelancer</option>
+                      <option>Outro</option>
+                    </select>
+                  </label>
 
-                        <option>
-                          CLT
-                        </option>
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Data de admissão
+                    </span>
 
-                        <option>
-                          Autônomo
-                        </option>
+                    <input
+                      type="date"
+                      value={form.data_admissao}
+                      onChange={(e) =>
+                        updateField(
+                          "data_admissao",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                    />
+                  </label>
+                </div>
+              </section>
 
-                        <option>
-                          Prestador de serviço
-                        </option>
-
-                        <option>
-                          Temporário
-                        </option>
-
-                        <option>
-                          Sócio
-                        </option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Salário / valor mensal
-                      </label>
-
-                      <input
-                        value={form.salario}
-                        onChange={(event) =>
-                          updateField(
-                            "salario",
-                            event.target.value
-                          )
-                        }
-                        placeholder="0,00"
-                        inputMode="decimal"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Forma de pagamento
-                      </label>
-
-                      <select
-                        value={
-                          form.forma_pagamento
-                        }
-                        onChange={(event) =>
-                          updateField(
-                            "forma_pagamento",
-                            event.target.value
-                          )
-                        }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
-                      >
-                        <option value="">
-                          Selecionar
-                        </option>
-
-                        <option value="Pix">
-                          Pix
-                        </option>
-
-                        <option value="Transferência">
-                          Transferência
-                        </option>
-
-                        <option value="Dinheiro">
-                          Dinheiro
-                        </option>
-
-                        <option value="Cheque">
-                          Cheque
-                        </option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Chave Pix
-                      </label>
-
-                      <input
-                        value={form.chave_pix}
-                        onChange={(event) =>
-                          updateField(
-                            "chave_pix",
-                            event.target.value
-                          )
-                        }
-                        placeholder="CPF, telefone, e-mail ou chave aleatória"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Status
-                      </label>
-
-                      <select
-                        value={form.status}
-                        onChange={(event) =>
-                          updateField(
-                            "status",
-                            event.target.value as EmployeeStatus
-                          )
-                        }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
-                      >
-                        <option value="Ativo">
-                          Ativo
-                        </option>
-
-                        <option value="Inativo">
-                          Inativo
-                        </option>
-                      </select>
-                    </div>
-                  </div>
-                </section>
-
-                {/* OBSERVAÇÕES */}
-                <section>
-                  <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
-                    Observações
+              {/* PAGAMENTO */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-cyan-400" />
+                  <h3 className="font-semibold text-cyan-400">
+                    Pagamento
                   </h3>
+                </div>
 
-                  <textarea
-                    value={form.observacoes}
-                    onChange={(event) =>
-                      updateField(
-                        "observacoes",
-                        event.target.value
-                      )
-                    }
-                    rows={4}
-                    placeholder="Observações sobre o funcionário..."
-                    className="w-full resize-none rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </section>
-              </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Salário
+                    </span>
+
+                    <input
+                      value={form.salario}
+                      onChange={(e) =>
+                        updateField(
+                          "salario",
+                          e.target.value
+                        )
+                      }
+                      inputMode="decimal"
+                      placeholder="Ex.: 2800,00"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
+
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Forma de pagamento
+                    </span>
+
+                    <select
+                      value={form.forma_pagamento}
+                      onChange={(e) =>
+                        updateField(
+                          "forma_pagamento",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                    >
+                      <option>PIX</option>
+                      <option>Transferência</option>
+                      <option>Dinheiro</option>
+                      <option>Cheque</option>
+                      <option>Outro</option>
+                    </select>
+                  </label>
+
+                  <label className="sm:col-span-2">
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Chave PIX
+                    </span>
+
+                    <input
+                      value={form.chave_pix}
+                      onChange={(e) =>
+                        updateField(
+                          "chave_pix",
+                          e.target.value
+                        )
+                      }
+                      placeholder="CPF, telefone, e-mail ou chave aleatória"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              {/* STATUS */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-cyan-400" />
+                  <h3 className="font-semibold text-cyan-400">
+                    Status
+                  </h3>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Situação
+                    </span>
+
+                    <select
+                      value={form.status}
+                      onChange={(e) =>
+                        updateField(
+                          "status",
+                          e.target.value as
+                            | "Ativo"
+                            | "Inativo"
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-500"
+                    >
+                      <option value="Ativo">Ativo</option>
+                      <option value="Inativo">Inativo</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span className="mb-1 block text-sm text-slate-400">
+                      Observações
+                    </span>
+
+                    <textarea
+                      value={form.observacoes}
+                      onChange={(e) =>
+                        updateField(
+                          "observacoes",
+                          e.target.value
+                        )
+                      }
+                      rows={3}
+                      placeholder="Observações..."
+                      className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-500"
+                    />
+                  </label>
+                </div>
+              </section>
             </div>
 
-            {/* RODAPÉ */}
-            <div className="flex flex-col-reverse gap-3 border-t bg-gray-50 p-5 sm:flex-row sm:justify-end">
+            <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-800 bg-slate-900 p-5 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
-                className="rounded-xl border bg-white px-5 py-3 font-semibold text-gray-700 hover:bg-gray-100"
+                onClick={closeForm}
+                disabled={saving}
+                className="rounded-xl border border-slate-700 px-5 py-3 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50"
               >
                 Cancelar
               </button>
 
               <button
                 type="button"
-                onClick={saveEmployee}
+                onClick={saveFuncionario}
                 disabled={saving}
-                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving
-                  ? "Salvando..."
-                  : editingId
-                  ? "Salvar alterações"
-                  : "Cadastrar funcionário"}
+                {saving ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-5 w-5" />
+                    {editingId
+                      ? "Salvar alterações"
+                      : "Cadastrar funcionário"}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALHES */}
+      {selectedFuncionario && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 p-5">
+              <div>
+                <h2 className="text-xl font-bold">
+                  {selectedFuncionario.nome}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {selectedFuncionario.cargo ||
+                    "Cargo não informado"}
+                </p>
+              </div>
+
+              <button
+                onClick={() =>
+                  setSelectedFuncionario(null)
+                }
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">CPF</p>
+                <p className="mt-1 font-medium">
+                  {selectedFuncionario.cpf || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">RG</p>
+                <p className="mt-1 font-medium">
+                  {selectedFuncionario.rg || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">Telefone</p>
+                <p className="mt-1 font-medium">
+                  {selectedFuncionario.telefone || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">WhatsApp</p>
+                <p className="mt-1 font-medium">
+                  {selectedFuncionario.whatsapp || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">E-mail</p>
+                <p className="mt-1 break-all font-medium">
+                  {selectedFuncionario.email || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">Status</p>
+                <p
+                  className={`mt-1 font-semibold ${
+                    selectedFuncionario.status === "Ativo"
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {selectedFuncionario.status}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">Salário</p>
+                <p className="mt-1 font-semibold text-cyan-400">
+                  {money(selectedFuncionario.salario)}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Forma de pagamento
+                </p>
+                <p className="mt-1 font-medium">
+                  {selectedFuncionario.forma_pagamento ||
+                    "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Data de nascimento
+                </p>
+                <p className="mt-1 font-medium">
+                  {dateBR(
+                    selectedFuncionario.data_nascimento
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4">
+                <p className="text-xs text-slate-500">
+                  Data de admissão
+                </p>
+                <p className="mt-1 font-medium">
+                  {dateBR(selectedFuncionario.data_admissao)}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4 sm:col-span-2">
+                <p className="text-xs text-slate-500">
+                  Endereço
+                </p>
+                <p className="mt-1 font-medium">
+                  {[
+                    selectedFuncionario.endereco,
+                    selectedFuncionario.numero,
+                    selectedFuncionario.complemento,
+                    selectedFuncionario.bairro,
+                    selectedFuncionario.cidade,
+                    selectedFuncionario.cep,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4 sm:col-span-2">
+                <p className="text-xs text-slate-500">
+                  Chave PIX
+                </p>
+                <p className="mt-1 break-all font-medium">
+                  {selectedFuncionario.chave_pix ||
+                    "Não informado"}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-950 p-4 sm:col-span-2">
+                <p className="text-xs text-slate-500">
+                  Observações
+                </p>
+                <p className="mt-1 whitespace-pre-wrap font-medium">
+                  {selectedFuncionario.observacoes ||
+                    "Nenhuma observação."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-800 p-5 sm:flex-row sm:justify-end">
+              <button
+                onClick={() =>
+                  toggleStatus(selectedFuncionario)
+                }
+                className="rounded-xl border border-slate-700 px-5 py-3 font-medium hover:bg-slate-800"
+              >
+                {selectedFuncionario.status === "Ativo"
+                  ? "Inativar funcionário"
+                  : "Ativar funcionário"}
+              </button>
+
+              <button
+                onClick={() =>
+                  openEdit(selectedFuncionario)
+                }
+                className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-400"
+              >
+                <Edit3 className="h-5 w-5" />
+                Editar
               </button>
             </div>
           </div>
