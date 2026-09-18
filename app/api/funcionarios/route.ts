@@ -10,6 +10,7 @@ const allowedRoles = [
   "tecnico",
   "financeiro",
 ] as const;
+
 export async function GET() {
   try {
     const supabase = await createServerClient();
@@ -76,7 +77,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      employees: employees ?? [],
+      employees: employees || [],
     });
   } catch {
     return NextResponse.json(
@@ -85,6 +86,7 @@ export async function GET() {
     );
   }
 }
+
 export async function POST(request: Request) {
   try {
     const supabase = await createServerClient();
@@ -120,26 +122,26 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const name = String(body.name ?? "").trim();
-    const email = String(body.email ?? "").trim().toLowerCase();
-    const password = String(body.password ?? "");
-    const role = String(body.role ?? "").trim().toLowerCase();
+    const name = String(body?.nome || "").trim();
+    const email = String(body?.email || "").trim();
+    const password = String(body?.password || "");
+    const role = String(body?.funcao || "").trim();
 
     if (!name || !email || !password || !role) {
       return NextResponse.json(
-        { error: "Nome, e-mail, senha e função são obrigatórios." },
+        {
+          error:
+            "Nome, e-mail, senha e função são obrigatórios.",
+        },
         { status: 400 }
       );
     }
 
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: "A senha deve ter pelo menos 6 caracteres." },
-        { status: 400 }
-      );
-    }
-
-    if (!allowedRoles.includes(role as (typeof allowedRoles)[number])) {
+    if (
+      !allowedRoles.includes(
+        role as (typeof allowedRoles)[number]
+      )
+    ) {
       return NextResponse.json(
         { error: "Função inválida." },
         { status: 400 }
@@ -171,240 +173,30 @@ export async function POST(request: Request) {
 
     if (authError || !authData.user) {
       return NextResponse.json(
-        { error: authError?.message || "Não foi possível criar o usuário." },
+        {
+          error:
+            authError?.message ||
+            "Não foi possível criar o usuário.",
+        },
         { status: 400 }
       );
     }
 
-    const { error: employeeError } = await adminSupabase
-      .from("funcionarios")
-      .insert({
-        id: authData.user.id,
-        nome: name,
-        email,
-        funcao: role,
-        status: "ativo",
-      });
-
-    if (employeeError) {
-      await adminSupabase.auth.admin.deleteUser(authData.user.id);
-
-      return NextResponse.json(
-        {
-          error:
-            "A conta foi criada, mas não foi possível criar o perfil do funcionário.",
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        employee: {
+    const { error: employeeError } =
+      await adminSupabase
+        .from("funcionarios")
+        .insert({
           id: authData.user.id,
           nome: name,
           email,
           funcao: role,
           status: "ativo",
-        },
-      },
-      { status: 201 }
-    );
-  } catch {
-    return NextResponse.json(
-      { error: "Erro interno do servidor." },
-      { status: 500 }
-    );
-  }
-}
-
-
-const allowedRoles = [
-  "administrador",
-  "gerente",
-  "atendente",
-  "tecnico",
-  "financeiro",
-] as const;
-export async function GET() {
-  try {
-    const supabase = await createServerClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 }
-      );
-    }
-
-    const { data: adminProfile, error: profileError } =
-      await supabase
-        .from("funcionarios")
-        .select("funcao, status")
-        .eq("id", user.id)
-        .single();
-
-    if (
-      profileError ||
-      adminProfile?.funcao !== "administrador" ||
-      adminProfile?.status !== "ativo"
-    ) {
-      return NextResponse.json(
-        { error: "Acesso negado." },
-        { status: 403 }
-      );
-    }
-
-    const { url, serviceRoleKey } = getSupabaseServiceRoleEnv();
-
-    const adminSupabase = createClient(
-      url,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
-
-    const { data: employees, error } = await adminSupabase
-      .from("funcionarios")
-      .select(
-        "id, nome, email, funcao, status, created_at"
-      )
-      .order("created_at", {
-        ascending: true,
-      });
-
-    if (error) {
-      return NextResponse.json(
-        {
-          error:
-            "Não foi possível carregar os funcionários.",
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      employees: employees ?? [],
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "Erro interno do servidor." },
-      { status: 500 }
-    );
-  }
-}
-export async function POST(request: Request) {
-  try {
-    const supabase = await createServerClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 }
-      );
-    }
-
-    const { data: adminProfile, error: profileError } =
-      await supabase
-        .from("funcionarios")
-        .select("funcao, status")
-        .eq("id", user.id)
-        .single();
-
-    if (
-      profileError ||
-      adminProfile?.funcao !== "administrador" ||
-      adminProfile?.status !== "ativo"
-    ) {
-      return NextResponse.json(
-        { error: "Acesso negado." },
-        { status: 403 }
-      );
-    }
-
-    const body = await request.json();
-
-    const name = String(body.name ?? "").trim();
-    const email = String(body.email ?? "").trim().toLowerCase();
-    const password = String(body.password ?? "");
-    const role = String(body.role ?? "").trim().toLowerCase();
-
-    if (!name || !email || !password || !role) {
-      return NextResponse.json(
-        { error: "Nome, e-mail, senha e função são obrigatórios." },
-        { status: 400 }
-      );
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: "A senha deve ter pelo menos 6 caracteres." },
-        { status: 400 }
-      );
-    }
-
-    if (!allowedRoles.includes(role as (typeof allowedRoles)[number])) {
-      return NextResponse.json(
-        { error: "Função inválida." },
-        { status: 400 }
-      );
-    }
-
-    const { url, serviceRoleKey } = getSupabaseServiceRoleEnv();
-
-    const adminSupabase = createClient(
-      url,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
-
-    const { data: authData, error: authError } =
-      await adminSupabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          name,
-        },
-      });
-
-    if (authError || !authData.user) {
-      return NextResponse.json(
-        { error: authError?.message || "Não foi possível criar o usuário." },
-        { status: 400 }
-      );
-    }
-
-    const { error: employeeError } = await adminSupabase
-      .from("funcionarios")
-      .insert({
-        id: authData.user.id,
-        nome: name,
-        email,
-        funcao: role,
-        status: "ativo",
-      });
+        });
 
     if (employeeError) {
-      await adminSupabase.auth.admin.deleteUser(authData.user.id);
+      await adminSupabase.auth.admin.deleteUser(
+        authData.user.id
+      );
 
       return NextResponse.json(
         {
