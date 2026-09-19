@@ -1,23 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "../../../../../lib/supabase/server";
+import { getSupabaseServiceRoleEnv } from "../../../../../lib/supabase/env";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    // Verifica quem está fazendo a alteração.
+    const supabase = await createServerClient();
 
     const {
-      funcionarioId,
-      permitirAcesso,
-      emailLogin,
-      senhaInicial,
-      perfil,
-      permissoes,
-    } = body;
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    // Somente administrador pode criar/alterar acessos.
+    const { data: administrador, error: adminError } =
+      await supabase
+        .from("funcionarios")
+        .select("funcao, status")
+        .eq("id", user.id)
+        .single();
+
+    if (
+      adminError ||
+      !administrador ||
+      administrador.funcao !== "administrador" ||
+      administrador.status !== "ativo"
+    ) {
+      return NextResponse.json(
+        { error: "Acesso negado. Somente administradores podem configurar acessos." },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+
+    const funcionarioId = String(body?.funcionarioId || "").trim();
+    const permitirAcesso = body?.permitirAcesso === true;
+    const emailLogin = String(body?.emailLogin || "").trim().toLowerCase();
+    const senhaInicial = String(body?.senhaInicial || "");
+    const perfil = String(body?.perfil || "Tecnico").trim();
+    const permissoes =
+      body?.permissoes && typeof body.permissoes === "object"
+        ? body.permissoes
+        : {};
 
     if (!funcionarioId) {
       return NextResponse.json(
@@ -47,6 +79,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const { url, serviceRoleKey } = getSupabaseServiceRoleEnv();
+
+    const supabaseAdmin = createAdminClient(
+      url,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
     const { data: funcionario, error: funcionarioError } =
       await supabaseAdmin
         .from("funcionarios")
@@ -64,6 +109,7 @@ export async function POST(request: NextRequest) {
     let authUserId = funcionario.auth_user_id;
 
     if (permitirAcesso) {
+      // Se já possui usuário no Auth, atualiza.
       if (authUserId) {
         const { error: updateAuthError } =
           await supabaseAdmin.auth.admin.updateUserById(
@@ -72,6 +118,7 @@ export async function POST(request: NextRequest) {
               email: emailLogin,
               password: senhaInicial,
               email_confirm: true,
+              ban_duration: "none",
             }
           );
 
@@ -82,11 +129,17 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
+        // Caso ainda não possua usuário, cria.
         const { data: authData, error: createAuthError } =
           await supabaseAdmin.auth.admin.createUser({
             email: emailLogin,
             password: senhaInicial,
             email_confirm: true,
+            user_metadata: {
+              funcionario_id: funcionarioId,
+              nome: funcionario.nome,
+              perfil,
+            },
           });
 
         if (createAuthError || !authData.user) {
@@ -103,23 +156,40 @@ export async function POST(request: NextRequest) {
         authUserId = authData.user.id;
       }
     } else if (authUserId) {
-      await supabaseAdmin.auth.admin.updateUserById(authUserId, {
-        ban_duration: "876000h",
-      });
+      // Desativa o acesso sem apagar o funcionário.
+      const { error: disableError } =
+        await supabaseAdmin.auth.admin.updateUserById(
+          authUserId,
+          {
+            ban_duration: "876000h",
+          }
+        );
+
+      if (disableError) {
+        return NextResponse.json(
+          { error: disableError.message },
+          { status: 400 }
+        );
+      }
     }
 
-    const { error: updateFuncionarioError } = await supabaseAdmin
-      .from("funcionarios")
-      .update({
-        permitir_acesso: permitirAcesso,
-        email_login: permitirAcesso ? emailLogin : null,
-        perfil: perfil || "Tecnico",
-        permissoes: permissoes || {},
-        auth_user_id: permitirAcesso ? authUserId : funcionario.auth_user_id,
-        acesso_status: permitirAcesso ? "Ativo" : "Sem acesso",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", funcionarioId);
+    const { error: updateFuncionarioError } =
+      await supabaseAdmin
+        .from("funcionarios")
+        .update({
+          permitir_acesso: permitirAcesso,
+          email_login: permitirAcesso ? emailLogin : null,
+          perfil,
+          permissoes,
+          auth_user_id: permitirAcesso
+            ? authUserId
+            : funcionario.auth_user_id,
+          acesso_status: permitirAcesso
+            ? "Ativo"
+            : "Sem acesso",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", funcionarioId);
 
     if (updateFuncionarioError) {
       return NextResponse.json(
@@ -136,11 +206,15 @@ export async function POST(request: NextRequest) {
       authUserId,
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Erro ao configurar acesso do funcionário:",
+      error
+    );
 
     return NextResponse.json(
       {
-        error: "Erro interno ao configurar o acesso do funcionário.",
+        error:
+          "Erro interno ao configurar o acesso do funcionário.",
       },
       { status: 500 }
     );
