@@ -5,7 +5,7 @@ import { getSupabaseServiceRoleEnv } from "../../../../lib/supabase/env";
 
 export async function POST(request: NextRequest) {
   try {
-    // Verifica quem está fazendo a alteração.
+    // Cliente do usuário atualmente logado
     const supabase = await createServerClient();
 
     const {
@@ -19,41 +19,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Somente administrador pode criar/alterar acessos.
-    const { data: administrador, error: adminError } =
-      await supabase
-        .from("funcionarios")
-        .select("funcao, status")
-        .eq("id", user.id)
-        .single();
+    // Verifica se o usuário logado é um administrador.
+    // O vínculo correto é pelo auth_user_id.
+    const { data: administrador, error: adminError } = await supabase
+      .from("funcionarios")
+      .select("id, perfil, status")
+      .eq("auth_user_id", user.id)
+      .single();
 
     if (
       adminError ||
       !administrador ||
-      administrador.funcao !== "administrador" ||
-      administrador.status !== "ativo"
+      administrador.perfil !== "Administrador" ||
+      administrador.status !== "Ativo"
     ) {
       return NextResponse.json(
-        { error: "Acesso negado. Somente administradores podem configurar acessos." },
+        {
+          error:
+            "Acesso negado. Somente administradores podem configurar acessos.",
+        },
         { status: 403 }
       );
     }
 
     const body = await request.json();
 
-    const funcionarioId = String(body?.funcionarioId || "").trim();
-    const permitirAcesso = body?.permitirAcesso === true;
-    const emailLogin = String(body?.emailLogin || "").trim().toLowerCase();
-    const senhaInicial = String(body?.senhaInicial || "");
-    const perfil = String(body?.perfil || "Tecnico").trim();
+    const funcionarioId = String(
+      body?.funcionarioId || ""
+    ).trim();
+
+    const permitirAcesso =
+      body?.permitirAcesso === true;
+
+    const emailLogin = String(
+      body?.emailLogin || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const senhaInicial = String(
+      body?.senhaInicial || ""
+    );
+
+    const perfil = String(
+      body?.perfil || "Tecnico"
+    ).trim();
+
     const permissoes =
-      body?.permissoes && typeof body.permissoes === "object"
+      body?.permissoes &&
+      typeof body.permissoes === "object"
         ? body.permissoes
         : {};
 
     if (!funcionarioId) {
       return NextResponse.json(
-        { error: "ID do funcionário não informado." },
+        {
+          error:
+            "ID do funcionário não informado.",
+        },
         { status: 400 }
       );
     }
@@ -72,14 +95,18 @@ export async function POST(request: NextRequest) {
       if (senhaInicial.length < 6) {
         return NextResponse.json(
           {
-            error: "A senha inicial precisa ter pelo menos 6 caracteres.",
+            error:
+              "A senha inicial precisa ter pelo menos 6 caracteres.",
           },
           { status: 400 }
         );
       }
     }
 
-    const { url, serviceRoleKey } = getSupabaseServiceRoleEnv();
+    // Cliente administrativo do Supabase.
+    // A Service Role Key fica somente no servidor.
+    const { url, serviceRoleKey } =
+      getSupabaseServiceRoleEnv();
 
     const supabaseAdmin = createAdminClient(
       url,
@@ -92,26 +119,46 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const { data: funcionario, error: funcionarioError } =
-      await supabaseAdmin
-        .from("funcionarios")
-        .select("id, auth_user_id, nome")
-        .eq("id", funcionarioId)
-        .single();
+    // Busca o funcionário que receberá o acesso.
+    const {
+      data: funcionario,
+      error: funcionarioError,
+    } = await supabaseAdmin
+      .from("funcionarios")
+      .select(
+        "id, auth_user_id, nome"
+      )
+      .eq("id", funcionarioId)
+      .single();
 
-    if (funcionarioError || !funcionario) {
+    if (
+      funcionarioError ||
+      !funcionario
+    ) {
       return NextResponse.json(
-        { error: "Funcionário não encontrado." },
+        {
+          error:
+            "Funcionário não encontrado.",
+        },
         { status: 404 }
       );
     }
 
-    let authUserId = funcionario.auth_user_id;
+    let authUserId =
+      funcionario.auth_user_id;
+
+    // =====================================================
+    // CRIAR OU ATUALIZAR ACESSO
+    // =====================================================
 
     if (permitirAcesso) {
-      // Se já possui usuário no Auth, atualiza.
+      // ---------------------------------------------------
+      // Funcionário já possui usuário no Supabase Auth
+      // ---------------------------------------------------
       if (authUserId) {
-        const { error: updateAuthError } =
+        const {
+          error: updateAuthError,
+        } =
           await supabaseAdmin.auth.admin.updateUserById(
             authUserId,
             {
@@ -119,30 +166,52 @@ export async function POST(request: NextRequest) {
               password: senhaInicial,
               email_confirm: true,
               ban_duration: "none",
+              user_metadata: {
+                funcionario_id:
+                  funcionarioId,
+                nome: funcionario.nome,
+                perfil,
+              },
             }
           );
 
         if (updateAuthError) {
           return NextResponse.json(
-            { error: updateAuthError.message },
+            {
+              error:
+                updateAuthError.message,
+            },
             { status: 400 }
           );
         }
-      } else {
-        // Caso ainda não possua usuário, cria.
-        const { data: authData, error: createAuthError } =
-          await supabaseAdmin.auth.admin.createUser({
-            email: emailLogin,
-            password: senhaInicial,
-            email_confirm: true,
-            user_metadata: {
-              funcionario_id: funcionarioId,
-              nome: funcionario.nome,
-              perfil,
-            },
-          });
+      }
 
-        if (createAuthError || !authData.user) {
+      // ---------------------------------------------------
+      // Funcionário ainda não possui usuário
+      // ---------------------------------------------------
+      else {
+        const {
+          data: authData,
+          error: createAuthError,
+        } =
+          await supabaseAdmin.auth.admin.createUser(
+            {
+              email: emailLogin,
+              password: senhaInicial,
+              email_confirm: true,
+              user_metadata: {
+                funcionario_id:
+                  funcionarioId,
+                nome: funcionario.nome,
+                perfil,
+              },
+            }
+          );
+
+        if (
+          createAuthError ||
+          !authData.user
+        ) {
           return NextResponse.json(
             {
               error:
@@ -153,11 +222,19 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        authUserId = authData.user.id;
+        authUserId =
+          authData.user.id;
       }
-    } else if (authUserId) {
-      // Desativa o acesso sem apagar o funcionário.
-      const { error: disableError } =
+    }
+
+    // =====================================================
+    // DESATIVAR ACESSO
+    // =====================================================
+
+    else if (authUserId) {
+      const {
+        error: disableError,
+      } =
         await supabaseAdmin.auth.admin.updateUserById(
           authUserId,
           {
@@ -167,42 +244,69 @@ export async function POST(request: NextRequest) {
 
       if (disableError) {
         return NextResponse.json(
-          { error: disableError.message },
+          {
+            error:
+              disableError.message,
+          },
           { status: 400 }
         );
       }
     }
 
-    const { error: updateFuncionarioError } =
+    // =====================================================
+    // ATUALIZA O FUNCIONÁRIO
+    // =====================================================
+
+    const {
+      error: updateFuncionarioError,
+    } =
       await supabaseAdmin
         .from("funcionarios")
         .update({
-          permitir_acesso: permitirAcesso,
-          email_login: permitirAcesso ? emailLogin : null,
+          permitir_acesso:
+            permitirAcesso,
+
+          email_login:
+            permitirAcesso
+              ? emailLogin
+              : null,
+
           perfil,
+
           permissoes,
-          auth_user_id: permitirAcesso
-            ? authUserId
-            : funcionario.auth_user_id,
-          acesso_status: permitirAcesso
-            ? "Ativo"
-            : "Sem acesso",
-          updated_at: new Date().toISOString(),
+
+          auth_user_id:
+            permitirAcesso
+              ? authUserId
+              : funcionario.auth_user_id,
+
+          acesso_status:
+            permitirAcesso
+              ? "Ativo"
+              : "Sem acesso",
+
+          updated_at:
+            new Date().toISOString(),
         })
         .eq("id", funcionarioId);
 
     if (updateFuncionarioError) {
       return NextResponse.json(
-        { error: updateFuncionarioError.message },
+        {
+          error:
+            updateFuncionarioError.message,
+        },
         { status: 400 }
       );
     }
 
     return NextResponse.json({
       success: true,
+
       message: permitirAcesso
         ? "Acesso do funcionário criado/atualizado com sucesso."
         : "Acesso do funcionário desativado.",
+
       authUserId,
     });
   } catch (error) {
