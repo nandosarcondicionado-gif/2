@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "../../../../../lib/supabase/server";
-import { getSupabaseServiceRoleEnv } from "../../../../../lib/supabase/env";
+import { createClient as createServerClient } from "../../../../lib/supabase/server";
+import { getSupabaseServiceRoleEnv } from "../../../../lib/supabase/env";
 
 export async function POST(request: NextRequest) {
   try {
