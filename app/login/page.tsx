@@ -1,8 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "../../lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,8 +13,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
 
     setLoading(true);
     setError("");
@@ -31,34 +31,81 @@ export default function LoginPage() {
       return;
     }
 
-    // O funcionário pode estar ligado ao Auth
-    // pelo campo auth_user_id.
-    const { data: funcionario, error: funcionarioError } =
-      await supabase
+    /*
+     * Compatibilidade com o sistema antigo e com o novo sistema.
+     *
+     * Funcionários antigos podem estar relacionados pelo campo:
+     * funcionarios.id = auth user id
+     *
+     * Funcionários novos serão relacionados pelo:
+     * funcionarios.auth_user_id = auth user id
+     */
+    let funcionario = null;
+
+    const { data: funcionarioPorAuth } = await supabase
+      .from("funcionarios")
+      .select(
+        "id, auth_user_id, nome, funcao, perfil, status, permitir_acesso, acesso_status"
+      )
+      .eq("auth_user_id", data.user.id)
+      .maybeSingle();
+
+    if (funcionarioPorAuth) {
+      funcionario = funcionarioPorAuth;
+    } else {
+      const { data: funcionarioAntigo } = await supabase
         .from("funcionarios")
         .select(
           "id, auth_user_id, nome, funcao, perfil, status, permitir_acesso, acesso_status"
         )
-        .eq("auth_user_id", data.user.id)
+        .eq("id", data.user.id)
         .maybeSingle();
 
-    if (
-      funcionarioError ||
-      !funcionario ||
-      funcionario.status !== "Ativo" &&
-      funcionario.status !== "ativo"
-    ) {
+      funcionario = funcionarioAntigo;
+    }
+
+    if (!funcionario) {
       await supabase.auth.signOut();
 
       setError(
-        "Usuário não autorizado, sem acesso ou inativo."
+        "Usuário autenticado, mas o funcionário não foi encontrado no sistema."
       );
 
       setLoading(false);
       return;
     }
 
-    if (funcionario.permitir_acesso !== true) {
+    /*
+     * Aceita "ativo" e "Ativo", porque versões anteriores
+     * do sistema podem ter usado maiúscula.
+     */
+    const funcionarioAtivo =
+      funcionario.status === "ativo" ||
+      funcionario.status === "Ativo";
+
+    if (!funcionarioAtivo) {
+      await supabase.auth.signOut();
+
+      setError("Este funcionário está inativo.");
+      setLoading(false);
+      return;
+    }
+
+    /*
+     * Administrador antigo continua podendo entrar.
+     *
+     * Para funcionários novos, o campo permitir_acesso
+     * precisa estar habilitado.
+     */
+    const ehAdministrador =
+      funcionario.funcao === "administrador";
+
+    const acessoPermitido =
+      ehAdministrador ||
+      funcionario.permitir_acesso === true ||
+      funcionario.acesso_status === "Ativo";
+
+    if (!acessoPermitido) {
       await supabase.auth.signOut();
 
       setError(
@@ -69,20 +116,10 @@ export default function LoginPage() {
       return;
     }
 
-    if (
-      funcionario.acesso_status &&
-      funcionario.acesso_status !== "Ativo"
-    ) {
-      await supabase.auth.signOut();
-
-      setError(
-        "O acesso deste funcionário está desativado."
-      );
-
-      setLoading(false);
-      return;
-    }
-
+    /*
+     * Técnico vai para a área técnica.
+     * Os demais usuários entram no sistema principal.
+     */
     if (funcionario.funcao === "tecnico") {
       router.push("/tecnico");
     } else {
@@ -117,9 +154,7 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="Digite seu e-mail"
               autoComplete="email"
               required
@@ -135,10 +170,8 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
-              placeholder="Digite sua senha"
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Sua senha"
               autoComplete="current-password"
               required
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
