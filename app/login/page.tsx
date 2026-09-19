@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "../../lib/supabase/client";
+import { FormEvent, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,37 +13,72 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
     setLoading(true);
     setError("");
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { data, error: loginError } =
+      await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-    if (error || !data.user) {
+    if (loginError || !data.user) {
       setError("E-mail ou senha inválidos.");
       setLoading(false);
       return;
     }
 
-    const { data: funcionario, error: funcionarioError } = await supabase
-      .from("funcionarios")
-      .select("funcao, status")
-      .eq("id", data.user.id)
-      .single();
+    // O funcionário pode estar ligado ao Auth
+    // pelo campo auth_user_id.
+    const { data: funcionario, error: funcionarioError } =
+      await supabase
+        .from("funcionarios")
+        .select(
+          "id, auth_user_id, nome, funcao, perfil, status, permitir_acesso, acesso_status"
+        )
+        .eq("auth_user_id", data.user.id)
+        .maybeSingle();
 
     if (
       funcionarioError ||
       !funcionario ||
+      funcionario.status !== "Ativo" &&
       funcionario.status !== "ativo"
     ) {
       await supabase.auth.signOut();
 
-      setError("Usuário não autorizado ou inativo.");
+      setError(
+        "Usuário não autorizado, sem acesso ou inativo."
+      );
+
+      setLoading(false);
+      return;
+    }
+
+    if (funcionario.permitir_acesso !== true) {
+      await supabase.auth.signOut();
+
+      setError(
+        "Este funcionário não possui acesso ao sistema."
+      );
+
+      setLoading(false);
+      return;
+    }
+
+    if (
+      funcionario.acesso_status &&
+      funcionario.acesso_status !== "Ativo"
+    ) {
+      await supabase.auth.signOut();
+
+      setError(
+        "O acesso deste funcionário está desativado."
+      );
+
       setLoading(false);
       return;
     }
@@ -82,7 +117,9 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) =>
+                setEmail(event.target.value)
+              }
               placeholder="Digite seu e-mail"
               autoComplete="email"
               required
@@ -98,8 +135,10 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Sua senha"
+              onChange={(event) =>
+                setPassword(event.target.value)
+              }
+              placeholder="Digite sua senha"
               autoComplete="current-password"
               required
               className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
