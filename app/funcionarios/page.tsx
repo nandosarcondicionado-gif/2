@@ -2,6 +2,8 @@
 
 import {
   Edit,
+  KeyRound,
+  Lock,
   Mail,
   MapPin,
   Phone,
@@ -45,6 +47,11 @@ type Employee = {
 
   status: EmployeeStatus;
   observacoes: string;
+  auth_user_id?: string | null;
+  permitir_acesso?: boolean | null;
+  email_login?: string | null;
+  perfil?: string | null;
+  acesso_status?: string | null;
 
   created_at?: string;
   updated_at?: string;
@@ -78,7 +85,56 @@ type EmployeeForm = {
 
   status: EmployeeStatus;
   observacoes: string;
+  permitir_acesso: boolean;
+  email_login: string;
+  senha: string;
+  perfil: string;
+  permissoes: Record<string, PermissionSet>;
 };
+
+type PermissionSet = {
+  visualizar: boolean;
+  criar: boolean;
+  editar: boolean;
+  excluir: boolean;
+};
+
+const ACCESS_MODULES = [
+  "dashboard",
+  "clientes",
+  "equipamentos",
+  "orcamentos",
+  "ordens-servico",
+  "agenda",
+  "contratos",
+  "financeiro",
+  "estoque",
+  "relatorios",
+  "tecnico",
+] as const;
+
+const ACCESS_MODULE_LABELS: Record<(typeof ACCESS_MODULES)[number], string> = {
+  dashboard: "Dashboard",
+  clientes: "Clientes",
+  equipamentos: "Equipamentos",
+  orcamentos: "Orçamentos",
+  "ordens-servico": "Ordens de Serviço",
+  agenda: "Agenda",
+  contratos: "Contratos",
+  financeiro: "Financeiro",
+  estoque: "Estoque",
+  relatorios: "Relatórios",
+  tecnico: "Técnico",
+};
+
+function emptyPermissions(): Record<string, PermissionSet> {
+  return Object.fromEntries(
+    ACCESS_MODULES.map((module) => [
+      module,
+      { visualizar: false, criar: false, editar: false, excluir: false },
+    ])
+  );
+}
 
 const emptyForm: EmployeeForm = {
   nome: "",
@@ -108,6 +164,11 @@ const emptyForm: EmployeeForm = {
 
   status: "Ativo",
   observacoes: "",
+  permitir_acesso: false,
+  email_login: "",
+  senha: "",
+  perfil: "Tecnico",
+  permissoes: emptyPermissions(),
 };
 
 function formatCurrency(value: number) {
@@ -250,6 +311,11 @@ export default function FuncionariosPage() {
           : "Ativo",
 
       observacoes: item.observacoes || "",
+      auth_user_id: item.auth_user_id || null,
+      permitir_acesso: Boolean(item.permitir_acesso),
+      email_login: item.email_login || "",
+      perfil: item.perfil || "Tecnico",
+      acesso_status: item.acesso_status || "Sem acesso",
 
       created_at: item.created_at,
       updated_at: item.updated_at,
@@ -337,9 +403,53 @@ export default function FuncionariosPage() {
 
       status: employee.status,
       observacoes: employee.observacoes,
+      permitir_acesso: Boolean(employee.permitir_acesso),
+      email_login: employee.email_login || employee.email || "",
+      senha: "",
+      perfil: employee.perfil || "Tecnico",
+      permissoes: emptyPermissions(),
     });
 
     setShowForm(true);
+  }
+
+  function updatePermission(
+    module: string,
+    action: keyof PermissionSet,
+    value: boolean
+  ) {
+    setForm((current) => ({
+      ...current,
+      permissoes: {
+        ...current.permissoes,
+        [module]: {
+          ...(current.permissoes[module] || {
+            visualizar: false,
+            criar: false,
+            editar: false,
+            excluir: false,
+          }),
+          [action]: value,
+        },
+      },
+    }));
+  }
+
+  function setAllPermissions(value: boolean) {
+    setForm((current) => ({
+      ...current,
+      permissoes: Object.fromEntries(
+        ACCESS_MODULES.map((module) => [
+          module,
+          {
+            visualizar: value,
+            criar: value,
+            editar: value,
+            excluir: value,
+          },
+        ])
+      ),
+    }));
   }
 
   function updateField<K extends keyof EmployeeForm>(
@@ -396,6 +506,12 @@ export default function FuncionariosPage() {
 
       observacoes:
         form.observacoes.trim(),
+
+      permitir_acesso: form.permitir_acesso,
+      email_login: form.email_login.trim(),
+      perfil: form.perfil,
+      permissoes: form.permissoes,
+      acesso_status: form.permitir_acesso ? "Ativo" : "Sem acesso",
 
       updated_at: new Date().toISOString(),
     };
@@ -1345,6 +1461,163 @@ export default function FuncionariosPage() {
                           Inativo
                         </option>
                       </select>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ACESSO AO SISTEMA */}
+                <section className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5">
+                  <div className="mb-4 flex items-start gap-3">
+                    <div className="rounded-xl bg-blue-600 p-2 text-white">
+                      <Lock size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold uppercase tracking-wide text-blue-700">
+                        Acesso ao sistema
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Defina o acesso e as permissões deste funcionário.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Permitir acesso
+                      </label>
+                      <select
+                        value={form.permitir_acesso ? "sim" : "nao"}
+                        onChange={(event) =>
+                          updateField("permitir_acesso", event.target.value === "sim")
+                        }
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                      >
+                        <option value="nao">Não — sem acesso</option>
+                        <option value="sim">Sim — permitir acesso</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Perfil de acesso
+                      </label>
+                      <select
+                        value={form.perfil}
+                        onChange={(event) => updateField("perfil", event.target.value)}
+                        disabled={!form.permitir_acesso}
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500 disabled:bg-gray-100"
+                      >
+                        <option value="Administrador">Administrador</option>
+                        <option value="Gerente">Gerente</option>
+                        <option value="Encarregado">Encarregado</option>
+                        <option value="Atendente">Atendente</option>
+                        <option value="Tecnico">Técnico</option>
+                        <option value="Financeiro">Financeiro</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        E-mail de login
+                      </label>
+                      <input
+                        type="email"
+                        value={form.email_login}
+                        onChange={(event) => updateField("email_login", event.target.value)}
+                        placeholder="funcionario@empresa.com"
+                        disabled={!form.permitir_acesso}
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 flex items-center gap-2 text-sm font-medium text-gray-700">
+                        <KeyRound size={16} />
+                        Senha
+                      </label>
+                      <input
+                        type="password"
+                        value={form.senha}
+                        onChange={(event) => updateField("senha", event.target.value)}
+                        placeholder={editingId ? "Deixe vazio para manter a atual" : "Crie uma senha"}
+                        disabled={!form.permitir_acesso}
+                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 rounded-xl border bg-white p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">Permissões por módulo</h4>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Escolha o que o usuário poderá visualizar, criar, editar e excluir.
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAllPermissions(true)}
+                          disabled={!form.permitir_acesso}
+                          className="rounded-lg border px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                        >
+                          Liberar tudo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAllPermissions(false)}
+                          disabled={!form.permitir_acesso}
+                          className="rounded-lg border px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Bloquear tudo
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full min-w-[680px] text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-gray-500">
+                            <th className="px-2 py-3 font-semibold">Módulo</th>
+                            <th className="px-2 py-3 text-center font-semibold">Visualizar</th>
+                            <th className="px-2 py-3 text-center font-semibold">Criar</th>
+                            <th className="px-2 py-3 text-center font-semibold">Editar</th>
+                            <th className="px-2 py-3 text-center font-semibold">Excluir</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {ACCESS_MODULES.map((module) => {
+                            const permission = form.permissoes[module] || {
+                              visualizar: false,
+                              criar: false,
+                              editar: false,
+                              excluir: false,
+                            };
+
+                            return (
+                              <tr key={module}>
+                                <td className="px-2 py-3 font-medium text-gray-800">
+                                  {ACCESS_MODULE_LABELS[module]}
+                                </td>
+                                {(["visualizar", "criar", "editar", "excluir"] as const).map((action) => (
+                                  <td key={action} className="px-2 py-3 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={permission[action]}
+                                      onChange={(event) =>
+                                        updatePermission(module, action, event.target.checked)
+                                      }
+                                      disabled={!form.permitir_acesso}
+                                      className="h-4 w-4 rounded border-gray-300"
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </section>
