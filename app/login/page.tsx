@@ -19,9 +19,11 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    const emailNormalizado = email.trim().toLowerCase();
+
     const { data, error: loginError } =
       await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
+        email: emailNormalizado,
         password,
       });
 
@@ -31,85 +33,112 @@ export default function LoginPage() {
       return;
     }
 
+    const userId = data.user.id;
+
     /*
-     * Compatibilidade com o sistema antigo e com o novo sistema.
+     * IMPORTANTE:
+     * O ID do funcionário NÃO é necessariamente o mesmo
+     * ID do usuário criado no Supabase Auth.
      *
-     * Funcionários antigos podem estar relacionados pelo campo:
-     * funcionarios.id = auth user id
-     *
-     * Funcionários novos serão relacionados pelo:
-     * funcionarios.auth_user_id = auth user id
+     * O vínculo correto é:
+     * funcionarios.auth_user_id = auth.users.id
      */
-    let funcionario = null;
 
-    const { data: funcionarioPorAuth } = await supabase
-      .from("funcionarios")
-      .select(
-        "id, auth_user_id, nome, funcao, perfil, status, permitir_acesso, acesso_status"
-      )
-      .eq("auth_user_id", data.user.id)
-      .maybeSingle();
-
-    if (funcionarioPorAuth) {
-      funcionario = funcionarioPorAuth;
-    } else {
-      const { data: funcionarioAntigo } = await supabase
+    let { data: funcionario, error: funcionarioError } =
+      await supabase
         .from("funcionarios")
         .select(
-          "id, auth_user_id, nome, funcao, perfil, status, permitir_acesso, acesso_status"
+          "id, auth_user_id, nome, funcao, perfil, cargo, status, permitir_acesso, acesso_status, permissoes"
         )
-        .eq("id", data.user.id)
+        .eq("auth_user_id", userId)
         .maybeSingle();
 
-      funcionario = funcionarioAntigo;
+    /*
+     * Fallback para manter compatibilidade com a conta
+     * administrativa antiga, caso ela ainda esteja vinculada
+     * diretamente pelo campo id.
+     */
+    if (!funcionario) {
+      const fallback = await supabase
+        .from("funcionarios")
+        .select(
+          "id, auth_user_id, nome, funcao, perfil, cargo, status, permitir_acesso, acesso_status, permissoes"
+        )
+        .eq("id", userId)
+        .maybeSingle();
+
+      funcionario = fallback.data;
+      funcionarioError = fallback.error;
     }
 
-    if (!funcionario) {
+    if (
+      funcionarioError ||
+      !funcionario
+    ) {
       await supabase.auth.signOut();
 
       setError(
-        "Usuário autenticado, mas o funcionário não foi encontrado no sistema."
+        "Usuário autenticado, mas o funcionário não está vinculado ao sistema."
       );
 
       setLoading(false);
       return;
     }
 
-    /*
-     * Aceita "ativo" e "Ativo", porque versões anteriores
-     * do sistema podem ter usado maiúscula.
-     */
+    const statusNormalizado = String(
+      funcionario.status || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const perfilNormalizado = String(
+      funcionario.perfil || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const funcaoNormalizada = String(
+      funcionario.funcao || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const cargoNormalizado = String(
+      funcionario.cargo || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const acessoStatusNormalizado = String(
+      funcionario.acesso_status || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const acessoPermitido =
+      funcionario.permitir_acesso === true ||
+      acessoStatusNormalizado === "ativo";
+
     const funcionarioAtivo =
-      funcionario.status === "ativo" ||
-      funcionario.status === "Ativo";
+      statusNormalizado === "ativo" ||
+      statusNormalizado === "active";
 
     if (!funcionarioAtivo) {
       await supabase.auth.signOut();
 
-      setError("Este funcionário está inativo.");
+      setError(
+        "Este funcionário está inativo e não pode acessar o sistema."
+      );
+
       setLoading(false);
       return;
     }
-
-    /*
-     * Administrador antigo continua podendo entrar.
-     *
-     * Para funcionários novos, o campo permitir_acesso
-     * precisa estar habilitado.
-     */
-    const ehAdministrador =
-      funcionario.funcao === "administrador";
-
-    const acessoPermitido =
-      ehAdministrador ||
-      funcionario.permitir_acesso === true ||
-      funcionario.acesso_status === "Ativo";
 
     if (!acessoPermitido) {
       await supabase.auth.signOut();
 
       setError(
-        "Este funcionário não possui acesso ao sistema."
+        "O acesso deste funcionário está bloqueado pelo administrador."
       );
 
       setLoading(false);
@@ -117,20 +146,78 @@ export default function LoginPage() {
     }
 
     /*
-     * Técnico vai para a área técnica.
-     * Os demais usuários entram no sistema principal.
+     * ADMINISTRADOR
      */
-    if (funcionario.funcao === "tecnico") {
-      router.push("/tecnico");
-    } else {
-      router.push("/");
+    const isAdministrador =
+      funcaoNormalizada === "administrador" ||
+      perfilNormalizado === "administrador";
+
+    if (isAdministrador) {
+      router.replace("/");
+      router.refresh();
+      return;
     }
 
+    /*
+     * FUNCIONÁRIO / TÉCNICO / AJUDANTE
+     *
+     * Todos os funcionários que não são administradores
+     * entram primeiro na área operacional.
+     *
+     * A própria área controla o que poderá visualizar/fazer.
+     */
+    const isTecnicoOuAjudante =
+      perfilNormalizado === "tecnico" ||
+      perfilNormalizado === "técnico" ||
+      perfilNormalizado === "ajudante" ||
+      perfilNormalizado === "encarregado" ||
+      perfilNormalizado === "atendente" ||
+      funcaoNormalizada === "tecnico" ||
+      funcaoNormalizada === "técnico" ||
+      funcaoNormalizada === "ajudante" ||
+      cargoNormalizado === "tecnico" ||
+      cargoNormalizado === "técnico" ||
+      cargoNormalizado === "ajudante";
+
+    if (isTecnicoOuAjudante) {
+      router.replace("/tecnico");
+      router.refresh();
+      return;
+    }
+
+    /*
+     * Para outros perfis, verificamos se o funcionário
+     * possui permissão para visualizar o dashboard.
+     */
+    const permissoes =
+      funcionario.permissoes &&
+      typeof funcionario.permissoes === "object"
+        ? (funcionario.permissoes as Record<string, any>)
+        : {};
+
+    const dashboardPermission =
+      permissoes.dashboard;
+
+    const podeVisualizarDashboard =
+      dashboardPermission?.visualizar === true;
+
+    if (podeVisualizarDashboard) {
+      router.replace("/");
+      router.refresh();
+      return;
+    }
+
+    /*
+     * Se não possuir acesso ao dashboard, envia para
+     * a área operacional em vez de mandar para /login,
+     * evitando loop de redirecionamento.
+     */
+    router.replace("/tecnico");
     router.refresh();
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
       <form
         onSubmit={handleLogin}
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg"
@@ -154,7 +241,9 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
               placeholder="Digite seu e-mail"
               autoComplete="email"
               required
@@ -170,7 +259,9 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
               placeholder="Sua senha"
               autoComplete="current-password"
               required
@@ -189,7 +280,9 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Entrando..." : "Entrar"}
+            {loading
+              ? "Entrando..."
+              : "Entrar"}
           </button>
         </div>
       </form>
