@@ -12,12 +12,18 @@ import {
   Trash2,
   User,
   X,
-  Unlock,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type EmployeeStatus = "Ativo" | "Inativo";
+
+type PermissionSet = {
+  visualizar: boolean;
+  criar: boolean;
+  editar: boolean;
+  excluir: boolean;
+};
 
 type Employee = {
   id: string;
@@ -49,26 +55,15 @@ type Employee = {
   status: EmployeeStatus;
   observacoes: string;
 
+  auth_user_id?: string | null;
   permitir_acesso?: boolean | null;
   email_login?: string | null;
   perfil?: string | null;
   permissoes?: Record<string, PermissionSet> | null;
-
-  codigo_acesso?: string | null;
-  pin_acesso?: string | null;
-
-  auth_user_id?: string | null;
   acesso_status?: string | null;
 
   created_at?: string;
   updated_at?: string;
-};
-
-type PermissionSet = {
-  visualizar: boolean;
-  criar: boolean;
-  editar: boolean;
-  excluir: boolean;
 };
 
 type EmployeeForm = {
@@ -103,7 +98,6 @@ type EmployeeForm = {
   permitir_acesso: boolean;
   email_login: string;
   senha: string;
-
   perfil: string;
   permissoes: Record<string, PermissionSet>;
 };
@@ -139,20 +133,16 @@ const ACCESS_MODULE_LABELS: Record<
   tecnico: "Técnico",
 };
 
-function createPermissionSet(): PermissionSet {
-  return {
-    visualizar: false,
-    criar: false,
-    editar: false,
-    excluir: false,
-  };
-}
-
 function emptyPermissions(): Record<string, PermissionSet> {
   return Object.fromEntries(
     ACCESS_MODULES.map((module) => [
       module,
-      createPermissionSet(),
+      {
+        visualizar: false,
+        criar: false,
+        editar: false,
+        excluir: false,
+      },
     ])
   );
 }
@@ -189,7 +179,6 @@ const emptyForm: EmployeeForm = {
   permitir_acesso: false,
   email_login: "",
   senha: "",
-
   perfil: "Tecnico",
   permissoes: emptyPermissions(),
 };
@@ -256,82 +245,32 @@ function maskPhone(value: string) {
   )}-${numbers.slice(7)}`;
 }
 
-function normalizePermissions(
-  value: unknown
-): Record<string, PermissionSet> {
-  const source =
-    value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : {};
+function formatDate(date: string | null) {
+  if (!date) return "-";
 
-  return Object.fromEntries(
-    ACCESS_MODULES.map((module) => {
-      const current =
-        source[module] &&
-        typeof source[module] === "object"
-          ? (source[module] as Record<string, unknown>)
-          : {};
+  const parts = date.split("-");
 
-      return [
-        module,
-        {
-          visualizar: current.visualizar === true,
-          criar: current.criar === true,
-          editar: current.editar === true,
-          excluir: current.excluir === true,
-        },
-      ];
-    })
-  );
-}
+  if (parts.length !== 3) return date;
 
-function generateLocalCode(nome: string) {
-  const cleanName = nome
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z]/g, "")
-    .toUpperCase();
-
-  const prefix =
-    cleanName.slice(0, 3) || "FUN";
-
-  const random =
-    Math.floor(1000 + Math.random() * 9000);
-
-  return `${prefix}-${random}`;
-}
-
-function generatePin() {
-  return String(
-    Math.floor(100000 + Math.random() * 900000)
-  );
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
 export default function FuncionariosPage() {
   const supabase = createClient();
 
-  const [employees, setEmployees] = useState<Employee[]>(
-    []
-  );
-
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [search, setSearch] = useState("");
-
   const [statusFilter, setStatusFilter] = useState<
     "Todos" | EmployeeStatus
   >("Todos");
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [editingId, setEditingId] = useState<string | null>(
-    null
-  );
-
-  const [form, setForm] =
-    useState<EmployeeForm>(emptyForm);
-
-  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<EmployeeForm>(emptyForm);
 
   async function loadEmployees() {
     setLoading(true);
@@ -344,10 +283,7 @@ export default function FuncionariosPage() {
       });
 
     if (error) {
-      console.error(
-        "Erro ao carregar funcionários:",
-        error
-      );
+      console.error("Erro ao carregar funcionários:", error);
 
       alert(
         `Não foi possível carregar os funcionários.\n\n${error.message}`
@@ -358,78 +294,52 @@ export default function FuncionariosPage() {
       return;
     }
 
-    const normalized: Employee[] = (data || []).map(
-      (item) => ({
-        id: item.id,
-        nome: item.nome || "",
-        cpf: item.cpf || "",
-        rg: item.rg || "",
-        telefone: item.telefone || "",
-        whatsapp: item.whatsapp || "",
-        email: item.email || "",
+    const normalized: Employee[] = (data || []).map((item) => ({
+      id: item.id,
+      nome: item.nome || "",
+      cpf: item.cpf || "",
+      rg: item.rg || "",
+      telefone: item.telefone || "",
+      whatsapp: item.whatsapp || "",
+      email: item.email || "",
 
-        endereco: item.endereco || "",
-        numero: item.numero || "",
-        complemento: item.complemento || "",
-        bairro: item.bairro || "",
-        cidade: item.cidade || "",
-        cep: item.cep || "",
+      endereco: item.endereco || "",
+      numero: item.numero || "",
+      complemento: item.complemento || "",
+      bairro: item.bairro || "",
+      cidade: item.cidade || "",
+      cep: item.cep || "",
 
-        cargo: item.cargo || "",
-        tipo_vinculo:
-          item.tipo_vinculo || "Funcionário",
+      cargo: item.cargo || "",
+      tipo_vinculo: item.tipo_vinculo || "Funcionário",
 
-        data_nascimento:
-          item.data_nascimento || null,
+      data_nascimento: item.data_nascimento || null,
+      data_admissao: item.data_admissao || null,
 
-        data_admissao:
-          item.data_admissao || null,
+      salario: Number(item.salario || 0),
 
-        salario: Number(item.salario || 0),
+      forma_pagamento: item.forma_pagamento || "",
+      chave_pix: item.chave_pix || "",
 
-        forma_pagamento:
-          item.forma_pagamento || "",
+      status:
+        item.status === "Inativo"
+          ? "Inativo"
+          : "Ativo",
 
-        chave_pix: item.chave_pix || "",
+      observacoes: item.observacoes || "",
 
-        status:
-          item.status === "Inativo"
-            ? "Inativo"
-            : "Ativo",
+      auth_user_id: item.auth_user_id || null,
+      permitir_acesso: Boolean(item.permitir_acesso),
+      email_login: item.email_login || "",
+      perfil: item.perfil || "Tecnico",
+      permissoes:
+        item.permissoes || emptyPermissions(),
+      acesso_status:
+        item.acesso_status || "Sem acesso",
 
-        observacoes: item.observacoes || "",
-
-        permitir_acesso:
-          Boolean(item.permitir_acesso),
-
-        email_login:
-          item.email_login || "",
-
-        perfil:
-          item.perfil || "Tecnico",
-
-        permissoes:
-          normalizePermissions(item.permissoes),
-
-        codigo_acesso:
-          item.codigo_acesso || null,
-
-        pin_acesso:
-          item.pin_acesso || null,
-
-        auth_user_id:
-          item.auth_user_id || null,
-
-        acesso_status:
-          item.acesso_status ||
-          (item.permitir_acesso
-            ? "Ativo"
-            : "Sem acesso"),
-
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-      })
-    );
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    }));
 
     setEmployees(normalized);
     setLoading(false);
@@ -445,24 +355,12 @@ export default function FuncionariosPage() {
     return employees.filter((employee) => {
       const matchesSearch =
         !term ||
-        employee.nome
-          .toLowerCase()
-          .includes(term) ||
-        employee.cpf
-          .toLowerCase()
-          .includes(term) ||
-        employee.telefone
-          .toLowerCase()
-          .includes(term) ||
-        employee.cargo
-          .toLowerCase()
-          .includes(term) ||
-        employee.cidade
-          .toLowerCase()
-          .includes(term) ||
-        (employee.codigo_acesso || "")
-          .toLowerCase()
-          .includes(term);
+        employee.nome.toLowerCase().includes(term) ||
+        employee.cpf.toLowerCase().includes(term) ||
+        employee.telefone.toLowerCase().includes(term) ||
+        employee.whatsapp.toLowerCase().includes(term) ||
+        employee.cargo.toLowerCase().includes(term) ||
+        employee.cidade.toLowerCase().includes(term);
 
       const matchesStatus =
         statusFilter === "Todos" ||
@@ -481,9 +379,7 @@ export default function FuncionariosPage() {
   ).length;
 
   const totalSalaries = employees
-    .filter(
-      (employee) => employee.status === "Ativo"
-    )
+    .filter((employee) => employee.status === "Ativo")
     .reduce(
       (total, employee) =>
         total + Number(employee.salario || 0),
@@ -524,23 +420,21 @@ export default function FuncionariosPage() {
 
       data_nascimento:
         employee.data_nascimento || "",
-
       data_admissao:
         employee.data_admissao || "",
 
-      salario: employee.salario
-        ? String(employee.salario)
-        : "",
+      salario:
+        employee.salario !== undefined &&
+        employee.salario !== null
+          ? String(employee.salario)
+          : "",
 
       forma_pagamento:
         employee.forma_pagamento,
-
       chave_pix: employee.chave_pix,
 
       status: employee.status,
-
-      observacoes:
-        employee.observacoes,
+      observacoes: employee.observacoes,
 
       permitir_acesso:
         Boolean(employee.permitir_acesso),
@@ -556,12 +450,21 @@ export default function FuncionariosPage() {
         employee.perfil || "Tecnico",
 
       permissoes:
-        normalizePermissions(
-          employee.permissoes
-        ),
+        employee.permissoes ||
+        emptyPermissions(),
     });
 
     setShowForm(true);
+  }
+
+  function updateField<K extends keyof EmployeeForm>(
+    field: K,
+    value: EmployeeForm[K]
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
   }
 
   function updatePermission(
@@ -571,14 +474,15 @@ export default function FuncionariosPage() {
   ) {
     setForm((current) => ({
       ...current,
-
       permissoes: {
         ...current.permissoes,
-
         [module]: {
-          ...(current.permissoes[module] ||
-            createPermissionSet()),
-
+          ...(current.permissoes[module] || {
+            visualizar: false,
+            criar: false,
+            editar: false,
+            excluir: false,
+          }),
           [action]: value,
         },
       },
@@ -588,7 +492,6 @@ export default function FuncionariosPage() {
   function setAllPermissions(value: boolean) {
     setForm((current) => ({
       ...current,
-
       permissoes: Object.fromEntries(
         ACCESS_MODULES.map((module) => [
           module,
@@ -603,19 +506,19 @@ export default function FuncionariosPage() {
     }));
   }
 
-  function updateField<K extends keyof EmployeeForm>(
-    field: K,
-    value: EmployeeForm[K]
-  ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
   async function saveEmployee() {
     if (!form.nome.trim()) {
       alert("Informe o nome do funcionário.");
+      return;
+    }
+
+    if (
+      form.permitir_acesso &&
+      !form.email_login.trim()
+    ) {
+      alert(
+        "Informe o e-mail de login para liberar o acesso."
+      );
       return;
     }
 
@@ -625,265 +528,136 @@ export default function FuncionariosPage() {
       !form.senha.trim()
     ) {
       alert(
-        "Para criar acesso, informe uma senha."
-      );
-      return;
-    }
-
-    if (
-      form.permitir_acesso &&
-      form.senha.trim() &&
-      form.senha.trim().length < 6
-    ) {
-      alert(
-        "A senha precisa ter pelo menos 6 caracteres."
+        "Informe uma senha para criar o acesso do funcionário."
       );
       return;
     }
 
     setSaving(true);
 
-    const now =
-      new Date().toISOString();
-
-    const basePayload = {
-      nome: form.nome.trim(),
-
-      cpf: form.cpf.trim(),
-      rg: form.rg.trim(),
-
-      telefone:
-        form.telefone.trim(),
-
-      whatsapp:
-        form.whatsapp.trim(),
-
-      email:
-        form.email.trim(),
-
-      endereco:
-        form.endereco.trim(),
-
-      numero:
-        form.numero.trim(),
-
-      complemento:
-        form.complemento.trim(),
-
-      bairro:
-        form.bairro.trim(),
-
-      cidade:
-        form.cidade.trim(),
-
-      cep:
-        form.cep.trim(),
-
-      cargo:
-        form.cargo.trim(),
-
-      tipo_vinculo:
-        form.tipo_vinculo.trim(),
-
-      data_nascimento:
-        form.data_nascimento || null,
-
-      data_admissao:
-        form.data_admissao || null,
-
-      salario:
-        parseMoney(form.salario),
-
-      forma_pagamento:
-        form.forma_pagamento.trim(),
-
-      chave_pix:
-        form.chave_pix.trim(),
-
-      status:
-        form.status,
-
-      observacoes:
-        form.observacoes.trim(),
-
-      updated_at: now,
-    };
-
-    let employeeId = editingId;
-
-    let error: Error | null = null;
-
-    if (editingId) {
-      const result = await supabase
-        .from("funcionarios")
-        .update(basePayload)
-        .eq("id", editingId);
-
-      error = result.error;
-    } else {
-      const codigoAcesso =
-        generateLocalCode(form.nome);
-
-      const pinAcesso =
-        generatePin();
-
-      const result = await supabase
-        .from("funcionarios")
-        .insert({
-          ...basePayload,
-
-          codigo_acesso:
-            codigoAcesso,
-
-          pin_acesso:
-            pinAcesso,
-
-          permitir_acesso:
-            false,
-
-          email_login:
-            null,
-
-          perfil:
-            form.perfil,
-
-          permissoes:
-            form.permissoes,
-
-          acesso_status:
-            "Sem acesso",
-
-          created_at:
-            now,
-        })
-        .select("id")
-        .single();
-
-      error = result.error;
-
-      if (!error && result.data) {
-        employeeId = result.data.id;
-      }
-    }
-
-    if (error || !employeeId) {
-      setSaving(false);
-
-      console.error(
-        "Erro ao salvar funcionário:",
-        error
-      );
-
-      alert(
-        `Não foi possível salvar o funcionário.\n\n${
-          error?.message ||
-          "ID do funcionário não encontrado."
-        }`
-      );
-
-      return;
-    }
-
-    /*
-     * IMPORTANTE:
-     *
-     * O cadastro normal NÃO chama a API de acesso.
-     *
-     * Se o funcionário foi cadastrado sem acesso,
-     * terminamos aqui.
-     *
-     * Isso corrige o problema que estava acontecendo
-     * anteriormente.
-     */
-
-    if (!form.permitir_acesso) {
-      if (editingId) {
-        const { error: accessResetError } =
-          await supabase
-            .from("funcionarios")
-            .update({
-              permitir_acesso: false,
-              acesso_status: "Sem acesso",
-              email_login: null,
-              perfil: form.perfil,
-              permissoes: form.permissoes,
-              updated_at: now,
-            })
-            .eq("id", employeeId);
-
-        if (accessResetError) {
-          setSaving(false);
-
-          alert(
-            `O funcionário foi salvo, mas não foi possível atualizar o status de acesso.\n\n${accessResetError.message}`
-          );
-
-          await loadEmployees();
-          return;
-        }
-      }
-
-      setSaving(false);
-
-      alert(
-        editingId
-          ? "Funcionário atualizado com sucesso!"
-          : "Funcionário cadastrado com sucesso!"
-      );
-
-      setShowForm(false);
-      setEditingId(null);
-
-      setForm({
-        ...emptyForm,
-        permissoes: emptyPermissions(),
-      });
-
-      await loadEmployees();
-
-      return;
-    }
-
-    /*
-     * A partir daqui somente funcionários que
-     * realmente terão acesso entram no processo
-     * de criação/configuração de login.
-     */
-
-    if (!form.email_login.trim()) {
-      setSaving(false);
-
-      alert(
-        "Para permitir acesso, informe o e-mail de login."
-      );
-
-      return;
-    }
-
     try {
-      const response = await fetch(
+      const payload = {
+        nome: form.nome.trim(),
+        cpf: form.cpf.trim(),
+        rg: form.rg.trim(),
+        telefone: form.telefone.trim(),
+        whatsapp: form.whatsapp.trim(),
+        email: form.email.trim(),
+
+        endereco: form.endereco.trim(),
+        numero: form.numero.trim(),
+        complemento: form.complemento.trim(),
+        bairro: form.bairro.trim(),
+        cidade: form.cidade.trim(),
+        cep: form.cep.trim(),
+
+        cargo: form.cargo.trim(),
+        tipo_vinculo:
+          form.tipo_vinculo.trim(),
+
+        data_nascimento:
+          form.data_nascimento || null,
+
+        data_admissao:
+          form.data_admissao || null,
+
+        salario: parseMoney(form.salario),
+
+        forma_pagamento:
+          form.forma_pagamento.trim(),
+
+        chave_pix:
+          form.chave_pix.trim(),
+
+        status: form.status,
+
+        observacoes:
+          form.observacoes.trim(),
+
+        permitir_acesso:
+          form.permitir_acesso,
+
+        email_login:
+          form.email_login.trim(),
+
+        perfil: form.perfil,
+
+        permissoes: form.permissoes,
+
+        acesso_status:
+          form.permitir_acesso
+            ? "Ativo"
+            : "Sem acesso",
+
+        updated_at:
+          new Date().toISOString(),
+      };
+
+      let funcionarioId = editingId;
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("funcionarios")
+          .update(payload)
+          .eq("id", editingId);
+
+        if (error) {
+          throw new Error(error.message);
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("funcionarios")
+          .insert({
+            ...payload,
+            created_at:
+              new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        funcionarioId = data?.id || null;
+      }
+
+      if (!funcionarioId) {
+        throw new Error(
+          "Não foi possível identificar o funcionário salvo."
+        );
+      }
+
+      /*
+       * IMPORTANTE:
+       * A criação/alteração do usuário do Supabase Auth
+       * acontece SOMENTE pela API do servidor.
+       *
+       * Não fazemos signInWithPassword,
+       * signOut ou setSession aqui.
+       *
+       * Isso mantém a sessão do administrador intacta.
+       */
+
+      const acessoResponse = await fetch(
         "/api/funcionarios/acesso",
         {
           method: "POST",
-
           headers: {
             "Content-Type":
               "application/json",
           },
-
           body: JSON.stringify({
-            funcionarioId:
-              employeeId,
+            funcionario_id:
+              funcionarioId,
 
-            permitirAcesso:
-              true,
+            permitir_acesso:
+              form.permitir_acesso,
 
-            emailLogin:
-              form.email_login
-                .trim()
-                .toLowerCase(),
+            email_login:
+              form.email_login.trim(),
 
-            senhaInicial:
+            senha:
               form.senha.trim(),
 
             perfil:
@@ -895,26 +669,17 @@ export default function FuncionariosPage() {
         }
       );
 
-      const result =
-        await response.json();
-
-      if (!response.ok) {
-        setSaving(false);
-
-        alert(
-          `O funcionário foi cadastrado, mas não foi possível criar o acesso.\n\n${result?.error || "Erro desconhecido."}`
+      const acessoData =
+        await acessoResponse.json().catch(
+          () => ({})
         );
 
-        await loadEmployees();
-
-        return;
+      if (!acessoResponse.ok) {
+        throw new Error(
+          acessoData?.error ||
+            "O funcionário foi salvo, mas não foi possível configurar o acesso."
+        );
       }
-
-      setSaving(false);
-
-      alert(
-        "Funcionário e acesso cadastrados com sucesso!"
-      );
 
       setShowForm(false);
       setEditingId(null);
@@ -925,144 +690,49 @@ export default function FuncionariosPage() {
       });
 
       await loadEmployees();
-    } catch (accessError) {
-      setSaving(false);
-
-      console.error(
-        "Erro ao configurar acesso:",
-        accessError
-      );
 
       alert(
-        "O funcionário foi cadastrado, mas ocorreu um erro ao configurar o acesso."
+        form.permitir_acesso
+          ? "Funcionário salvo e acesso configurado com sucesso!"
+          : "Funcionário salvo e acesso bloqueado com sucesso!"
       );
-
-      await loadEmployees();
-    }
-  }
-
-  async function toggleAccess(
-    employee: Employee
-  ) {
-    const nextValue =
-      !Boolean(employee.permitir_acesso);
-
-    if (
-      nextValue &&
-      !employee.email_login
-    ) {
-      alert(
-        "Este funcionário ainda não possui um login configurado. Edite o cadastro para configurar o acesso."
-      );
-
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        nextValue
-          ? `Deseja liberar o acesso de "${employee.nome}"?`
-          : `Deseja bloquear o acesso de "${employee.nome}"?`
-      );
-
-    if (!confirmed) return;
-
-    try {
-      const response =
-        await fetch(
-          "/api/funcionarios/acesso",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              funcionarioId:
-                employee.id,
-
-              permitirAcesso:
-                nextValue,
-
-              emailLogin:
-                employee.email_login ||
-                employee.email ||
-                "",
-
-              senhaInicial:
-                "",
-
-              perfil:
-                employee.perfil ||
-                "Tecnico",
-
-              permissoes:
-                normalizePermissions(
-                  employee.permissoes
-                ),
-            }),
-          }
-        );
-
-      const result =
-        await response.json();
-
-      if (!response.ok) {
-        alert(
-          result?.error ||
-            "Não foi possível alterar o acesso."
-        );
-
-        return;
-      }
-
-      alert(
-        nextValue
-          ? "Acesso liberado com sucesso!"
-          : "Acesso bloqueado com sucesso!"
-      );
-
-      await loadEmployees();
     } catch (error) {
       console.error(
-        "Erro ao alterar acesso:",
+        "Erro ao salvar funcionário:",
         error
       );
 
       alert(
-        "Não foi possível alterar o acesso."
+        `Não foi possível concluir o cadastro.\n\n${
+          error instanceof Error
+            ? error.message
+            : "Erro desconhecido."
+        }`
       );
+    } finally {
+      setSaving(false);
     }
   }
 
   async function deleteEmployee(
     employee: Employee
   ) {
-    const confirmed =
-      window.confirm(
-        `Deseja realmente excluir o funcionário "${employee.nome}"?\n\nSe ele já possuir pagamentos ou histórico, recomendamos colocá-lo como Inativo em vez de excluir.`
-      );
+    const confirmed = window.confirm(
+      `Deseja realmente excluir o funcionário "${employee.nome}"?\n\n` +
+        `Se ele já possuir registros relacionados, recomendamos apenas colocá-lo como Inativo.`
+    );
 
     if (!confirmed) return;
 
-    const { error } =
-      await supabase
-        .from("funcionarios")
-        .delete()
-        .eq("id", employee.id);
+    const { error } = await supabase
+      .from("funcionarios")
+      .delete()
+      .eq("id", employee.id);
 
     if (error) {
-      console.error(
-        "Erro ao excluir funcionário:",
-        error
-      );
-
       alert(
         `Não foi possível excluir o funcionário.\n\n${error.message}`
       );
-
       return;
     }
 
@@ -1077,21 +747,19 @@ export default function FuncionariosPage() {
         ? "Inativo"
         : "Ativo";
 
-    const { error } =
-      await supabase
-        .from("funcionarios")
-        .update({
-          status: nextStatus,
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", employee.id);
+    const { error } = await supabase
+      .from("funcionarios")
+      .update({
+        status: nextStatus,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", employee.id);
 
     if (error) {
       alert(
         `Não foi possível alterar o status.\n\n${error.message}`
       );
-
       return;
     }
 
@@ -1102,7 +770,6 @@ export default function FuncionariosPage() {
     <main className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mx-auto max-w-7xl space-y-6">
 
-        {/* CABEÇALHO */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
@@ -1110,30 +777,27 @@ export default function FuncionariosPage() {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500">
-              Cadastro, dados pessoais, cargos,
-              salários e acessos.
+              Cadastro, acesso, permissões e dados dos funcionários.
             </p>
           </div>
 
           <button
             type="button"
             onClick={openNewForm}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm hover:bg-blue-700"
           >
             <Plus size={20} />
             Novo funcionário
           </button>
         </div>
 
-        {/* RESUMO */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-
           <div className="rounded-2xl border bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">
               Funcionários ativos
             </p>
 
-            <p className="mt-2 text-2xl font-bold text-gray-900">
+            <p className="mt-2 text-2xl font-bold">
               {activeCount}
             </p>
           </div>
@@ -1143,7 +807,7 @@ export default function FuncionariosPage() {
               Funcionários inativos
             </p>
 
-            <p className="mt-2 text-2xl font-bold text-gray-900">
+            <p className="mt-2 text-2xl font-bold">
               {inactiveCount}
             </p>
           </div>
@@ -1153,22 +817,14 @@ export default function FuncionariosPage() {
               Folha mensal cadastrada
             </p>
 
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {formatCurrency(
-                totalSalaries
-              )}
-            </p>
-
-            <p className="mt-1 text-xs text-gray-400">
-              Apenas funcionários ativos
+            <p className="mt-2 text-2xl font-bold">
+              {formatCurrency(totalSalaries)}
             </p>
           </div>
         </div>
 
-        {/* FILTROS */}
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row">
-
             <div className="relative flex-1">
               <Search
                 size={19}
@@ -1178,12 +834,10 @@ export default function FuncionariosPage() {
               <input
                 value={search}
                 onChange={(event) =>
-                  setSearch(
-                    event.target.value
-                  )
+                  setSearch(event.target.value)
                 }
-                placeholder="Pesquisar funcionário ou código..."
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="Pesquisar funcionário..."
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500"
               />
             </div>
 
@@ -1196,7 +850,7 @@ export default function FuncionariosPage() {
                     | EmployeeStatus
                 )
               }
-              className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
+              className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm"
             >
               <option value="Todos">
                 Todos os status
@@ -1213,412 +867,191 @@ export default function FuncionariosPage() {
           </div>
         </div>
 
-        {/* LISTA */}
         <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-
           {loading ? (
             <div className="p-10 text-center text-gray-500">
               Carregando funcionários...
             </div>
           ) : filteredEmployees.length === 0 ? (
             <div className="p-10 text-center">
-
               <User
                 size={42}
                 className="mx-auto text-gray-300"
               />
 
-              <p className="mt-3 font-semibold text-gray-700">
+              <p className="mt-3 font-semibold">
                 Nenhum funcionário encontrado
-              </p>
-
-              <p className="mt-1 text-sm text-gray-400">
-                Cadastre o primeiro funcionário para começar.
               </p>
             </div>
           ) : (
-            <>
-              {/* DESKTOP */}
-              <div className="hidden overflow-x-auto md:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b bg-gray-50">
+                  <tr>
+                    <th className="px-5 py-4">
+                      Funcionário
+                    </th>
 
-                <table className="w-full text-left text-sm">
+                    <th className="px-5 py-4">
+                      Cargo
+                    </th>
 
-                  <thead className="border-b bg-gray-50">
-                    <tr>
+                    <th className="px-5 py-4">
+                      Telefone
+                    </th>
 
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Funcionário
-                      </th>
+                    <th className="px-5 py-4">
+                      Salário
+                    </th>
 
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Cargo
-                      </th>
+                    <th className="px-5 py-4">
+                      Acesso
+                    </th>
 
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Código
-                      </th>
+                    <th className="px-5 py-4">
+                      Status
+                    </th>
 
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Acesso
-                      </th>
+                    <th className="px-5 py-4 text-right">
+                      Ações
+                    </th>
+                  </tr>
+                </thead>
 
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Salário
-                      </th>
-
-                      <th className="px-5 py-4 font-semibold text-gray-600">
-                        Status
-                      </th>
-
-                      <th className="px-5 py-4 text-right font-semibold text-gray-600">
-                        Ações
-                      </th>
-
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y">
-
-                    {filteredEmployees.map(
-                      (employee) => (
-                        <tr
-                          key={employee.id}
-                          className="transition hover:bg-gray-50"
-                        >
-
-                          <td className="px-5 py-4">
-
-                            <div className="flex items-center gap-3">
-
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                                <User size={20} />
-                              </div>
-
-                              <div>
-
-                                <p className="font-semibold text-gray-900">
-                                  {employee.nome}
-                                </p>
-
-                                <p className="text-xs text-gray-500">
-                                  {employee.cpf ||
-                                    "CPF não informado"}
-                                </p>
-
-                              </div>
-
+                <tbody className="divide-y">
+                  {filteredEmployees.map(
+                    (employee) => (
+                      <tr
+                        key={employee.id}
+                        className="hover:bg-gray-50"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                              <User size={20} />
                             </div>
 
-                          </td>
+                            <div>
+                              <p className="font-semibold">
+                                {employee.nome}
+                              </p>
 
-                          <td className="px-5 py-4">
-
-                            <p className="font-medium text-gray-800">
-                              {employee.cargo ||
-                                "Não informado"}
-                            </p>
-
-                            <p className="text-xs text-gray-500">
-                              {employee.tipo_vinculo}
-                            </p>
-
-                          </td>
-
-                          <td className="px-5 py-4">
-
-                            <div className="font-semibold text-gray-800">
-                              {employee.codigo_acesso ||
-                                "Ainda não gerado"}
+                              <p className="text-xs text-gray-500">
+                                {employee.cpf ||
+                                  "CPF não informado"}
+                              </p>
                             </div>
-
-                            {employee.pin_acesso && (
-                              <div className="mt-1 text-xs text-gray-500">
-                                PIN cadastrado
-                              </div>
-                            )}
-
-                          </td>
-
-                          <td className="px-5 py-4">
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleAccess(
-                                  employee
-                                )
-                              }
-                              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
-                                employee.permitir_acesso
-                                  ? "border-green-200 bg-green-50 text-green-700"
-                                  : "border-gray-200 bg-gray-100 text-gray-600"
-                              }`}
-                            >
-
-                              {employee.permitir_acesso ? (
-                                <Unlock size={14} />
-                              ) : (
-                                <Lock size={14} />
-                              )}
-
-                              {employee.permitir_acesso
-                                ? "Liberado"
-                                : "Bloqueado"}
-
-                            </button>
-
-                          </td>
-
-                          <td className="px-5 py-4 font-semibold">
-                            {formatCurrency(
-                              employee.salario
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleStatus(
-                                  employee
-                                )
-                              }
-                              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                                employee.status ===
-                                "Ativo"
-                                  ? "border-green-200 bg-green-50 text-green-700"
-                                  : "border-gray-200 bg-gray-100 text-gray-600"
-                              }`}
-                            >
-                              {employee.status}
-                            </button>
-
-                          </td>
-
-                          <td className="px-5 py-4">
-
-                            <div className="flex justify-end gap-2">
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openEditForm(
-                                    employee
-                                  )
-                                }
-                                className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
-                                title="Editar"
-                              >
-                                <Edit size={17} />
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  deleteEmployee(
-                                    employee
-                                  )
-                                }
-                                className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                                title="Excluir"
-                              >
-                                <Trash2 size={17} />
-                              </button>
-
-                            </div>
-
-                          </td>
-
-                        </tr>
-                      )
-                    )}
-
-                  </tbody>
-
-                </table>
-
-              </div>
-
-              {/* MOBILE */}
-              <div className="divide-y md:hidden">
-
-                {filteredEmployees.map(
-                  (employee) => (
-                    <div
-                      key={employee.id}
-                      className="p-4"
-                    >
-
-                      <div className="flex items-start justify-between gap-3">
-
-                        <div className="flex items-center gap-3">
-
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                            <User size={21} />
                           </div>
+                        </td>
 
-                          <div>
+                        <td className="px-5 py-4">
+                          <p>
+                            {employee.cargo ||
+                              "Não informado"}
+                          </p>
 
-                            <p className="font-semibold text-gray-900">
-                              {employee.nome}
-                            </p>
+                          <p className="text-xs text-gray-500">
+                            {employee.tipo_vinculo}
+                          </p>
+                        </td>
 
-                            <p className="text-xs text-gray-500">
-                              {employee.cargo ||
-                                "Cargo não informado"}
-                            </p>
-
-                          </div>
-
-                        </div>
-
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                            employee.status ===
-                            "Ativo"
-                              ? "border-green-200 bg-green-50 text-green-700"
-                              : "border-gray-200 bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {employee.status}
-                        </span>
-
-                      </div>
-
-                      <div className="mt-4 rounded-xl bg-gray-50 p-3">
-
-                        <p className="text-xs text-gray-500">
-                          Código de acesso
-                        </p>
-
-                        <p className="mt-1 font-bold text-gray-900">
-                          {employee.codigo_acesso ||
-                            "Ainda não gerado"}
-                        </p>
-
-                        <p className="mt-2 text-xs text-gray-500">
-                          Acesso
-                        </p>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleAccess(
-                              employee
-                            )
-                          }
-                          className={`mt-1 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
-                            employee.permitir_acesso
-                              ? "border-green-200 bg-green-50 text-green-700"
-                              : "border-gray-200 bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {employee.permitir_acesso
-                            ? "Liberado"
-                            : "Bloqueado"}
-                        </button>
-
-                      </div>
-
-                      <div className="mt-4 space-y-2 text-sm text-gray-600">
-
-                        <div className="flex items-center gap-2">
-                          <Phone size={16} />
+                        <td className="px-5 py-4">
                           {employee.whatsapp ||
                             employee.telefone ||
-                            "Telefone não informado"}
-                        </div>
+                            "-"}
+                        </td>
 
-                        <div className="flex items-center gap-2">
-                          <Mail size={16} />
-                          {employee.email ||
-                            "E-mail não informado"}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <MapPin size={16} />
-                          {employee.cidade ||
-                            "Cidade não informada"}
-                        </div>
-
-                      </div>
-
-                      <div className="mt-4 rounded-xl bg-gray-50 p-3">
-
-                        <p className="text-xs text-gray-500">
-                          Salário
-                        </p>
-
-                        <p className="mt-1 font-bold text-gray-900">
+                        <td className="px-5 py-4 font-semibold">
                           {formatCurrency(
                             employee.salario
                           )}
-                        </p>
+                        </td>
 
-                      </div>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              employee.permitir_acesso
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {employee.permitir_acesso
+                              ? "Liberado"
+                              : "Bloqueado"}
+                          </span>
+                        </td>
 
-                      <div className="mt-4 flex gap-2">
+                        <td className="px-5 py-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleStatus(
+                                employee
+                              )
+                            }
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              employee.status ===
+                              "Ativo"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {employee.status}
+                          </button>
+                        </td>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openEditForm(
-                              employee
-                            )
-                          }
-                          className="flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-gray-700"
-                        >
-                          <Edit size={17} />
-                          Editar
-                        </button>
+                        <td className="px-5 py-4">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openEditForm(
+                                  employee
+                                )
+                              }
+                              className="rounded-lg border p-2 text-gray-600 hover:bg-gray-100"
+                            >
+                              <Edit size={17} />
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            deleteEmployee(
-                              employee
-                            )
-                          }
-                          className="rounded-xl border border-red-200 px-4 py-3 text-red-600"
-                        >
-                          <Trash2 size={17} />
-                        </button>
-
-                      </div>
-
-                    </div>
-                  )
-                )}
-
-              </div>
-            </>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                deleteEmployee(
+                                  employee
+                                )
+                              }
+                              className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 size={17} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
           )}
-
         </div>
       </div>
 
-      {/* MODAL */}
       {showForm && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
+          <div className="mx-auto my-4 max-w-5xl rounded-2xl bg-white shadow-2xl">
 
-          <div className="mx-auto my-4 max-w-4xl rounded-2xl bg-white shadow-2xl md:my-8">
-
-            {/* CABEÇALHO */}
             <div className="flex items-center justify-between border-b p-5">
-
               <div>
-
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 className="text-xl font-bold">
                   {editingId
                     ? "Editar funcionário"
                     : "Novo funcionário"}
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Preencha os dados do funcionário.
+                  Cadastro completo do funcionário.
                 </p>
-
               </div>
 
               <button
@@ -1630,16 +1063,12 @@ export default function FuncionariosPage() {
               >
                 <X size={22} />
               </button>
-
             </div>
 
             <div className="max-h-[75vh] overflow-y-auto p-5">
-
               <div className="space-y-6">
 
-                {/* DADOS PESSOAIS */}
                 <section>
-
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
                     Dados pessoais
                   </h3>
@@ -1647,8 +1076,7 @@ export default function FuncionariosPage() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                     <div className="md:col-span-2">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Nome completo *
                       </label>
 
@@ -1660,15 +1088,13 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
+                        className="w-full rounded-xl border px-4 py-3"
                         placeholder="Nome completo"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         CPF
                       </label>
 
@@ -1682,16 +1108,13 @@ export default function FuncionariosPage() {
                             )
                           )
                         }
+                        className="w-full rounded-xl border px-4 py-3"
                         placeholder="000.000.000-00"
-                        inputMode="numeric"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         RG
                       </label>
 
@@ -1703,15 +1126,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="RG"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Data de nascimento
                       </label>
 
@@ -1726,14 +1146,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Data de admissão
                       </label>
 
@@ -1748,18 +1166,14 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                   </div>
-
                 </section>
 
-                {/* CONTATO */}
                 <section>
-
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
                     Contato
                   </h3>
@@ -1767,8 +1181,7 @@ export default function FuncionariosPage() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Telefone
                       </label>
 
@@ -1782,16 +1195,12 @@ export default function FuncionariosPage() {
                             )
                           )
                         }
-                        placeholder="(00) 0000-0000"
-                        inputMode="tel"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         WhatsApp
                       </label>
 
@@ -1805,16 +1214,12 @@ export default function FuncionariosPage() {
                             )
                           )
                         }
-                        placeholder="(00) 00000-0000"
-                        inputMode="tel"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div className="md:col-span-2">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         E-mail
                       </label>
 
@@ -1827,19 +1232,14 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="email@exemplo.com"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                   </div>
-
                 </section>
 
-                {/* ENDEREÇO */}
                 <section>
-
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
                     Endereço
                   </h3>
@@ -1847,8 +1247,7 @@ export default function FuncionariosPage() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
 
                     <div className="md:col-span-4">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Endereço
                       </label>
 
@@ -1860,15 +1259,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="Rua / Avenida"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Número
                       </label>
 
@@ -1880,14 +1276,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         CEP
                       </label>
 
@@ -1899,15 +1293,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="00000-000"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div className="md:col-span-2">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Bairro
                       </label>
 
@@ -1919,14 +1310,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div className="md:col-span-2">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Cidade
                       </label>
 
@@ -1938,14 +1327,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div className="md:col-span-2">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Complemento
                       </label>
 
@@ -1957,19 +1344,14 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="Apartamento, casa, sala..."
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                   </div>
-
                 </section>
 
-                {/* PROFISSIONAL */}
                 <section>
-
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
                     Dados profissionais
                   </h3>
@@ -1977,8 +1359,7 @@ export default function FuncionariosPage() {
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Cargo
                       </label>
 
@@ -1990,15 +1371,13 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="Ex.: Técnico de climatização"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        placeholder="Ex.: Técnico"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Tipo de vínculo
                       </label>
 
@@ -2012,9 +1391,8 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                        className="w-full rounded-xl border bg-white px-4 py-3"
                       >
-
                         <option>
                           Funcionário
                         </option>
@@ -2038,14 +1416,11 @@ export default function FuncionariosPage() {
                         <option>
                           Sócio
                         </option>
-
                       </select>
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Salário / valor mensal
                       </label>
 
@@ -2058,15 +1433,12 @@ export default function FuncionariosPage() {
                           )
                         }
                         placeholder="0,00"
-                        inputMode="decimal"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Forma de pagamento
                       </label>
 
@@ -2080,9 +1452,8 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                        className="w-full rounded-xl border bg-white px-4 py-3"
                       >
-
                         <option value="">
                           Selecionar
                         </option>
@@ -2102,14 +1473,11 @@ export default function FuncionariosPage() {
                         <option value="Cheque">
                           Cheque
                         </option>
-
                       </select>
-
                     </div>
 
                     <div className="md:col-span-2">
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Chave Pix
                       </label>
 
@@ -2121,15 +1489,12 @@ export default function FuncionariosPage() {
                             event.target.value
                           )
                         }
-                        placeholder="CPF, telefone, e-mail ou chave aleatória"
-                        className="w-full rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border px-4 py-3"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         Status
                       </label>
 
@@ -2141,9 +1506,8 @@ export default function FuncionariosPage() {
                             event.target.value as EmployeeStatus
                           )
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                        className="w-full rounded-xl border bg-white px-4 py-3"
                       >
-
                         <option value="Ativo">
                           Ativo
                         </option>
@@ -2151,44 +1515,35 @@ export default function FuncionariosPage() {
                         <option value="Inativo">
                           Inativo
                         </option>
-
                       </select>
-
                     </div>
 
                   </div>
-
                 </section>
 
-                {/* ACESSO */}
                 <section className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5">
 
-                  <div className="mb-4 flex items-start gap-3">
-
+                  <div className="mb-5 flex items-start gap-3">
                     <div className="rounded-xl bg-blue-600 p-2 text-white">
                       <Lock size={20} />
                     </div>
 
                     <div>
-
                       <h3 className="text-sm font-bold uppercase tracking-wide text-blue-700">
                         Acesso ao sistema
                       </h3>
 
                       <p className="mt-1 text-sm text-gray-500">
-                        Escolha se este funcionário poderá entrar no sistema.
+                        O administrador controla o acesso e as permissões.
                       </p>
-
                     </div>
-
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Acesso
+                      <label className="mb-1 block text-sm font-medium">
+                        Permitir acesso
                       </label>
 
                       <select
@@ -2204,9 +1559,8 @@ export default function FuncionariosPage() {
                               "sim"
                           )
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500"
+                        className="w-full rounded-xl border bg-white px-4 py-3"
                       >
-
                         <option value="nao">
                           Não — sem acesso
                         </option>
@@ -2214,15 +1568,12 @@ export default function FuncionariosPage() {
                         <option value="sim">
                           Sim — permitir acesso
                         </option>
-
                       </select>
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Perfil
+                      <label className="mb-1 block text-sm font-medium">
+                        Perfil de acesso
                       </label>
 
                       <select
@@ -2236,9 +1587,8 @@ export default function FuncionariosPage() {
                         disabled={
                           !form.permitir_acesso
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500 disabled:bg-gray-100"
+                        className="w-full rounded-xl border bg-white px-4 py-3 disabled:bg-gray-100"
                       >
-
                         <option value="Administrador">
                           Administrador
                         </option>
@@ -2266,22 +1616,17 @@ export default function FuncionariosPage() {
                         <option value="Financeiro">
                           Financeiro
                         </option>
-
                       </select>
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                      <label className="mb-1 block text-sm font-medium">
                         E-mail de login
                       </label>
 
                       <input
                         type="email"
-                        value={
-                          form.email_login
-                        }
+                        value={form.email_login}
                         onChange={(event) =>
                           updateField(
                             "email_login",
@@ -2292,14 +1637,12 @@ export default function FuncionariosPage() {
                         disabled={
                           !form.permitir_acesso
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                        className="w-full rounded-xl border bg-white px-4 py-3 disabled:bg-gray-100"
                       />
-
                     </div>
 
                     <div>
-
-                      <label className="mb-1 flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <label className="mb-1 flex items-center gap-2 text-sm font-medium">
                         <KeyRound size={16} />
                         Senha
                       </label>
@@ -2321,9 +1664,8 @@ export default function FuncionariosPage() {
                         disabled={
                           !form.permitir_acesso
                         }
-                        className="w-full rounded-xl border bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                        className="w-full rounded-xl border bg-white px-4 py-3 disabled:bg-gray-100"
                       />
-
                     </div>
 
                   </div>
@@ -2333,15 +1675,13 @@ export default function FuncionariosPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
                       <div>
-
-                        <h4 className="font-semibold text-gray-900">
+                        <h4 className="font-semibold">
                           Permissões por módulo
                         </h4>
 
                         <p className="mt-1 text-xs text-gray-500">
-                          Escolha o que o usuário poderá visualizar, criar, editar e excluir.
+                          Defina exatamente o que esse usuário poderá fazer.
                         </p>
-
                       </div>
 
                       <div className="flex gap-2">
@@ -2349,14 +1689,12 @@ export default function FuncionariosPage() {
                         <button
                           type="button"
                           onClick={() =>
-                            setAllPermissions(
-                              true
-                            )
+                            setAllPermissions(true)
                           }
                           disabled={
                             !form.permitir_acesso
                           }
-                          className="rounded-lg border px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                          className="rounded-lg border px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
                         >
                           Liberar tudo
                         </button>
@@ -2364,20 +1702,17 @@ export default function FuncionariosPage() {
                         <button
                           type="button"
                           onClick={() =>
-                            setAllPermissions(
-                              false
-                            )
+                            setAllPermissions(false)
                           }
                           disabled={
                             !form.permitir_acesso
                           }
-                          className="rounded-lg border px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50"
                         >
                           Bloquear tudo
                         </button>
 
                       </div>
-
                     </div>
 
                     <div className="mt-4 overflow-x-auto">
@@ -2385,31 +1720,29 @@ export default function FuncionariosPage() {
                       <table className="w-full min-w-[680px] text-sm">
 
                         <thead>
-
                           <tr className="border-b text-left text-gray-500">
 
-                            <th className="px-2 py-3 font-semibold">
+                            <th className="px-2 py-3">
                               Módulo
                             </th>
 
-                            <th className="px-2 py-3 text-center font-semibold">
+                            <th className="px-2 py-3 text-center">
                               Visualizar
                             </th>
 
-                            <th className="px-2 py-3 text-center font-semibold">
+                            <th className="px-2 py-3 text-center">
                               Criar
                             </th>
 
-                            <th className="px-2 py-3 text-center font-semibold">
+                            <th className="px-2 py-3 text-center">
                               Editar
                             </th>
 
-                            <th className="px-2 py-3 text-center font-semibold">
+                            <th className="px-2 py-3 text-center">
                               Excluir
                             </th>
 
                           </tr>
-
                         </thead>
 
                         <tbody className="divide-y">
@@ -2420,15 +1753,17 @@ export default function FuncionariosPage() {
                               const permission =
                                 form.permissoes[
                                   module
-                                ] ||
-                                createPermissionSet();
+                                ] || {
+                                  visualizar: false,
+                                  criar: false,
+                                  editar: false,
+                                  excluir: false,
+                                };
 
                               return (
-                                <tr
-                                  key={module}
-                                >
+                                <tr key={module}>
 
-                                  <td className="px-2 py-3 font-medium text-gray-800">
+                                  <td className="px-2 py-3 font-medium">
                                     {
                                       ACCESS_MODULE_LABELS[
                                         module
@@ -2451,7 +1786,6 @@ export default function FuncionariosPage() {
                                         }
                                         className="px-2 py-3 text-center"
                                       >
-
                                         <input
                                           type="checkbox"
                                           checked={
@@ -2473,9 +1807,8 @@ export default function FuncionariosPage() {
                                           disabled={
                                             !form.permitir_acesso
                                           }
-                                          className="h-4 w-4 rounded border-gray-300"
+                                          className="h-4 w-4"
                                         />
-
                                       </td>
                                     )
                                   )}
@@ -2486,26 +1819,18 @@ export default function FuncionariosPage() {
                           )}
 
                         </tbody>
-
                       </table>
-
                     </div>
-
                   </div>
-
                 </section>
 
-                {/* OBSERVAÇÕES */}
                 <section>
-
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
                     Observações
                   </h3>
 
                   <textarea
-                    value={
-                      form.observacoes
-                    }
+                    value={form.observacoes}
                     onChange={(event) =>
                       updateField(
                         "observacoes",
@@ -2513,17 +1838,14 @@ export default function FuncionariosPage() {
                       )
                     }
                     rows={4}
+                    className="w-full resize-none rounded-xl border px-4 py-3"
                     placeholder="Observações sobre o funcionário..."
-                    className="w-full resize-none rounded-xl border px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
-
                 </section>
 
               </div>
-
             </div>
 
-            {/* RODAPÉ */}
             <div className="flex flex-col-reverse gap-3 border-t bg-gray-50 p-5 sm:flex-row sm:justify-end">
 
               <button
@@ -2531,7 +1853,8 @@ export default function FuncionariosPage() {
                 onClick={() =>
                   setShowForm(false)
                 }
-                className="rounded-xl border bg-white px-5 py-3 font-semibold text-gray-700 hover:bg-gray-100"
+                disabled={saving}
+                className="rounded-xl border bg-white px-5 py-3 font-semibold"
               >
                 Cancelar
               </button>
@@ -2540,7 +1863,7 @@ export default function FuncionariosPage() {
                 type="button"
                 onClick={saveEmployee}
                 disabled={saving}
-                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-60"
               >
                 {saving
                   ? "Salvando..."
@@ -2552,10 +1875,8 @@ export default function FuncionariosPage() {
             </div>
 
           </div>
-
         </div>
       )}
-
     </main>
   );
 }
