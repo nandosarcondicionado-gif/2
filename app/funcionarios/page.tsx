@@ -12,18 +12,12 @@ import {
   Trash2,
   User,
   X,
+  Unlock,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type EmployeeStatus = "Ativo" | "Inativo";
-
-type PermissionSet = {
-  visualizar: boolean;
-  criar: boolean;
-  editar: boolean;
-  excluir: boolean;
-};
 
 type Employee = {
   id: string;
@@ -55,15 +49,26 @@ type Employee = {
   status: EmployeeStatus;
   observacoes: string;
 
-  auth_user_id?: string | null;
   permitir_acesso?: boolean | null;
   email_login?: string | null;
   perfil?: string | null;
   permissoes?: Record<string, PermissionSet> | null;
+
+  codigo_acesso?: string | null;
+  pin_acesso?: string | null;
+
+  auth_user_id?: string | null;
   acesso_status?: string | null;
 
   created_at?: string;
   updated_at?: string;
+};
+
+type PermissionSet = {
+  visualizar: boolean;
+  criar: boolean;
+  editar: boolean;
+  excluir: boolean;
 };
 
 type EmployeeForm = {
@@ -98,6 +103,7 @@ type EmployeeForm = {
   permitir_acesso: boolean;
   email_login: string;
   senha: string;
+
   perfil: string;
   permissoes: Record<string, PermissionSet>;
 };
@@ -133,16 +139,20 @@ const ACCESS_MODULE_LABELS: Record<
   tecnico: "Técnico",
 };
 
+function createPermissionSet(): PermissionSet {
+  return {
+    visualizar: false,
+    criar: false,
+    editar: false,
+    excluir: false,
+  };
+}
+
 function emptyPermissions(): Record<string, PermissionSet> {
   return Object.fromEntries(
     ACCESS_MODULES.map((module) => [
       module,
-      {
-        visualizar: false,
-        criar: false,
-        editar: false,
-        excluir: false,
-      },
+      createPermissionSet(),
     ])
   );
 }
@@ -179,6 +189,7 @@ const emptyForm: EmployeeForm = {
   permitir_acesso: false,
   email_login: "",
   senha: "",
+
   perfil: "Tecnico",
   permissoes: emptyPermissions(),
 };
@@ -204,9 +215,7 @@ function parseMoney(value: string) {
 function maskCpf(value: string) {
   const numbers = value.replace(/\D/g, "").slice(0, 11);
 
-  if (numbers.length <= 3) {
-    return numbers;
-  }
+  if (numbers.length <= 3) return numbers;
 
   if (numbers.length <= 6) {
     return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
@@ -228,9 +237,7 @@ function maskCpf(value: string) {
 function maskPhone(value: string) {
   const numbers = value.replace(/\D/g, "").slice(0, 11);
 
-  if (numbers.length <= 2) {
-    return numbers;
-  }
+  if (numbers.length <= 2) return numbers;
 
   if (numbers.length <= 7) {
     return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
@@ -249,10 +256,64 @@ function maskPhone(value: string) {
   )}-${numbers.slice(7)}`;
 }
 
+function normalizePermissions(
+  value: unknown
+): Record<string, PermissionSet> {
+  const source =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return Object.fromEntries(
+    ACCESS_MODULES.map((module) => {
+      const current =
+        source[module] &&
+        typeof source[module] === "object"
+          ? (source[module] as Record<string, unknown>)
+          : {};
+
+      return [
+        module,
+        {
+          visualizar: current.visualizar === true,
+          criar: current.criar === true,
+          editar: current.editar === true,
+          excluir: current.excluir === true,
+        },
+      ];
+    })
+  );
+}
+
+function generateLocalCode(nome: string) {
+  const cleanName = nome
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z]/g, "")
+    .toUpperCase();
+
+  const prefix =
+    cleanName.slice(0, 3) || "FUN";
+
+  const random =
+    Math.floor(1000 + Math.random() * 9000);
+
+  return `${prefix}-${random}`;
+}
+
+function generatePin() {
+  return String(
+    Math.floor(100000 + Math.random() * 900000)
+  );
+}
+
 export default function FuncionariosPage() {
   const supabase = createClient();
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(
+    []
+  );
+
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -263,8 +324,9 @@ export default function FuncionariosPage() {
 
   const [showForm, setShowForm] = useState(false);
 
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(
+    null
+  );
 
   const [form, setForm] =
     useState<EmployeeForm>(emptyForm);
@@ -328,19 +390,14 @@ export default function FuncionariosPage() {
         forma_pagamento:
           item.forma_pagamento || "",
 
-        chave_pix:
-          item.chave_pix || "",
+        chave_pix: item.chave_pix || "",
 
         status:
           item.status === "Inativo"
             ? "Inativo"
             : "Ativo",
 
-        observacoes:
-          item.observacoes || "",
-
-        auth_user_id:
-          item.auth_user_id || null,
+        observacoes: item.observacoes || "",
 
         permitir_acesso:
           Boolean(item.permitir_acesso),
@@ -352,20 +409,24 @@ export default function FuncionariosPage() {
           item.perfil || "Tecnico",
 
         permissoes:
-          item.permissoes &&
-          typeof item.permissoes === "object"
-            ? {
-                ...emptyPermissions(),
-                ...item.permissoes,
-              }
-            : emptyPermissions(),
+          normalizePermissions(item.permissoes),
+
+        codigo_acesso:
+          item.codigo_acesso || null,
+
+        pin_acesso:
+          item.pin_acesso || null,
+
+        auth_user_id:
+          item.auth_user_id || null,
 
         acesso_status:
           item.acesso_status ||
-          "Sem acesso",
+          (item.permitir_acesso
+            ? "Ativo"
+            : "Sem acesso"),
 
         created_at: item.created_at,
-
         updated_at: item.updated_at,
       })
     );
@@ -398,57 +459,49 @@ export default function FuncionariosPage() {
           .includes(term) ||
         employee.cidade
           .toLowerCase()
+          .includes(term) ||
+        (employee.codigo_acesso || "")
+          .toLowerCase()
           .includes(term);
 
       const matchesStatus =
         statusFilter === "Todos" ||
         employee.status === statusFilter;
 
-      return (
-        matchesSearch &&
-        matchesStatus
-      );
+      return matchesSearch && matchesStatus;
     });
-  }, [
-    employees,
-    search,
-    statusFilter,
-  ]);
+  }, [employees, search, statusFilter]);
 
   const activeCount = employees.filter(
-    (employee) =>
-      employee.status === "Ativo"
+    (employee) => employee.status === "Ativo"
   ).length;
 
   const inactiveCount = employees.filter(
-    (employee) =>
-      employee.status === "Inativo"
+    (employee) => employee.status === "Inativo"
   ).length;
 
   const totalSalaries = employees
     .filter(
-      (employee) =>
-        employee.status === "Ativo"
+      (employee) => employee.status === "Ativo"
     )
     .reduce(
       (total, employee) =>
-        total +
-        Number(employee.salario || 0),
+        total + Number(employee.salario || 0),
       0
     );
 
   function openNewForm() {
     setEditingId(null);
+
     setForm({
       ...emptyForm,
       permissoes: emptyPermissions(),
     });
+
     setShowForm(true);
   }
 
-  function openEditForm(
-    employee: Employee
-  ) {
+  function openEditForm(employee: Employee) {
     setEditingId(employee.id);
 
     setForm({
@@ -461,15 +514,13 @@ export default function FuncionariosPage() {
 
       endereco: employee.endereco,
       numero: employee.numero,
-      complemento:
-        employee.complemento,
+      complemento: employee.complemento,
       bairro: employee.bairro,
       cidade: employee.cidade,
       cep: employee.cep,
 
       cargo: employee.cargo,
-      tipo_vinculo:
-        employee.tipo_vinculo,
+      tipo_vinculo: employee.tipo_vinculo,
 
       data_nascimento:
         employee.data_nascimento || "",
@@ -484,8 +535,7 @@ export default function FuncionariosPage() {
       forma_pagamento:
         employee.forma_pagamento,
 
-      chave_pix:
-        employee.chave_pix,
+      chave_pix: employee.chave_pix,
 
       status: employee.status,
 
@@ -503,16 +553,12 @@ export default function FuncionariosPage() {
       senha: "",
 
       perfil:
-        employee.perfil ||
-        "Tecnico",
+        employee.perfil || "Tecnico",
 
       permissoes:
-        employee.permissoes
-          ? {
-              ...emptyPermissions(),
-              ...employee.permissoes,
-            }
-          : emptyPermissions(),
+        normalizePermissions(
+          employee.permissoes
+        ),
     });
 
     setShowForm(true);
@@ -530,14 +576,8 @@ export default function FuncionariosPage() {
         ...current.permissoes,
 
         [module]: {
-          ...(current.permissoes[
-            module
-          ] || {
-            visualizar: false,
-            criar: false,
-            editar: false,
-            excluir: false,
-          }),
+          ...(current.permissoes[module] ||
+            createPermissionSet()),
 
           [action]: value,
         },
@@ -545,32 +585,25 @@ export default function FuncionariosPage() {
     }));
   }
 
-  function setAllPermissions(
-    value: boolean
-  ) {
+  function setAllPermissions(value: boolean) {
     setForm((current) => ({
       ...current,
 
-      permissoes:
-        Object.fromEntries(
-          ACCESS_MODULES.map(
-            (module) => [
-              module,
-              {
-                visualizar: value,
-                criar: value,
-                editar: value,
-                excluir: value,
-              },
-            ]
-          )
-        ),
+      permissoes: Object.fromEntries(
+        ACCESS_MODULES.map((module) => [
+          module,
+          {
+            visualizar: value,
+            criar: value,
+            editar: value,
+            excluir: value,
+          },
+        ])
+      ),
     }));
   }
 
-  function updateField<
-    K extends keyof EmployeeForm
-  >(
+  function updateField<K extends keyof EmployeeForm>(
     field: K,
     value: EmployeeForm[K]
   ) {
@@ -582,187 +615,360 @@ export default function FuncionariosPage() {
 
   async function saveEmployee() {
     if (!form.nome.trim()) {
+      alert("Informe o nome do funcionário.");
+      return;
+    }
+
+    if (
+      form.permitir_acesso &&
+      !editingId &&
+      !form.senha.trim()
+    ) {
       alert(
-        "Informe o nome do funcionário."
+        "Para criar acesso, informe uma senha."
       );
       return;
     }
 
-    if (form.permitir_acesso) {
-      if (!form.email_login.trim()) {
-        alert(
-          "Informe o e-mail de login."
-        );
-        return;
-      }
-
-      if (
-        !editingId &&
-        !form.senha.trim()
-      ) {
-        alert(
-          "Informe uma senha para o novo usuário."
-        );
-        return;
-      }
-
-      if (
-        form.senha.trim() &&
-        form.senha.trim().length < 6
-      ) {
-        alert(
-          "A senha precisa ter pelo menos 6 caracteres."
-        );
-        return;
-      }
+    if (
+      form.permitir_acesso &&
+      form.senha.trim() &&
+      form.senha.trim().length < 6
+    ) {
+      alert(
+        "A senha precisa ter pelo menos 6 caracteres."
+      );
+      return;
     }
 
     setSaving(true);
 
-    try {
-      const payload = {
-        nome: form.nome.trim(),
+    const now =
+      new Date().toISOString();
 
-        cpf: form.cpf.trim(),
+    const basePayload = {
+      nome: form.nome.trim(),
 
-        rg: form.rg.trim(),
+      cpf: form.cpf.trim(),
+      rg: form.rg.trim(),
 
-        telefone:
-          form.telefone.trim(),
+      telefone:
+        form.telefone.trim(),
 
-        whatsapp:
-          form.whatsapp.trim(),
+      whatsapp:
+        form.whatsapp.trim(),
 
-        email:
-          form.email.trim(),
+      email:
+        form.email.trim(),
 
-        endereco:
-          form.endereco.trim(),
+      endereco:
+        form.endereco.trim(),
 
-        numero:
-          form.numero.trim(),
+      numero:
+        form.numero.trim(),
 
-        complemento:
-          form.complemento.trim(),
+      complemento:
+        form.complemento.trim(),
 
-        bairro:
-          form.bairro.trim(),
+      bairro:
+        form.bairro.trim(),
 
-        cidade:
-          form.cidade.trim(),
+      cidade:
+        form.cidade.trim(),
 
-        cep:
-          form.cep.trim(),
+      cep:
+        form.cep.trim(),
 
-        cargo:
-          form.cargo.trim(),
+      cargo:
+        form.cargo.trim(),
 
-        tipo_vinculo:
-          form.tipo_vinculo.trim(),
+      tipo_vinculo:
+        form.tipo_vinculo.trim(),
 
-        data_nascimento:
-          form.data_nascimento ||
-          null,
+      data_nascimento:
+        form.data_nascimento || null,
 
-        data_admissao:
-          form.data_admissao ||
-          null,
+      data_admissao:
+        form.data_admissao || null,
 
-        salario:
-          parseMoney(form.salario),
+      salario:
+        parseMoney(form.salario),
 
-        forma_pagamento:
-          form.forma_pagamento.trim(),
+      forma_pagamento:
+        form.forma_pagamento.trim(),
 
-        chave_pix:
-          form.chave_pix.trim(),
+      chave_pix:
+        form.chave_pix.trim(),
 
-        status:
-          form.status,
+      status:
+        form.status,
 
-        observacoes:
-          form.observacoes.trim(),
+      observacoes:
+        form.observacoes.trim(),
 
-        permitir_acesso:
-          form.permitir_acesso,
+      updated_at: now,
+    };
 
-        email_login:
-          form.email_login.trim(),
+    let employeeId = editingId;
 
-        perfil:
-          form.perfil,
+    let error: Error | null = null;
 
-        permissoes:
-          form.permissoes,
+    if (editingId) {
+      const result = await supabase
+        .from("funcionarios")
+        .update(basePayload)
+        .eq("id", editingId);
 
-        acesso_status:
-          form.permitir_acesso
-            ? "Ativo"
-            : "Sem acesso",
+      error = result.error;
+    } else {
+      const codigoAcesso =
+        generateLocalCode(form.nome);
 
-        updated_at:
-          new Date().toISOString(),
-      };
+      const pinAcesso =
+        generatePin();
 
-      let funcionarioId =
-        editingId;
+      const result = await supabase
+        .from("funcionarios")
+        .insert({
+          ...basePayload,
 
-      /*
-       * SALVA OS DADOS DO FUNCIONÁRIO
-       */
+          codigo_acesso:
+            codigoAcesso,
 
+          pin_acesso:
+            pinAcesso,
+
+          permitir_acesso:
+            false,
+
+          email_login:
+            null,
+
+          perfil:
+            form.perfil,
+
+          permissoes:
+            form.permissoes,
+
+          acesso_status:
+            "Sem acesso",
+
+          created_at:
+            now,
+        })
+        .select("id")
+        .single();
+
+      error = result.error;
+
+      if (!error && result.data) {
+        employeeId = result.data.id;
+      }
+    }
+
+    if (error || !employeeId) {
+      setSaving(false);
+
+      console.error(
+        "Erro ao salvar funcionário:",
+        error
+      );
+
+      alert(
+        `Não foi possível salvar o funcionário.\n\n${
+          error?.message ||
+          "ID do funcionário não encontrado."
+        }`
+      );
+
+      return;
+    }
+
+    /*
+     * IMPORTANTE:
+     *
+     * O cadastro normal NÃO chama a API de acesso.
+     *
+     * Se o funcionário foi cadastrado sem acesso,
+     * terminamos aqui.
+     *
+     * Isso corrige o problema que estava acontecendo
+     * anteriormente.
+     */
+
+    if (!form.permitir_acesso) {
       if (editingId) {
-        const { error } =
+        const { error: accessResetError } =
           await supabase
             .from("funcionarios")
-            .update(payload)
-            .eq("id", editingId);
-
-        if (error) {
-          throw new Error(
-            `Erro ao salvar os dados do funcionário:\n${error.message}`
-          );
-        }
-      } else {
-        const { data, error } =
-          await supabase
-            .from("funcionarios")
-            .insert({
-              ...payload,
-
-              created_at:
-                new Date().toISOString(),
+            .update({
+              permitir_acesso: false,
+              acesso_status: "Sem acesso",
+              email_login: null,
+              perfil: form.perfil,
+              permissoes: form.permissoes,
+              updated_at: now,
             })
-            .select("id")
-            .single();
+            .eq("id", employeeId);
 
-        if (error) {
-          throw new Error(
-            `Erro ao cadastrar o funcionário:\n${error.message}`
+        if (accessResetError) {
+          setSaving(false);
+
+          alert(
+            `O funcionário foi salvo, mas não foi possível atualizar o status de acesso.\n\n${accessResetError.message}`
           );
-        }
 
-        if (!data?.id) {
-          throw new Error(
-            "O funcionário foi cadastrado, mas não foi possível obter o ID."
-          );
+          await loadEmployees();
+          return;
         }
-
-        funcionarioId =
-          data.id;
       }
 
-      /*
-       * CONFIGURA O ACESSO
-       */
+      setSaving(false);
 
-      if (!funcionarioId) {
-        throw new Error(
-          "Não foi possível identificar o funcionário para configurar o acesso."
+      alert(
+        editingId
+          ? "Funcionário atualizado com sucesso!"
+          : "Funcionário cadastrado com sucesso!"
+      );
+
+      setShowForm(false);
+      setEditingId(null);
+
+      setForm({
+        ...emptyForm,
+        permissoes: emptyPermissions(),
+      });
+
+      await loadEmployees();
+
+      return;
+    }
+
+    /*
+     * A partir daqui somente funcionários que
+     * realmente terão acesso entram no processo
+     * de criação/configuração de login.
+     */
+
+    if (!form.email_login.trim()) {
+      setSaving(false);
+
+      alert(
+        "Para permitir acesso, informe o e-mail de login."
+      );
+
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "/api/funcionarios/acesso",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            funcionarioId:
+              employeeId,
+
+            permitirAcesso:
+              true,
+
+            emailLogin:
+              form.email_login
+                .trim()
+                .toLowerCase(),
+
+            senhaInicial:
+              form.senha.trim(),
+
+            perfil:
+              form.perfil,
+
+            permissoes:
+              form.permissoes,
+          }),
+        }
+      );
+
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        setSaving(false);
+
+        alert(
+          `O funcionário foi cadastrado, mas não foi possível criar o acesso.\n\n${result?.error || "Erro desconhecido."}`
         );
+
+        await loadEmployees();
+
+        return;
       }
 
-      const accessResponse =
+      setSaving(false);
+
+      alert(
+        "Funcionário e acesso cadastrados com sucesso!"
+      );
+
+      setShowForm(false);
+      setEditingId(null);
+
+      setForm({
+        ...emptyForm,
+        permissoes: emptyPermissions(),
+      });
+
+      await loadEmployees();
+    } catch (accessError) {
+      setSaving(false);
+
+      console.error(
+        "Erro ao configurar acesso:",
+        accessError
+      );
+
+      alert(
+        "O funcionário foi cadastrado, mas ocorreu um erro ao configurar o acesso."
+      );
+
+      await loadEmployees();
+    }
+  }
+
+  async function toggleAccess(
+    employee: Employee
+  ) {
+    const nextValue =
+      !Boolean(employee.permitir_acesso);
+
+    if (
+      nextValue &&
+      !employee.email_login
+    ) {
+      alert(
+        "Este funcionário ainda não possui um login configurado. Edite o cadastro para configurar o acesso."
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        nextValue
+          ? `Deseja liberar o acesso de "${employee.nome}"?`
+          : `Deseja bloquear o acesso de "${employee.nome}"?`
+      );
+
+    if (!confirmed) return;
+
+    try {
+      const response =
         await fetch(
           "/api/funcionarios/acesso",
           {
@@ -774,66 +980,60 @@ export default function FuncionariosPage() {
             },
 
             body: JSON.stringify({
-              funcionarioId,
+              funcionarioId:
+                employee.id,
 
               permitirAcesso:
-                form.permitir_acesso,
+                nextValue,
 
               emailLogin:
-                form.email_login.trim(),
+                employee.email_login ||
+                employee.email ||
+                "",
 
               senhaInicial:
-                form.senha.trim(),
+                "",
 
               perfil:
-                form.perfil,
+                employee.perfil ||
+                "Tecnico",
 
               permissoes:
-                form.permissoes,
+                normalizePermissions(
+                  employee.permissoes
+                ),
             }),
           }
         );
 
-      const accessResult =
-        await accessResponse.json();
+      const result =
+        await response.json();
 
-      if (!accessResponse.ok) {
-        throw new Error(
-          accessResult?.error ||
-            "Não foi possível configurar o acesso do funcionário."
+      if (!response.ok) {
+        alert(
+          result?.error ||
+            "Não foi possível alterar o acesso."
         );
+
+        return;
       }
 
       alert(
-        editingId
-          ? "Funcionário atualizado com sucesso!"
-          : "Funcionário cadastrado com sucesso!"
+        nextValue
+          ? "Acesso liberado com sucesso!"
+          : "Acesso bloqueado com sucesso!"
       );
-
-      setShowForm(false);
-
-      setEditingId(null);
-
-      setForm({
-        ...emptyForm,
-        permissoes:
-          emptyPermissions(),
-      });
 
       await loadEmployees();
     } catch (error) {
       console.error(
-        "Erro ao salvar funcionário:",
+        "Erro ao alterar acesso:",
         error
       );
 
       alert(
-        error instanceof Error
-          ? error.message
-          : "Ocorreu um erro ao salvar o funcionário."
+        "Não foi possível alterar o acesso."
       );
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -842,13 +1042,10 @@ export default function FuncionariosPage() {
   ) {
     const confirmed =
       window.confirm(
-        `Deseja realmente excluir o funcionário "${employee.nome}"?\n\n` +
-          `Se ele já possuir pagamentos registrados, recomendamos apenas colocá-lo como Inativo.`
+        `Deseja realmente excluir o funcionário "${employee.nome}"?\n\nSe ele já possuir pagamentos ou histórico, recomendamos colocá-lo como Inativo em vez de excluir.`
       );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     const { error } =
       await supabase
@@ -885,7 +1082,6 @@ export default function FuncionariosPage() {
         .from("funcionarios")
         .update({
           status: nextStatus,
-
           updated_at:
             new Date().toISOString(),
         })
@@ -895,6 +1091,7 @@ export default function FuncionariosPage() {
       alert(
         `Não foi possível alterar o status.\n\n${error.message}`
       );
+
       return;
     }
 
@@ -906,7 +1103,6 @@ export default function FuncionariosPage() {
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* CABEÇALHO */}
-
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
@@ -914,7 +1110,8 @@ export default function FuncionariosPage() {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500">
-              Cadastro, dados pessoais, cargos e salários.
+              Cadastro, dados pessoais, cargos,
+              salários e acessos.
             </p>
           </div>
 
@@ -924,13 +1121,11 @@ export default function FuncionariosPage() {
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <Plus size={20} />
-
             Novo funcionário
           </button>
         </div>
 
         {/* RESUMO */}
-
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
 
           <div className="rounded-2xl border bg-white p-5 shadow-sm">
@@ -968,17 +1163,13 @@ export default function FuncionariosPage() {
               Apenas funcionários ativos
             </p>
           </div>
-
         </div>
 
         {/* FILTROS */}
-
         <div className="rounded-2xl border bg-white p-4 shadow-sm">
-
           <div className="flex flex-col gap-3 md:flex-row">
 
             <div className="relative flex-1">
-
               <Search
                 size={19}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -991,10 +1182,9 @@ export default function FuncionariosPage() {
                     event.target.value
                   )
                 }
-                placeholder="Pesquisar funcionário..."
+                placeholder="Pesquisar funcionário ou código..."
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
-
             </div>
 
             <select
@@ -1020,23 +1210,17 @@ export default function FuncionariosPage() {
                 Inativos
               </option>
             </select>
-
           </div>
-
         </div>
 
         {/* LISTA */}
-
         <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
 
           {loading ? (
-
             <div className="p-10 text-center text-gray-500">
               Carregando funcionários...
             </div>
-
           ) : filteredEmployees.length === 0 ? (
-
             <div className="p-10 text-center">
 
               <User
@@ -1051,21 +1235,15 @@ export default function FuncionariosPage() {
               <p className="mt-1 text-sm text-gray-400">
                 Cadastre o primeiro funcionário para começar.
               </p>
-
             </div>
-
           ) : (
-
             <>
-
               {/* DESKTOP */}
-
               <div className="hidden overflow-x-auto md:block">
 
                 <table className="w-full text-left text-sm">
 
                   <thead className="border-b bg-gray-50">
-
                     <tr>
 
                       <th className="px-5 py-4 font-semibold text-gray-600">
@@ -1077,7 +1255,11 @@ export default function FuncionariosPage() {
                       </th>
 
                       <th className="px-5 py-4 font-semibold text-gray-600">
-                        Telefone
+                        Código
+                      </th>
+
+                      <th className="px-5 py-4 font-semibold text-gray-600">
+                        Acesso
                       </th>
 
                       <th className="px-5 py-4 font-semibold text-gray-600">
@@ -1093,14 +1275,12 @@ export default function FuncionariosPage() {
                       </th>
 
                     </tr>
-
                   </thead>
 
                   <tbody className="divide-y">
 
                     {filteredEmployees.map(
                       (employee) => (
-
                         <tr
                           key={employee.id}
                           className="transition hover:bg-gray-50"
@@ -1145,9 +1325,48 @@ export default function FuncionariosPage() {
                           </td>
 
                           <td className="px-5 py-4">
-                            {employee.whatsapp ||
-                              employee.telefone ||
-                              "-"}
+
+                            <div className="font-semibold text-gray-800">
+                              {employee.codigo_acesso ||
+                                "Ainda não gerado"}
+                            </div>
+
+                            {employee.pin_acesso && (
+                              <div className="mt-1 text-xs text-gray-500">
+                                PIN cadastrado
+                              </div>
+                            )}
+
+                          </td>
+
+                          <td className="px-5 py-4">
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleAccess(
+                                  employee
+                                )
+                              }
+                              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                                employee.permitir_acesso
+                                  ? "border-green-200 bg-green-50 text-green-700"
+                                  : "border-gray-200 bg-gray-100 text-gray-600"
+                              }`}
+                            >
+
+                              {employee.permitir_acesso ? (
+                                <Unlock size={14} />
+                              ) : (
+                                <Lock size={14} />
+                              )}
+
+                              {employee.permitir_acesso
+                                ? "Liberado"
+                                : "Bloqueado"}
+
+                            </button>
+
                           </td>
 
                           <td className="px-5 py-4 font-semibold">
@@ -1212,7 +1431,6 @@ export default function FuncionariosPage() {
                           </td>
 
                         </tr>
-
                       )
                     )}
 
@@ -1223,12 +1441,10 @@ export default function FuncionariosPage() {
               </div>
 
               {/* MOBILE */}
-
               <div className="divide-y md:hidden">
 
                 {filteredEmployees.map(
                   (employee) => (
-
                     <div
                       key={employee.id}
                       className="p-4"
@@ -1267,6 +1483,41 @@ export default function FuncionariosPage() {
                         >
                           {employee.status}
                         </span>
+
+                      </div>
+
+                      <div className="mt-4 rounded-xl bg-gray-50 p-3">
+
+                        <p className="text-xs text-gray-500">
+                          Código de acesso
+                        </p>
+
+                        <p className="mt-1 font-bold text-gray-900">
+                          {employee.codigo_acesso ||
+                            "Ainda não gerado"}
+                        </p>
+
+                        <p className="mt-2 text-xs text-gray-500">
+                          Acesso
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleAccess(
+                              employee
+                            )
+                          }
+                          className={`mt-1 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                            employee.permitir_acesso
+                              ? "border-green-200 bg-green-50 text-green-700"
+                              : "border-gray-200 bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {employee.permitir_acesso
+                            ? "Liberado"
+                            : "Bloqueado"}
+                        </button>
 
                       </div>
 
@@ -1337,30 +1588,23 @@ export default function FuncionariosPage() {
                       </div>
 
                     </div>
-
                   )
                 )}
 
               </div>
-
             </>
-
           )}
 
         </div>
-
       </div>
 
       {/* MODAL */}
-
       {showForm && (
-
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-3 md:p-6">
 
           <div className="mx-auto my-4 max-w-4xl rounded-2xl bg-white shadow-2xl md:my-8">
 
-            {/* CABEÇALHO MODAL */}
-
+            {/* CABEÇALHO */}
             <div className="flex items-center justify-between border-b p-5">
 
               <div>
@@ -1372,7 +1616,7 @@ export default function FuncionariosPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Preencha os dados para manter o cadastro organizado.
+                  Preencha os dados do funcionário.
                 </p>
 
               </div>
@@ -1394,7 +1638,6 @@ export default function FuncionariosPage() {
               <div className="space-y-6">
 
                 {/* DADOS PESSOAIS */}
-
                 <section>
 
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
@@ -1515,7 +1758,6 @@ export default function FuncionariosPage() {
                 </section>
 
                 {/* CONTATO */}
-
                 <section>
 
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
@@ -1596,7 +1838,6 @@ export default function FuncionariosPage() {
                 </section>
 
                 {/* ENDEREÇO */}
-
                 <section>
 
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
@@ -1726,8 +1967,7 @@ export default function FuncionariosPage() {
 
                 </section>
 
-                {/* DADOS PROFISSIONAIS */}
-
+                {/* PROFISSIONAL */}
                 <section>
 
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
@@ -1920,8 +2160,7 @@ export default function FuncionariosPage() {
 
                 </section>
 
-                {/* ACESSO AO SISTEMA */}
-
+                {/* ACESSO */}
                 <section className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5">
 
                   <div className="mb-4 flex items-start gap-3">
@@ -1937,7 +2176,7 @@ export default function FuncionariosPage() {
                       </h3>
 
                       <p className="mt-1 text-sm text-gray-500">
-                        Defina o acesso e as permissões deste funcionário.
+                        Escolha se este funcionário poderá entrar no sistema.
                       </p>
 
                     </div>
@@ -1949,7 +2188,7 @@ export default function FuncionariosPage() {
                     <div>
 
                       <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Permitir acesso
+                        Acesso
                       </label>
 
                       <select
@@ -1983,7 +2222,7 @@ export default function FuncionariosPage() {
                     <div>
 
                       <label className="mb-1 block text-sm font-medium text-gray-700">
-                        Perfil de acesso
+                        Perfil
                       </label>
 
                       <select
@@ -2018,6 +2257,10 @@ export default function FuncionariosPage() {
 
                         <option value="Tecnico">
                           Técnico
+                        </option>
+
+                        <option value="Ajudante">
+                          Ajudante
                         </option>
 
                         <option value="Financeiro">
@@ -2057,11 +2300,8 @@ export default function FuncionariosPage() {
                     <div>
 
                       <label className="mb-1 flex items-center gap-2 text-sm font-medium text-gray-700">
-
                         <KeyRound size={16} />
-
                         Senha
-
                       </label>
 
                       <input
@@ -2180,15 +2420,10 @@ export default function FuncionariosPage() {
                               const permission =
                                 form.permissoes[
                                   module
-                                ] || {
-                                  visualizar: false,
-                                  criar: false,
-                                  editar: false,
-                                  excluir: false,
-                                };
+                                ] ||
+                                createPermissionSet();
 
                               return (
-
                                 <tr
                                   key={module}
                                 >
@@ -2210,7 +2445,6 @@ export default function FuncionariosPage() {
                                     ] as const
                                   ).map(
                                     (action) => (
-
                                       <td
                                         key={
                                           action
@@ -2243,12 +2477,10 @@ export default function FuncionariosPage() {
                                         />
 
                                       </td>
-
                                     )
                                   )}
 
                                 </tr>
-
                               );
                             }
                           )}
@@ -2264,7 +2496,6 @@ export default function FuncionariosPage() {
                 </section>
 
                 {/* OBSERVAÇÕES */}
-
                 <section>
 
                   <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
@@ -2293,7 +2524,6 @@ export default function FuncionariosPage() {
             </div>
 
             {/* RODAPÉ */}
-
             <div className="flex flex-col-reverse gap-3 border-t bg-gray-50 p-5 sm:flex-row sm:justify-end">
 
               <button
@@ -2308,19 +2538,15 @@ export default function FuncionariosPage() {
 
               <button
                 type="button"
-                onClick={
-                  saveEmployee
-                }
+                onClick={saveEmployee}
                 disabled={saving}
                 className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-
                 {saving
                   ? "Salvando..."
                   : editingId
                   ? "Salvar alterações"
                   : "Cadastrar funcionário"}
-
               </button>
 
             </div>
@@ -2328,7 +2554,6 @@ export default function FuncionariosPage() {
           </div>
 
         </div>
-
       )}
 
     </main>
