@@ -30,13 +30,13 @@ type PermissionModule =
   | "financeiro"
   | "estoque"
   | "relatorios"
-  | "tecnicos"
   | "tecnico"
+  | "tecnicos"
   | "area-cliente"
   | "configuracoes";
 
 type Permission = {
-  modulo: PermissionModule;
+  modulo: PermissionModule | string;
   visualizar: boolean;
   criar: boolean;
   editar: boolean;
@@ -166,6 +166,8 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadDashboard() {
       try {
+        setLoadingPermissions(true);
+
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -175,47 +177,152 @@ export default function Dashboard() {
           return;
         }
 
+        /*
+         * IMPORTANTE:
+         * O usuário do Supabase Auth é relacionado ao funcionário
+         * através de funcionarios.auth_user_id.
+         *
+         * Antes o sistema estava procurando:
+         * funcionarios.id = user.id
+         *
+         * Isso estava incorreto para a estrutura atual.
+         */
         const { data: funcionario, error: funcionarioError } =
           await supabase
             .from("funcionarios")
-            .select("funcao, status")
-            .eq("id", user.id)
-            .single();
+            .select(
+              `
+                id,
+                nome,
+                status,
+                permitir_acesso,
+                perfil,
+                permissoes,
+                auth_user_id
+              `
+            )
+            .eq("auth_user_id", user.id)
+            .maybeSingle();
 
-        if (
-          funcionarioError ||
-          !funcionario ||
-          funcionario.status !== "ativo"
-        ) {
+        if (funcionarioError) {
+          console.error(
+            "Erro ao localizar funcionário:",
+            funcionarioError
+          );
+
           await supabase.auth.signOut();
           router.push("/login");
           return;
         }
 
-        if (funcionario.funcao === "administrador") {
-          setIsAdmin(true);
+        if (!funcionario) {
+          console.error(
+            "Nenhum funcionário encontrado para o usuário autenticado."
+          );
+
+          await supabase.auth.signOut();
+          router.push("/login");
+          return;
+        }
+
+        /*
+         * O cadastro usa "Ativo" e "Inativo".
+         * Fazemos a comparação ignorando maiúsculas/minúsculas
+         * para evitar problemas caso algum registro antigo esteja
+         * como "ativo" ou "inativo".
+         */
+        const statusFuncionario = String(
+          funcionario.status ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const statusAtivo =
+          statusFuncionario === "ativo";
+
+        const acessoLiberado =
+          funcionario.permitir_acesso === true;
+
+        if (!statusAtivo || !acessoLiberado) {
+          console.error(
+            "Funcionário sem acesso:",
+            {
+              status: funcionario.status,
+              permitir_acesso:
+                funcionario.permitir_acesso,
+            }
+          );
+
+          await supabase.auth.signOut();
+          router.push("/login");
+          return;
+        }
+
+        /*
+         * O sistema atual usa "perfil".
+         *
+         * Administrador:
+         * acesso total.
+         *
+         * Demais perfis:
+         * usam o objeto funcionarios.permissoes.
+         */
+        const perfil = String(
+          funcionario.perfil ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const administrador =
+          perfil === "administrador" ||
+          perfil === "admin";
+
+        setIsAdmin(administrador);
+
+        if (administrador) {
+          setPermissions([]);
         } else {
-          const {
-            data: permissionData,
-            error: permissionError,
-          } = await supabase
-            .from("permissoes_funcionarios")
-            .select(
-              "modulo, visualizar, criar, editar, excluir"
-            )
-            .eq("funcionario_id", user.id);
+          /*
+           * As permissões agora vêm do mesmo campo usado
+           * na tela de funcionários:
+           *
+           * funcionarios.permissoes
+           */
+          const permissoesSalvas =
+            funcionario.permissoes;
 
-          if (permissionError) {
-            console.error(
-              "Erro ao carregar permissões:",
-              permissionError
-            );
+          if (
+            permissoesSalvas &&
+            typeof permissoesSalvas === "object"
+          ) {
+            const permissoesConvertidas: Permission[] =
+              Object.entries(
+                permissoesSalvas as Record<
+                  string,
+                  {
+                    visualizar?: boolean;
+                    criar?: boolean;
+                    editar?: boolean;
+                    excluir?: boolean;
+                  }
+                >
+              ).map(([modulo, permissao]) => ({
+                modulo,
+                visualizar:
+                  permissao?.visualizar === true,
+                criar:
+                  permissao?.criar === true,
+                editar:
+                  permissao?.editar === true,
+                excluir:
+                  permissao?.excluir === true,
+              }));
 
-            setPermissions([]);
-          } else {
             setPermissions(
-              (permissionData ?? []) as Permission[]
+              permissoesConvertidas
             );
+          } else {
+            setPermissions([]);
           }
         }
 
@@ -228,6 +335,8 @@ export default function Dashboard() {
           error
         );
 
+        setPermissions([]);
+        setIsAdmin(false);
         setLoadingPermissions(false);
         setLoadingStats(false);
       }
@@ -244,18 +353,27 @@ export default function Dashboard() {
 
         const clientesResult = await supabase
           .from("clientes")
-          .select("*", { count: "exact", head: true });
+          .select("*", {
+            count: "exact",
+            head: true,
+          });
 
         if (!clientesResult.error) {
-          clientes = clientesResult.count ?? 0;
+          clientes =
+            clientesResult.count ?? 0;
         }
 
-        const equipamentosResult = await supabase
-          .from("equipamentos")
-          .select("*", { count: "exact", head: true });
+        const equipamentosResult =
+          await supabase
+            .from("equipamentos")
+            .select("*", {
+              count: "exact",
+              head: true,
+            });
 
         if (!equipamentosResult.error) {
-          equipamentos = equipamentosResult.count ?? 0;
+          equipamentos =
+            equipamentosResult.count ?? 0;
         }
 
         const agora = new Date();
@@ -272,92 +390,118 @@ export default function Dashboard() {
           1
         );
 
-        const inicioMesISO = inicioMes.toISOString();
+        const inicioMesISO =
+          inicioMes.toISOString();
+
         const inicioProximoMesISO =
           inicioProximoMes.toISOString();
 
         const osResult = await supabase
           .from("ordens_servico")
           .select("id, created_at")
-          .gte("created_at", inicioMesISO)
-          .lt("created_at", inicioProximoMesISO);
+          .gte(
+            "created_at",
+            inicioMesISO
+          )
+          .lt(
+            "created_at",
+            inicioProximoMesISO
+          );
 
         if (!osResult.error) {
-          servicos = osResult.data?.length ?? 0;
+          servicos =
+            osResult.data?.length ?? 0;
         } else {
-          const osFallback = await supabase
-            .from("ordens_servico")
-            .select("id");
+          const osFallback =
+            await supabase
+              .from("ordens_servico")
+              .select("id");
 
           if (!osFallback.error) {
-            servicos = osFallback.data?.length ?? 0;
+            servicos =
+              osFallback.data?.length ?? 0;
           }
         }
 
-        const financeiroResult = await supabase
-          .from("lancamentos_financeiros")
-          .select("*");
+        const financeiroResult =
+          await supabase
+            .from("lancamentos_financeiros")
+            .select("*");
 
         if (!financeiroResult.error) {
           const registros =
             financeiroResult.data ?? [];
 
-          faturamento = registros.reduce(
-            (total: number, item: any) => {
-              const dataRegistro =
-                item.created_at ??
-                item.data ??
-                item.data_lancamento ??
-                item.data_pagamento;
+          faturamento =
+            registros.reduce(
+              (
+                total: number,
+                item: any
+              ) => {
+                const dataRegistro =
+                  item.created_at ??
+                  item.data ??
+                  item.data_lancamento ??
+                  item.data_pagamento;
 
-              if (dataRegistro) {
-                const data = new Date(dataRegistro);
+                if (!dataRegistro) {
+                  return total;
+                }
+
+                const data = new Date(
+                  dataRegistro
+                );
 
                 if (
-                  data >= inicioMes &&
-                  data < inicioProximoMes
+                  data < inicioMes ||
+                  data >= inicioProximoMes
                 ) {
-                  const valor =
-                    Number(
-                      item.valor ??
-                        item.valor_total ??
-                        item.total ??
-                        item.amount ??
-                        0
-                    ) || 0;
-
-                  const tipo = String(
-                    item.tipo ??
-                      item.tipo_lancamento ??
-                      item.movimento ??
-                      ""
-                  ).toLowerCase();
-
-                  const categoria = String(
-                    item.categoria ?? ""
-                  ).toLowerCase();
-
-                  const descricao = String(
-                    item.descricao ?? ""
-                  ).toLowerCase();
-
-                  const ehSaida =
-                    tipo.includes("saída") ||
-                    tipo.includes("saida") ||
-                    tipo.includes("despesa") ||
-                    categoria.includes("despesa") ||
-                    descricao.includes("despesa");
-
-                  if (!ehSaida) {
-                    return total + valor;
-                  }
+                  return total;
                 }
-              }
 
-              return total;
-            },
-            0
-          );
+                const valor =
+                  Number(
+                    item.valor ??
+                      item.valor_total ??
+                      item.total ??
+                      item.amount ??
+                      0
+                  ) || 0;
+
+                const tipo = String(
+                  item.tipo ??
+                    item.tipo_lancamento ??
+                    item.movimento ??
+                    ""
+                ).toLowerCase();
+
+                const categoria = String(
+                  item.categoria ?? ""
+                ).toLowerCase();
+
+                const descricao = String(
+                  item.descricao ?? ""
+                ).toLowerCase();
+
+                const ehSaida =
+                  tipo.includes("saída") ||
+                  tipo.includes("saida") ||
+                  tipo.includes("despesa") ||
+                  categoria.includes(
+                    "despesa"
+                  ) ||
+                  descricao.includes(
+                    "despesa"
+                  );
+
+                if (!ehSaida) {
+                  return total + valor;
+                }
+
+                return total;
+              },
+              0
+            );
         }
 
         setStats({
@@ -382,8 +526,33 @@ export default function Dashboard() {
   function hasVisualPermission(
     modulo: PermissionModule
   ) {
+    /*
+     * Administrador possui acesso total.
+     */
     if (isAdmin) {
       return true;
+    }
+
+    /*
+     * No cadastro de funcionários usamos "tecnico"
+     * no singular.
+     *
+     * O menu antigo usava "tecnicos" para a página
+     * de funcionários.
+     *
+     * Por isso, quando o menu pedir "tecnicos",
+     * também aceitamos a permissão "tecnico".
+     */
+    if (modulo === "tecnicos") {
+      return permissions.some(
+        (permission) =>
+          (
+            permission.modulo ===
+              "tecnicos" ||
+            permission.modulo === "tecnico"
+          ) &&
+          permission.visualizar === true
+      );
     }
 
     return permissions.some(
@@ -393,9 +562,10 @@ export default function Dashboard() {
     );
   }
 
-  const visibleMenuItems = menuItems.filter((item) =>
-    hasVisualPermission(item.modulo)
-  );
+  const visibleMenuItems =
+    menuItems.filter((item) =>
+      hasVisualPermission(item.modulo)
+    );
 
   function navigate(path: string) {
     setOpen(false);
@@ -417,10 +587,13 @@ export default function Dashboard() {
   }
 
   function formatCurrency(value: number) {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value);
+    return new Intl.NumberFormat(
+      "pt-BR",
+      {
+        style: "currency",
+        currency: "BRL",
+      }
+    ).format(value);
   }
 
   if (loadingPermissions) {
@@ -472,22 +645,28 @@ export default function Dashboard() {
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto p-3">
-          {visibleMenuItems.map((item) => {
-            const Icon = item.icon;
+          {visibleMenuItems.map(
+            (item) => {
+              const Icon = item.icon;
 
-            return (
-              <button
-                type="button"
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className="mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
-              >
-                <Icon className="h-5 w-5 shrink-0" />
+              return (
+                <button
+                  type="button"
+                  key={item.path}
+                  onClick={() =>
+                    navigate(item.path)
+                  }
+                  className="mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
 
-                <span>{item.name}</span>
-              </button>
-            );
-          })}
+                  <span>
+                    {item.name}
+                  </span>
+                </button>
+              );
+            }
+          )}
         </nav>
 
         <div className="shrink-0 border-t border-slate-700 bg-slate-900 p-3">
@@ -500,7 +679,9 @@ export default function Dashboard() {
             <LogOut className="h-5 w-5 shrink-0" />
 
             <span>
-              {loggingOut ? "Saindo..." : "Sair"}
+              {loggingOut
+                ? "Saindo..."
+                : "Sair"}
             </span>
           </button>
         </div>
@@ -547,7 +728,9 @@ export default function Dashboard() {
 
         <section className="p-4 sm:p-6 lg:p-8">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {hasVisualPermission("financeiro") && (
+            {hasVisualPermission(
+              "financeiro"
+            ) && (
               <Card
                 title="Faturamento"
                 value={
@@ -570,23 +753,31 @@ export default function Dashboard() {
                 value={
                   loadingStats
                     ? "..."
-                    : String(stats.servicos)
+                    : String(
+                        stats.servicos
+                      )
                 }
                 description="Este mês"
                 icon={<Wrench />}
                 onClick={() =>
-                  navigate("/ordens-servico")
+                  navigate(
+                    "/ordens-servico"
+                  )
                 }
               />
             )}
 
-            {hasVisualPermission("clientes") && (
+            {hasVisualPermission(
+              "clientes"
+            ) && (
               <Card
                 title="Clientes"
                 value={
                   loadingStats
                     ? "..."
-                    : String(stats.clientes)
+                    : String(
+                        stats.clientes
+                      )
                 }
                 description="Cadastrados"
                 icon={<Users />}
@@ -604,12 +795,16 @@ export default function Dashboard() {
                 value={
                   loadingStats
                     ? "..."
-                    : String(stats.equipamentos)
+                    : String(
+                        stats.equipamentos
+                      )
                 }
                 description="Cadastrados"
                 icon={<Snowflake />}
                 onClick={() =>
-                  navigate("/equipamentos")
+                  navigate(
+                    "/equipamentos"
+                  )
                 }
               />
             )}
@@ -621,11 +816,15 @@ export default function Dashboard() {
             </h2>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {hasVisualPermission("clientes") && (
+              {hasVisualPermission(
+                "clientes"
+              ) && (
                 <QuickButton
                   text="Novo cliente"
                   onClick={() =>
-                    navigate("/clientes?novo=1")
+                    navigate(
+                      "/clientes?novo=1"
+                    )
                   }
                 />
               )}
@@ -636,7 +835,9 @@ export default function Dashboard() {
                 <QuickButton
                   text="Novo orçamento"
                   onClick={() =>
-                    navigate("/orcamentos?novo=1")
+                    navigate(
+                      "/orcamentos?novo=1"
+                    )
                   }
                 />
               )}
@@ -647,12 +848,16 @@ export default function Dashboard() {
                 <QuickButton
                   text="Nova ordem de serviço"
                   onClick={() =>
-                    navigate("/ordens-servico?novo=1")
+                    navigate(
+                      "/ordens-servico?novo=1"
+                    )
                   }
                 />
               )}
 
-              {hasVisualPermission("agenda") && (
+              {hasVisualPermission(
+                "agenda"
+              ) && (
                 <QuickButton
                   text="Abrir agenda"
                   onClick={() =>
@@ -664,7 +869,9 @@ export default function Dashboard() {
           </div>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {hasVisualPermission("financeiro") && (
+            {hasVisualPermission(
+              "financeiro"
+            ) && (
               <InfoCard
                 title="Financeiro"
                 description="Acompanhe receitas e despesas do mês."
@@ -688,7 +895,9 @@ export default function Dashboard() {
               />
             )}
 
-            {hasVisualPermission("agenda") && (
+            {hasVisualPermission(
+              "agenda"
+            ) && (
               <InfoCard
                 title="Agenda"
                 description="Visualize os próximos atendimentos."
