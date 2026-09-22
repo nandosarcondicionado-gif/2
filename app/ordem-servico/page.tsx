@@ -181,6 +181,7 @@ function formatDate(value?: string | null) {
   if (!value) return "—";
 
   const parts = value.split("-");
+
   if (parts.length === 3) {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
@@ -223,7 +224,11 @@ function equipmentCapacity(equipment?: Equipment | null) {
     equipment.capacidade_btus ??
     equipment.btu;
 
-  if (value === null || value === undefined || value === "") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
     return "";
   }
 
@@ -242,7 +247,9 @@ function equipmentName(equipment?: Equipment | null) {
   return (
     equipment.descricao ||
     equipment.equipamento ||
-    [equipment.marca, equipment.modelo].filter(Boolean).join(" ") ||
+    [equipment.marca, equipment.modelo]
+      .filter(Boolean)
+      .join(" ") ||
     "Equipamento"
   );
 }
@@ -251,12 +258,16 @@ function statusClass(status?: string | null) {
   switch (status) {
     case "Concluída":
       return "bg-green-100 text-green-700";
+
     case "Cancelada":
       return "bg-red-100 text-red-700";
+
     case "Em andamento":
       return "bg-blue-100 text-blue-700";
+
     case "Agendada":
       return "bg-purple-100 text-purple-700";
+
     default:
       return "bg-yellow-100 text-yellow-700";
   }
@@ -272,7 +283,11 @@ function escapeHtml(value: unknown) {
 }
 
 function printServiceOrder(order: ServiceOrder) {
-  const popup = window.open("", "_blank", "width=900,height=800");
+  const popup = window.open(
+    "",
+    "_blank",
+    "width=900,height=800",
+  );
 
   if (!popup) {
     alert("Não foi possível abrir a impressão.");
@@ -285,6 +300,7 @@ function printServiceOrder(order: ServiceOrder) {
       <head>
         <meta charset="UTF-8">
         <title>Ordem de Serviço</title>
+
         <style>
           body {
             font-family: Arial, sans-serif;
@@ -336,51 +352,69 @@ function printServiceOrder(order: ServiceOrder) {
 
       <body>
         <h1>Nando's Ar-Condicionado</h1>
-        <div class="subtitle">ORDEM DE SERVIÇO #${escapeHtml(
-          order.numero || order.id.slice(0, 8),
-        )}</div>
+
+        <div class="subtitle">
+          ORDEM DE SERVIÇO #${escapeHtml(
+            order.numero || order.id.slice(0, 8),
+          )}
+        </div>
 
         <div class="grid">
           <div class="box">
             <div class="label">Cliente</div>
-            <div class="value">${escapeHtml(order.cliente_nome)}</div>
+            <div class="value">
+              ${escapeHtml(order.cliente_nome)}
+            </div>
           </div>
 
           <div class="box">
             <div class="label">Cidade</div>
-            <div class="value">${escapeHtml(order.cliente_cidade)}</div>
+            <div class="value">
+              ${escapeHtml(order.cliente_cidade)}
+            </div>
           </div>
 
           <div class="box">
             <div class="label">Serviço</div>
-            <div class="value">${escapeHtml(order.servico)}</div>
+            <div class="value">
+              ${escapeHtml(order.servico)}
+            </div>
           </div>
 
           <div class="box">
             <div class="label">Status</div>
-            <div class="value">${escapeHtml(order.status)}</div>
+            <div class="value">
+              ${escapeHtml(order.status)}
+            </div>
           </div>
 
           <div class="box">
             <div class="label">Técnico</div>
-            <div class="value">${escapeHtml(order.tecnico_nome)}</div>
+            <div class="value">
+              ${escapeHtml(order.tecnico_nome)}
+            </div>
           </div>
 
           <div class="box">
             <div class="label">Data</div>
-            <div class="value">${escapeHtml(
-              formatDate(order.data),
-            )} ${escapeHtml(order.horario)}</div>
+            <div class="value">
+              ${escapeHtml(formatDate(order.data))}
+              ${escapeHtml(order.horario)}
+            </div>
           </div>
         </div>
 
         <div class="box">
           <div class="label">Equipamento</div>
+
           <div class="value">
             ${escapeHtml(order.equipamento_nome)}
+
             ${
               order.equipamento_capacidade
-                ? `<br>${escapeHtml(order.equipamento_capacidade)}`
+                ? `<br>${escapeHtml(
+                    order.equipamento_capacidade,
+                  )}`
                 : ""
             }
           </div>
@@ -388,29 +422,46 @@ function printServiceOrder(order: ServiceOrder) {
 
         <div class="box">
           <div class="label">Endereço</div>
-          <div class="value">${escapeHtml(order.endereco)}</div>
+
+          <div class="value">
+            ${escapeHtml(order.endereco)}
+          </div>
         </div>
 
         <div class="box">
           <div class="label">Descrição</div>
-          <div>${escapeHtml(order.descricao)}</div>
+
+          <div>
+            ${escapeHtml(order.descricao)}
+          </div>
         </div>
 
         <div class="box">
           <div class="label">Materiais</div>
-          <div>${escapeHtml(order.materiais)}</div>
+
+          <div>
+            ${escapeHtml(order.materiais)}
+          </div>
         </div>
 
         <div class="box">
           <div class="label">Observações</div>
-          <div>${escapeHtml(order.observacoes)}</div>
+
+          <div>
+            ${escapeHtml(order.observacoes)}
+          </div>
         </div>
 
         <div class="box">
           <div class="label">Valor do serviço</div>
-          <div class="value">${formatCurrency(
-            order.valor_servico ?? order.valor ?? 0,
-          )}</div>
+
+          <div class="value">
+            ${formatCurrency(
+              order.valor_servico ??
+                order.valor ??
+                0,
+            )}
+          </div>
         </div>
 
         <script>
@@ -429,53 +480,90 @@ function printServiceOrder(order: ServiceOrder) {
 function sendServiceOrderWhatsApp(order: ServiceOrder) {
   const text = [
     `*Nando's Ar-Condicionado*`,
-    `*ORDEM DE SERVIÇO #${order.numero || order.id.slice(0, 8)}*`,
+    `*ORDEM DE SERVIÇO #${
+      order.numero || order.id.slice(0, 8)
+    }*`,
     "",
     `Cliente: ${order.cliente_nome || "—"}`,
     `Cidade: ${order.cliente_cidade || "—"}`,
     `Serviço: ${order.servico || "—"}`,
     `Técnico: ${order.tecnico_nome || "—"}`,
-    `Data: ${formatDate(order.data)} ${order.horario || ""}`,
-    `Equipamento: ${order.equipamento_nome || "—"}`,
+    `Data: ${formatDate(order.data)} ${
+      order.horario || ""
+    }`,
+    `Equipamento: ${
+      order.equipamento_nome || "—"
+    }`,
     order.equipamento_capacidade
       ? `Capacidade: ${order.equipamento_capacidade}`
       : "",
     `Status: ${order.status || "—"}`,
     `Valor: ${formatCurrency(
-      order.valor_servico ?? order.valor ?? 0,
+      order.valor_servico ??
+        order.valor ??
+        0,
     )}`,
     "",
-    order.descricao ? `Descrição: ${order.descricao}` : "",
-    order.observacoes ? `Observações: ${order.observacoes}` : "",
+    order.descricao
+      ? `Descrição: ${order.descricao}`
+      : "",
+    order.observacoes
+      ? `Observações: ${order.observacoes}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
 
-  const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const url = `https://wa.me/?text=${encodeURIComponent(
+    text,
+  )}`;
 
   window.open(url, "_blank");
 }
 
 export default function OrdemServicoPage() {
-  const [orders, setOrders] = useState<ServiceOrder[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [equipments, setEquipments] = useState<Equipment[]>([]);
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [orders, setOrders] = useState<ServiceOrder[]>(
+    [],
+  );
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [clients, setClients] = useState<Client[]>(
+    [],
+  );
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [equipments, setEquipments] = useState<
+    Equipment[]
+  >([]);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [technicians, setTechnicians] = useState<
+    Technician[]
+  >([]);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [statusFilter, setStatusFilter] =
+    useState("Todos");
+
+  const [modalOpen, setModalOpen] =
+    useState(false);
+
+  const [detailsOpen, setDetailsOpen] =
+    useState(false);
+
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
+
   const [selectedOrder, setSelectedOrder] =
     useState<ServiceOrder | null>(null);
 
-  const [form, setForm] = useState<FormData>(emptyForm);
+  const [form, setForm] =
+    useState<FormData>(emptyForm);
 
   async function loadData() {
     setLoading(true);
@@ -490,17 +578,23 @@ export default function OrdemServicoPage() {
         supabase
           .from("ordens_servico")
           .select("*")
-          .order("created_at", { ascending: false }),
+          .order("created_at", {
+            ascending: false,
+          }),
 
         supabase
           .from("clientes")
           .select("id, nome, cidade")
-          .order("nome", { ascending: true }),
+          .order("nome", {
+            ascending: true,
+          }),
 
         supabase
           .from("equipamentos")
           .select("*")
-          .order("created_at", { ascending: false }),
+          .order("created_at", {
+            ascending: false,
+          }),
 
         supabase
           .from("funcionarios")
@@ -508,7 +602,9 @@ export default function OrdemServicoPage() {
             "id, nome, status, cargo, perfil",
           )
           .eq("status", "Ativo")
-          .order("nome", { ascending: true }),
+          .order("nome", {
+            ascending: true,
+          }),
       ]);
 
       if (ordersResult.error) {
@@ -540,42 +636,49 @@ export default function OrdemServicoPage() {
       }
 
       setOrders(
-        (ordersResult.data || []) as ServiceOrder[],
+        (ordersResult.data ||
+          []) as ServiceOrder[],
       );
 
       setClients(
-        (clientsResult.data || []) as Client[],
+        (clientsResult.data ||
+          []) as Client[],
       );
 
       setEquipments(
-        (equipmentsResult.data || []) as Equipment[],
+        (equipmentsResult.data ||
+          []) as Equipment[],
       );
 
       const employeeList =
-        (techniciansResult.data || []) as Technician[];
+        (techniciansResult.data ||
+          []) as Technician[];
 
-      const technicianList = employeeList.filter(
-        (employee) => {
-          const cargo = String(
-            employee.cargo || "",
-          ).toLowerCase();
+      const technicianList =
+        employeeList.filter(
+          (employee) => {
+            const cargo = String(
+              employee.cargo || "",
+            ).toLowerCase();
 
-          const perfil = String(
-            employee.perfil || "",
-          ).toLowerCase();
+            const perfil = String(
+              employee.perfil || "",
+            ).toLowerCase();
 
-          return (
-            cargo === "técnico" ||
-            cargo === "tecnico" ||
-            cargo.includes("técnico") ||
-            cargo.includes("tecnico") ||
-            perfil === "técnico" ||
-            perfil === "tecnico"
-          );
-        },
+            return (
+              cargo === "técnico" ||
+              cargo === "tecnico" ||
+              cargo.includes("técnico") ||
+              cargo.includes("tecnico") ||
+              perfil === "técnico" ||
+              perfil === "tecnico"
+            );
+          },
+        );
+
+      setTechnicians(
+        technicianList,
       );
-
-      setTechnicians(technicianList);
     } catch (error) {
       console.error(
         "Erro geral ao carregar dados:",
@@ -591,16 +694,21 @@ export default function OrdemServicoPage() {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    const term = search.toLowerCase().trim();
+    const term =
+      search.toLowerCase().trim();
 
     return orders.filter((order) => {
       const matchesStatus =
         statusFilter === "Todos" ||
         order.status === statusFilter;
 
-      if (!matchesStatus) return false;
+      if (!matchesStatus) {
+        return false;
+      }
 
-      if (!term) return true;
+      if (!term) {
+        return true;
+      }
 
       return [
         order.numero,
@@ -618,36 +726,51 @@ export default function OrdemServicoPage() {
             .includes(term),
         );
     });
-  }, [orders, search, statusFilter]);
+  }, [
+    orders,
+    search,
+    statusFilter,
+  ]);
 
   const counts = useMemo(
     () => ({
       total: orders.length,
+
       abertas: orders.filter(
-        (item) => item.status === "Aberta",
+        (item) =>
+          item.status === "Aberta",
       ).length,
+
       agendadas: orders.filter(
-        (item) => item.status === "Agendada",
+        (item) =>
+          item.status === "Agendada",
       ).length,
+
       andamento: orders.filter(
-        (item) => item.status === "Em andamento",
+        (item) =>
+          item.status === "Em andamento",
       ).length,
+
       concluidas: orders.filter(
-        (item) => item.status === "Concluída",
+        (item) =>
+          item.status === "Concluída",
       ).length,
     }),
     [orders],
   );
 
   const selectedClient = clients.find(
-    (client) => client.id === form.clientId,
+    (client) =>
+      client.id === form.clientId,
   );
 
-  const clientEquipments = equipments.filter(
-    (equipment) =>
-      !form.clientId ||
-      equipment.cliente_id === form.clientId,
-  );
+  const clientEquipments =
+    equipments.filter(
+      (equipment) =>
+        !form.clientId ||
+        equipment.cliente_id ===
+          form.clientId,
+    );
 
   async function checkPlanForCurrentService(
     clientId: string,
@@ -660,7 +783,8 @@ export default function OrdemServicoPage() {
         plano_mensal_coberto: false,
         plano_mensal_status: "",
         plano_mensal_aviso: "",
-        plano_mensal_servico_incluso: "",
+        plano_mensal_servico_incluso:
+          "",
         valor_servicos: serviceValue,
         servicoCoberto: false,
         avisoTecnico: "",
@@ -669,11 +793,14 @@ export default function OrdemServicoPage() {
     }
 
     try {
-      return await applyMonthlyPlanToServiceOrder({
-        clientId,
-        service: serviceType,
-        normalServiceValue: serviceValue,
-      });
+      return await applyMonthlyPlanToServiceOrder(
+        {
+          clientId,
+          service: serviceType,
+          normalServiceValue:
+            serviceValue,
+        },
+      );
     } catch (error) {
       console.error(
         "Erro ao verificar plano mensal:",
@@ -685,7 +812,8 @@ export default function OrdemServicoPage() {
         plano_mensal_coberto: false,
         plano_mensal_status: "",
         plano_mensal_aviso: "",
-        plano_mensal_servico_incluso: "",
+        plano_mensal_servico_incluso:
+          "",
         valor_servicos: serviceValue,
         servicoCoberto: false,
         avisoTecnico: "",
@@ -710,7 +838,8 @@ export default function OrdemServicoPage() {
       ...current,
 
       monthlyPlanId:
-        result.plano_mensal_id ?? null,
+        result.plano_mensal_id ??
+        null,
 
       monthlyPlanCovered:
         Boolean(
@@ -718,10 +847,12 @@ export default function OrdemServicoPage() {
         ),
 
       monthlyPlanStatus:
-        result.plano_mensal_status ?? "",
+        result.plano_mensal_status ??
+        "",
 
       monthlyPlanWarning:
-        result.plano_mensal_aviso ?? "",
+        result.plano_mensal_aviso ??
+        "",
 
       monthlyPlanIncludedService:
         result.plano_mensal_servico_incluso ??
@@ -729,54 +860,75 @@ export default function OrdemServicoPage() {
 
       serviceValue: String(
         result.valor_servicos ??
-          parseMoney(current.serviceValue),
+          parseMoney(
+            current.serviceValue,
+          ),
       ),
     }));
   }
 
   function openNewModal() {
     setEditingId(null);
+
     setForm({
       ...emptyForm,
+
       date: new Date()
         .toISOString()
         .slice(0, 10),
     });
+
     setModalOpen(true);
   }
 
-  function openEditModal(order: ServiceOrder) {
+  function openEditModal(
+    order: ServiceOrder,
+  ) {
     setEditingId(order.id);
 
     setForm({
-      clientId: order.cliente_id || "",
+      clientId:
+        order.cliente_id || "",
+
       equipmentId:
         order.equipamento_id || "",
+
       technicianId:
         order.tecnico_id || "",
+
       serviceType:
         (order.servico as ServiceType) ||
         "Preventiva",
+
       serviceValue: String(
         order.valor_servico ??
           order.valor ??
           "",
       ),
+
       date: order.data || "",
+
       time: order.horario || "",
-      address: order.endereco || "",
+
+      address:
+        order.endereco || "",
+
       description:
         order.descricao || "",
+
       materials:
         order.materiais || "",
+
       observations:
         order.observacoes || "",
+
       status:
         (order.status as ServiceOrderStatus) ||
         "Aberta",
 
       monthlyPlanId:
-        order.plano_mensal_id ?? null,
+        order.plano_mensal_id ??
+        null,
 
       monthlyPlanCovered:
         Boolean(
@@ -784,10 +936,12 @@ export default function OrdemServicoPage() {
         ),
 
       monthlyPlanStatus:
-        order.plano_mensal_status || "",
+        order.plano_mensal_status ||
+        "",
 
       monthlyPlanWarning:
-        order.plano_mensal_aviso || "",
+        order.plano_mensal_aviso ||
+        "",
 
       monthlyPlanIncludedService:
         order.plano_mensal_servico_incluso ||
@@ -797,7 +951,9 @@ export default function OrdemServicoPage() {
     setModalOpen(true);
   }
 
-  function openDetails(order: ServiceOrder) {
+  function openDetails(
+    order: ServiceOrder,
+  ) {
     setSelectedOrder(order);
     setDetailsOpen(true);
   }
@@ -806,13 +962,17 @@ export default function OrdemServicoPage() {
     clientId: string,
   ) {
     const client = clients.find(
-      (item) => item.id === clientId,
+      (item) =>
+        item.id === clientId,
     );
 
     setForm((current) => ({
       ...current,
+
       clientId,
+
       equipmentId: "",
+
       address:
         current.address ||
         client?.cidade ||
@@ -856,20 +1016,28 @@ export default function OrdemServicoPage() {
 
     try {
       const client = clients.find(
-        (item) => item.id === form.clientId,
+        (item) =>
+          item.id === form.clientId,
       );
 
-      const equipment = equipments.find(
-        (item) => item.id === form.equipmentId,
-      );
+      const equipment =
+        equipments.find(
+          (item) =>
+            item.id ===
+            form.equipmentId,
+        );
 
-      const technician = technicians.find(
-        (item) => item.id === form.technicianId,
-      );
+      const technician =
+        technicians.find(
+          (item) =>
+            item.id ===
+            form.technicianId,
+        );
 
-      const serviceValue = parseMoney(
-        form.serviceValue,
-      );
+      const serviceValue =
+        parseMoney(
+          form.serviceValue,
+        );
 
       const planResult =
         await checkPlanForCurrentService(
@@ -878,16 +1046,18 @@ export default function OrdemServicoPage() {
           serviceValue,
         );
 
-      const finalValue =
-        Number(
-          planResult.valor_servicos ??
-            serviceValue,
-        );
+      const finalValue = Number(
+        planResult.valor_servicos ??
+          serviceValue,
+      );
 
       const commonData = {
-        cliente_id: form.clientId,
+        cliente_id:
+          form.clientId,
+
         cliente_nome:
           client?.nome || "",
+
         cliente_cidade:
           client?.cidade || "",
 
@@ -898,15 +1068,15 @@ export default function OrdemServicoPage() {
           equipmentName(equipment),
 
         equipamento_capacidade:
-          equipmentCapacity(equipment) ||
-          null,
+          equipmentCapacity(
+            equipment,
+          ) || null,
 
         tecnico_id:
           form.technicianId || null,
 
         tecnico_nome:
-          technician?.nome ||
-          "",
+          technician?.nome || "",
 
         servico:
           form.serviceType,
@@ -961,7 +1131,8 @@ export default function OrdemServicoPage() {
         const currentOrder =
           orders.find(
             (item) =>
-              item.id === editingId,
+              item.id ===
+              editingId,
           );
 
         const { error } =
@@ -978,7 +1149,10 @@ export default function OrdemServicoPage() {
                 currentOrder?.materiais_pago_em ??
                 null,
             })
-            .eq("id", editingId);
+            .eq(
+              "id",
+              editingId,
+            );
 
         if (error) {
           throw error;
@@ -992,10 +1166,25 @@ export default function OrdemServicoPage() {
             await registerPlanUse({
               planoId:
                 planResult.plano_mensal_id,
+
               ordemServicoId:
                 editingId,
+
+              clientId:
+                form.clientId,
+
               service:
                 form.serviceType,
+
+              equipment: equipment
+                ? equipmentName(
+                    equipment,
+                  )
+                : undefined,
+
+              covered: Boolean(
+                planResult.plano_mensal_coberto,
+              ),
             });
           }
         } catch (planError) {
@@ -1005,16 +1194,22 @@ export default function OrdemServicoPage() {
           );
         }
       } else {
-        const { data, error } =
-          await supabase
-            .from("ordens_servico")
-            .insert({
-              ...commonData,
-              materiais_pago: false,
-              materiais_pago_em: null,
-            })
-            .select()
-            .single();
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("ordens_servico")
+          .insert({
+            ...commonData,
+
+            materiais_pago:
+              false,
+
+            materiais_pago_em:
+              null,
+          })
+          .select()
+          .single();
 
         if (error) {
           throw error;
@@ -1029,10 +1224,25 @@ export default function OrdemServicoPage() {
             await registerPlanUse({
               planoId:
                 planResult.plano_mensal_id,
+
               ordemServicoId:
                 data.id,
+
+              clientId:
+                form.clientId,
+
               service:
                 form.serviceType,
+
+              equipment: equipment
+                ? equipmentName(
+                    equipment,
+                  )
+                : undefined,
+
+              covered: Boolean(
+                planResult.plano_mensal_coberto,
+              ),
             });
           }
         } catch (planError) {
@@ -1068,11 +1278,13 @@ export default function OrdemServicoPage() {
   async function deleteOrder(
     order: ServiceOrder,
   ) {
-    const confirmed = window.confirm(
-      `Deseja realmente excluir a Ordem de Serviço #${
-        order.numero || order.id.slice(0, 8)
-      }?`,
-    );
+    const confirmed =
+      window.confirm(
+        `Deseja realmente excluir a Ordem de Serviço #${
+          order.numero ||
+          order.id.slice(0, 8)
+        }?`,
+      );
 
     if (!confirmed) return;
 
@@ -1081,7 +1293,10 @@ export default function OrdemServicoPage() {
         await supabase
           .from("ordens_servico")
           .delete()
-          .eq("id", order.id);
+          .eq(
+            "id",
+            order.id,
+          );
 
       if (error) {
         throw error;
@@ -1112,7 +1327,10 @@ export default function OrdemServicoPage() {
         await supabase
           .from("ordens_servico")
           .update({ status })
-          .eq("id", order.id);
+          .eq(
+            "id",
+            order.id,
+          );
 
       if (error) {
         throw error;
@@ -1121,7 +1339,8 @@ export default function OrdemServicoPage() {
       await loadData();
 
       if (
-        selectedOrder?.id === order.id
+        selectedOrder?.id ===
+        order.id
       ) {
         setSelectedOrder({
           ...order,
@@ -1147,7 +1366,9 @@ export default function OrdemServicoPage() {
     order: ServiceOrder,
   ) {
     const newValue =
-      !Boolean(order.materiais_pago);
+      !Boolean(
+        order.materiais_pago,
+      );
 
     try {
       const { error } =
@@ -1162,7 +1383,10 @@ export default function OrdemServicoPage() {
                 ? new Date().toISOString()
                 : null,
           })
-          .eq("id", order.id);
+          .eq(
+            "id",
+            order.id,
+          );
 
       if (error) {
         throw error;
@@ -1193,12 +1417,15 @@ export default function OrdemServicoPage() {
           Boolean(
             order.plano_mensal_coberto,
           ),
+
         plano_mensal_status:
           order.plano_mensal_status ||
           "",
+
         plano_mensal_aviso:
           order.plano_mensal_aviso ||
           "",
+
         plano_mensal_servico_incluso:
           order.plano_mensal_servico_incluso ||
           "",
@@ -1215,7 +1442,9 @@ export default function OrdemServicoPage() {
           <div>
             <div className="flex items-center gap-3">
               <div className="rounded-xl bg-blue-600 p-3 text-white">
-                <ClipboardList size={24} />
+                <ClipboardList
+                  size={24}
+                />
               </div>
 
               <div>
@@ -1225,7 +1454,8 @@ export default function OrdemServicoPage() {
 
                 <p className="text-sm text-slate-500">
                   Controle de serviços,
-                  técnicos e atendimentos.
+                  técnicos e
+                  atendimentos.
                 </p>
               </div>
             </div>
@@ -1233,11 +1463,15 @@ export default function OrdemServicoPage() {
 
           <button
             type="button"
-            onClick={openNewModal}
+            onClick={
+              openNewModal
+            }
             className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <Plus size={20} />
-            Nova ordem de serviço
+
+            Nova ordem de
+            serviço
           </button>
         </div>
 
@@ -1246,6 +1480,7 @@ export default function OrdemServicoPage() {
             <p className="text-xs text-slate-500">
               Total
             </p>
+
             <p className="mt-1 text-2xl font-bold">
               {counts.total}
             </p>
@@ -1255,6 +1490,7 @@ export default function OrdemServicoPage() {
             <p className="text-xs text-slate-500">
               Abertas
             </p>
+
             <p className="mt-1 text-2xl font-bold text-yellow-600">
               {counts.abertas}
             </p>
@@ -1264,6 +1500,7 @@ export default function OrdemServicoPage() {
             <p className="text-xs text-slate-500">
               Agendadas
             </p>
+
             <p className="mt-1 text-2xl font-bold text-purple-600">
               {counts.agendadas}
             </p>
@@ -1273,6 +1510,7 @@ export default function OrdemServicoPage() {
             <p className="text-xs text-slate-500">
               Em andamento
             </p>
+
             <p className="mt-1 text-2xl font-bold text-blue-600">
               {counts.andamento}
             </p>
@@ -1282,6 +1520,7 @@ export default function OrdemServicoPage() {
             <p className="text-xs text-slate-500">
               Concluídas
             </p>
+
             <p className="mt-1 text-2xl font-bold text-green-600">
               {counts.concluidas}
             </p>
@@ -1320,14 +1559,16 @@ export default function OrdemServicoPage() {
               Todos os status
             </option>
 
-            {statuses.map((status) => (
-              <option
-                key={status}
-                value={status}
-              >
-                {status}
-              </option>
-            ))}
+            {statuses.map(
+              (status) => (
+                <option
+                  key={status}
+                  value={status}
+                >
+                  {status}
+                </option>
+              ),
+            )}
           </select>
         </div>
 
@@ -1336,10 +1577,12 @@ export default function OrdemServicoPage() {
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
 
             <p className="text-sm text-slate-500">
-              Carregando ordens de serviço...
+              Carregando ordens
+              de serviço...
             </p>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : filteredOrders.length ===
+          0 ? (
           <div className="rounded-2xl bg-white p-10 text-center shadow-sm">
             <ClipboardList
               size={42}
@@ -1347,12 +1590,14 @@ export default function OrdemServicoPage() {
             />
 
             <h2 className="font-semibold text-slate-700">
-              Nenhuma ordem encontrada
+              Nenhuma ordem
+              encontrada
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Crie uma nova ordem de serviço
-              para começar.
+              Crie uma nova ordem
+              de serviço para
+              começar.
             </p>
           </div>
         ) : (
@@ -1360,7 +1605,9 @@ export default function OrdemServicoPage() {
             {filteredOrders.map(
               (order) => {
                 const plan =
-                  getPlanBadge(order);
+                  getPlanBadge(
+                    order,
+                  );
 
                 return (
                   <div
@@ -1399,6 +1646,7 @@ export default function OrdemServicoPage() {
                                   size={13}
                                   className="mr-1 inline"
                                 />
+
                                 Plano mensal
                               </span>
                             )}
@@ -1601,7 +1849,8 @@ export default function OrdemServicoPage() {
                 </h2>
 
                 <p className="text-sm text-slate-500">
-                  Preencha os dados do atendimento.
+                  Preencha os dados do
+                  atendimento.
                 </p>
               </div>
 
@@ -1669,14 +1918,17 @@ export default function OrdemServicoPage() {
                       const equipment =
                         equipments.find(
                           (item) =>
-                            item.id === id,
+                            item.id ===
+                            id,
                         );
 
                       setForm(
                         (current) => ({
                           ...current,
+
                           equipmentId:
                             id,
+
                           address:
                             current.address ||
                             equipment?.localizacao ||
@@ -1704,6 +1956,7 @@ export default function OrdemServicoPage() {
                           {equipmentName(
                             equipment,
                           )}
+
                           {equipmentCapacity(
                             equipment,
                           )
@@ -1730,6 +1983,7 @@ export default function OrdemServicoPage() {
                       setForm(
                         (current) => ({
                           ...current,
+
                           technicianId:
                             event.target
                               .value,
@@ -1763,7 +2017,8 @@ export default function OrdemServicoPage() {
                     <p className="mt-1 text-xs text-orange-600">
                       Nenhum funcionário
                       cadastrado como
-                      técnico foi encontrado.
+                      técnico foi
+                      encontrado.
                     </p>
                   )}
                 </div>
@@ -1813,6 +2068,7 @@ export default function OrdemServicoPage() {
                       setForm(
                         (current) => ({
                           ...current,
+
                           serviceValue:
                             event.target
                               .value,
@@ -1848,6 +2104,7 @@ export default function OrdemServicoPage() {
                       setForm(
                         (current) => ({
                           ...current,
+
                           status:
                             event.target
                               .value as ServiceOrderStatus,
@@ -1935,6 +2192,7 @@ export default function OrdemServicoPage() {
                       setForm(
                         (current) => ({
                           ...current,
+
                           date:
                             event.target
                               .value,
@@ -1957,6 +2215,7 @@ export default function OrdemServicoPage() {
                       setForm(
                         (current) => ({
                           ...current,
+
                           time:
                             event.target
                               .value,
@@ -1995,11 +2254,14 @@ export default function OrdemServicoPage() {
                   />
 
                   <input
-                    value={form.address}
+                    value={
+                      form.address
+                    }
                     onChange={(event) =>
                       setForm(
                         (current) => ({
                           ...current,
+
                           address:
                             event.target
                               .value,
@@ -2018,11 +2280,14 @@ export default function OrdemServicoPage() {
                 </label>
 
                 <textarea
-                  value={form.description}
+                  value={
+                    form.description
+                  }
                   onChange={(event) =>
                     setForm(
                       (current) => ({
                         ...current,
+
                         description:
                           event.target
                             .value,
@@ -2041,11 +2306,14 @@ export default function OrdemServicoPage() {
                 </label>
 
                 <textarea
-                  value={form.materials}
+                  value={
+                    form.materials
+                  }
                   onChange={(event) =>
                     setForm(
                       (current) => ({
                         ...current,
+
                         materials:
                           event.target
                             .value,
@@ -2071,6 +2339,7 @@ export default function OrdemServicoPage() {
                     setForm(
                       (current) => ({
                         ...current,
+
                         observations:
                           event.target
                             .value,
@@ -2098,7 +2367,9 @@ export default function OrdemServicoPage() {
               <button
                 type="button"
                 disabled={saving}
-                onClick={saveOrder}
+                onClick={
+                  saveOrder
+                }
                 className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving
@@ -2135,7 +2406,9 @@ export default function OrdemServicoPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setDetailsOpen(false)
+                    setDetailsOpen(
+                      false,
+                    )
                   }
                   className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
                 >
@@ -2354,7 +2627,10 @@ export default function OrdemServicoPage() {
                     }
                     className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    <Printer size={18} />
+                    <Printer
+                      size={18}
+                    />
+
                     Imprimir
                   </button>
 
@@ -2370,6 +2646,7 @@ export default function OrdemServicoPage() {
                     <MessageCircle
                       size={18}
                     />
+
                     WhatsApp
                   </button>
                 </div>
