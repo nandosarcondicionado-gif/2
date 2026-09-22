@@ -3,72 +3,70 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
 
+function normalizar(valor: unknown) {
+  return String(valor ?? "").trim().toLowerCase();
+}
+
 async function context() {
-  const supabase =
-    await createServerClient();
+  const supabase = await createServerClient();
 
   const {
     data: { user },
-  } =
-    await supabase.auth.getUser();
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return null;
   }
 
-  const {
-    data: funcionario,
-  } =
-    await supabase
-      .from("funcionarios")
-      .select(
-        "id,nome,perfil,status,permitir_acesso"
-      )
-      .eq(
-        "auth_user_id",
-        user.id
-      )
-      .maybeSingle();
+  const { data: funcionario } = await supabase
+    .from("funcionarios")
+    .select(
+      "id,nome,perfil,funcao,status,permitir_acesso"
+    )
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
 
   if (!funcionario) {
     return null;
   }
 
-  const perfil =
-    String(
-      funcionario.perfil || ""
-    ).toLowerCase();
+  const perfil = normalizar(funcionario.perfil);
+  const funcao = normalizar(funcionario.funcao);
 
-  if (perfil !== "ajudante") {
+  const ajudante =
+    perfil === "ajudante" ||
+    funcao === "ajudante";
+
+  if (!ajudante) {
     return null;
   }
 
+  const status = normalizar(funcionario.status);
+
   if (
-    String(
-      funcionario.status
-    ).toLowerCase() !== "ativo" ||
-    funcionario.permitir_acesso !== true
+    status !== "ativo" &&
+    status !== "active"
   ) {
     return null;
   }
 
-  const {
-    url,
-    serviceRoleKey,
-  } =
+  if (funcionario.permitir_acesso !== true) {
+    return null;
+  }
+
+  const { url, serviceRoleKey } =
     getSupabaseServiceRoleEnv();
 
-  const admin =
-    createAdminClient(
-      url,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+  const admin = createAdminClient(
+    url,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
 
   return {
     user,
@@ -79,69 +77,53 @@ async function context() {
 
 export async function GET() {
   try {
-    const ctx =
-      await context();
+    const ctx = await context();
 
     if (!ctx) {
       return NextResponse.json(
-        {
-          error:
-            "Acesso negado.",
-        },
-        {
-          status: 403,
-        }
+        { error: "Acesso negado." },
+        { status: 403 }
       );
     }
 
-    const {
-      data: config,
-    } =
-      await ctx.admin
-        .from(
-          "funcionario_valor_hora"
-        )
-        .select(
-          "valor_hora,arredondamento_minutos"
-        )
-        .eq(
-          "funcionario_id",
-          ctx.funcionario.id
-        )
-        .maybeSingle();
+    const { data: config } = await ctx.admin
+      .from("funcionario_valor_hora")
+      .select(
+        "valor_hora,arredondamento_minutos"
+      )
+      .eq(
+        "funcionario_id",
+        ctx.funcionario.id
+      )
+      .eq("ativo", true)
+      .maybeSingle();
 
     const {
       data: horas,
       error,
-    } =
-      await ctx.admin
-        .from(
-          "horas_funcionarios"
-        )
-        .select(
-          "id,agenda_id,inicio,fim,minutos,valor_hora,valor_total,status,observacoes,created_at"
-        )
-        .eq(
-          "funcionario_id",
-          ctx.funcionario.id
-        )
-        .order(
-          "inicio",
-          {
-            ascending: false,
-          }
-        )
-        .limit(100);
+    } = await ctx.admin
+      .from("horas_funcionarios")
+      .select(
+        "id,agenda_id,inicio,fim,minutos,valor_hora,valor_total,status,observacoes,created_at"
+      )
+      .eq(
+        "funcionario_id",
+        ctx.funcionario.id
+      )
+      .order("inicio", {
+        ascending: false,
+      })
+      .limit(100);
 
     if (error) {
+      console.error(error);
+
       return NextResponse.json(
         {
           error:
             "Não foi possível carregar as horas.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -151,19 +133,14 @@ export async function GET() {
           valor_hora: 0,
           arredondamento_minutos: 60,
         },
-
       horas: horas || [],
     });
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Erro interno.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro interno." },
+      { status: 500 }
     );
   }
 }
@@ -172,66 +149,45 @@ export async function POST(
   request: Request
 ) {
   try {
-    const ctx =
-      await context();
+    const ctx = await context();
 
     if (!ctx) {
       return NextResponse.json(
-        {
-          error:
-            "Acesso negado.",
-        },
-        {
-          status: 403,
-        }
+        { error: "Acesso negado." },
+        { status: 403 }
       );
     }
 
-    const body =
-      await request.json();
+    const body = await request.json();
 
     const agendaId =
-      String(
-        body?.agenda_id || ""
-      ).trim() || null;
+      String(body?.agenda_id || "").trim() ||
+      null;
 
-    const {
-      data: config,
-    } =
+    const { data: config } =
       await ctx.admin
-        .from(
-          "funcionario_valor_hora"
-        )
-        .select(
-          "valor_hora"
-        )
+        .from("funcionario_valor_hora")
+        .select("valor_hora")
         .eq(
           "funcionario_id",
           ctx.funcionario.id
         )
+        .eq("ativo", true)
         .maybeSingle();
 
-    const valorHora =
-      Number(
-        config?.valor_hora || 0
-      );
+    const valorHora = Number(
+      config?.valor_hora || 0
+    );
 
-    const {
-      data: aberta,
-    } =
+    const { data: aberta } =
       await ctx.admin
-        .from(
-          "horas_funcionarios"
-        )
+        .from("horas_funcionarios")
         .select("id")
         .eq(
           "funcionario_id",
           ctx.funcionario.id
         )
-        .eq(
-          "status",
-          "Aberta"
-        )
+        .eq("status", "Aberta")
         .maybeSingle();
 
     if (aberta) {
@@ -240,9 +196,7 @@ export async function POST(
           error:
             "Você já possui uma jornada aberta.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
@@ -252,48 +206,35 @@ export async function POST(
           error:
             "Seu valor por hora ainda não foi configurado pelo administrador.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    const {
-      data: registro,
-      error,
-    } =
+    const { data: registro, error } =
       await ctx.admin
-        .from(
-          "horas_funcionarios"
-        )
+        .from("horas_funcionarios")
         .insert({
           funcionario_id:
             ctx.funcionario.id,
-
-          agenda_id:
-            agendaId,
-
-          inicio:
-            new Date().toISOString(),
-
-          valor_hora:
-            valorHora,
-
-          status:
-            "Aberta",
+          agenda_id: agendaId,
+          inicio: new Date().toISOString(),
+          valor_hora: valorHora,
+          minutos: 0,
+          valor_total: 0,
+          status: "Aberta",
         })
         .select()
         .single();
 
     if (error) {
+      console.error(error);
+
       return NextResponse.json(
         {
           error:
             "Não foi possível iniciar o registro de horas.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -305,12 +246,8 @@ export async function POST(
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Erro interno.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro interno." },
+      { status: 500 }
     );
   }
 }
@@ -319,55 +256,34 @@ export async function PATCH(
   request: Request
 ) {
   try {
-    const ctx =
-      await context();
+    const ctx = await context();
 
     if (!ctx) {
       return NextResponse.json(
-        {
-          error:
-            "Acesso negado.",
-        },
-        {
-          status: 403,
-        }
+        { error: "Acesso negado." },
+        { status: 403 }
       );
     }
 
-    const body =
-      await request.json();
+    const body = await request.json();
 
     const id =
-      String(
-        body?.id || ""
-      ).trim();
+      String(body?.id || "").trim();
 
     if (!id) {
       return NextResponse.json(
-        {
-          error:
-            "Registro inválido.",
-        },
-        {
-          status: 400,
-        }
+        { error: "Registro inválido." },
+        { status: 400 }
       );
     }
 
-    const {
-      data: registro,
-    } =
+    const { data: registro } =
       await ctx.admin
-        .from(
-          "horas_funcionarios"
-        )
+        .from("horas_funcionarios")
         .select(
           "id,inicio,valor_hora,status"
         )
-        .eq(
-          "id",
-          id
-        )
+        .eq("id", id)
         .eq(
           "funcionario_id",
           ctx.funcionario.id
@@ -380,100 +296,72 @@ export async function PATCH(
           error:
             "Registro não encontrado.",
         },
-        {
-          status: 404,
-        }
+        { status: 404 }
       );
     }
 
-    if (
-      registro.status !==
-      "Aberta"
-    ) {
+    if (registro.status !== "Aberta") {
       return NextResponse.json(
         {
           error:
             "Este registro já foi encerrado.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    const fim =
-      new Date();
+    const fim = new Date();
 
-    const inicio =
-      new Date(
-        registro.inicio
-      );
+    const inicio = new Date(
+      registro.inicio
+    );
 
-    const minutos =
-      Math.max(
-        0,
-        Math.round(
-          (
-            fim.getTime() -
-            inicio.getTime()
-          ) / 60000
-        )
-      );
+    const minutos = Math.max(
+      0,
+      Math.round(
+        (fim.getTime() -
+          inicio.getTime()) /
+          60000
+      )
+    );
 
-    const valorTotal =
-      Number(
-        (
-          (minutos / 60) *
-          Number(
-            registro.valor_hora ||
-              0
-          )
-        ).toFixed(2)
-      );
+    const valorTotal = Number(
+      (
+        (minutos / 60) *
+        Number(registro.valor_hora || 0)
+      ).toFixed(2)
+    );
 
     const {
       data: atualizado,
       error,
-    } =
-      await ctx.admin
-        .from(
-          "horas_funcionarios"
-        )
-        .update({
-          fim:
-            fim.toISOString(),
-
-          minutos,
-
-          valor_total:
-            valorTotal,
-
-          status:
-            "Fechada",
-
-          updated_at:
-            fim.toISOString(),
-        })
-        .eq(
-          "id",
-          id
-        )
-        .eq(
-          "funcionario_id",
-          ctx.funcionario.id
-        )
-        .select()
-        .single();
+    } = await ctx.admin
+      .from("horas_funcionarios")
+      .update({
+        fim: fim.toISOString(),
+        minutos,
+        valor_total: valorTotal,
+        status: "Fechada",
+        updated_at:
+          fim.toISOString(),
+      })
+      .eq("id", id)
+      .eq(
+        "funcionario_id",
+        ctx.funcionario.id
+      )
+      .select()
+      .single();
 
     if (error) {
+      console.error(error);
+
       return NextResponse.json(
         {
           error:
             "Não foi possível encerrar as horas.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -485,12 +373,8 @@ export async function PATCH(
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Erro interno.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro interno." },
+      { status: 500 }
     );
   }
 }
