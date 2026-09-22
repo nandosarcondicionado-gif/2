@@ -27,11 +27,6 @@ export default function LoginPage() {
         password,
       });
 
-    console.log("LOGIN SUPABASE:", {
-  user: data.user,
-  error: loginError,
-});
-    
     if (loginError || !data.user) {
       setError("E-mail ou senha inválidos.");
       setLoading(false);
@@ -41,45 +36,75 @@ export default function LoginPage() {
     const userId = data.user.id;
 
     /*
-     * IMPORTANTE:
-     * O ID do funcionário NÃO é necessariamente o mesmo
-     * ID do usuário criado no Supabase Auth.
-     *
-     * O vínculo correto é:
-     * funcionarios.auth_user_id = auth.users.id
+     * O funcionário é vinculado ao usuário do Supabase
+     * através de auth_user_id.
      */
-
-    let { data: funcionario, error: funcionarioError } =
+    const { data: funcionario, error: funcionarioError } =
       await supabase
         .from("funcionarios")
         .select(
-          "id, auth_user_id, nome, funcao, perfil, cargo, status, permitir_acesso, acesso_status, permissoes"
+          `
+            id,
+            auth_user_id,
+            nome,
+            funcao,
+            perfil,
+            cargo,
+            status,
+            permitir_acesso,
+            acesso_status,
+            permissoes
+          `
         )
         .eq("auth_user_id", userId)
         .maybeSingle();
 
-    /*
-     * Fallback para manter compatibilidade com a conta
-     * administrativa antiga, caso ela ainda esteja vinculada
-     * diretamente pelo campo id.
-     */
-    if (!funcionario) {
-      const fallback = await supabase
-        .from("funcionarios")
-        .select(
-          "id, auth_user_id, nome, funcao, perfil, cargo, status, permitir_acesso, acesso_status, permissoes"
-        )
-        .eq("id", userId)
-        .maybeSingle();
+    if (funcionarioError) {
+      console.error(
+        "Erro ao buscar funcionário:",
+        funcionarioError
+      );
 
-      funcionario = fallback.data;
-      funcionarioError = fallback.error;
+      await supabase.auth.signOut();
+
+      setError(
+        "Não foi possível verificar os dados do funcionário."
+      );
+
+      setLoading(false);
+      return;
     }
 
-    if (
-      funcionarioError ||
-      !funcionario
-    ) {
+    /*
+     * Compatibilidade com uma conta administrativa antiga.
+     */
+    let funcionarioFinal = funcionario;
+
+    if (!funcionarioFinal) {
+      const { data: funcionarioAntigo } =
+        await supabase
+          .from("funcionarios")
+          .select(
+            `
+              id,
+              auth_user_id,
+              nome,
+              funcao,
+              perfil,
+              cargo,
+              status,
+              permitir_acesso,
+              acesso_status,
+              permissoes
+            `
+          )
+          .eq("id", userId)
+          .maybeSingle();
+
+      funcionarioFinal = funcionarioAntigo;
+    }
+
+    if (!funcionarioFinal) {
       await supabase.auth.signOut();
 
       setError(
@@ -90,39 +115,14 @@ export default function LoginPage() {
       return;
     }
 
+    /*
+     * STATUS
+     */
     const statusNormalizado = String(
-      funcionario.status || ""
+      funcionarioFinal.status ?? ""
     )
       .trim()
       .toLowerCase();
-
-    const perfilNormalizado = String(
-      funcionario.perfil || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const funcaoNormalizada = String(
-      funcionario.funcao || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const cargoNormalizado = String(
-      funcionario.cargo || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const acessoStatusNormalizado = String(
-      funcionario.acesso_status || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const acessoPermitido =
-      funcionario.permitir_acesso === true ||
-      acessoStatusNormalizado === "ativo";
 
     const funcionarioAtivo =
       statusNormalizado === "ativo" ||
@@ -139,6 +139,19 @@ export default function LoginPage() {
       return;
     }
 
+    /*
+     * ACESSO
+     */
+    const acessoStatusNormalizado = String(
+      funcionarioFinal.acesso_status ?? ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const acessoPermitido =
+      funcionarioFinal.permitir_acesso === true ||
+      acessoStatusNormalizado === "ativo";
+
     if (!acessoPermitido) {
       await supabase.auth.signOut();
 
@@ -151,73 +164,18 @@ export default function LoginPage() {
     }
 
     /*
-     * ADMINISTRADOR
-     */
-    const isAdministrador =
-      funcaoNormalizada === "administrador" ||
-      perfilNormalizado === "administrador";
-
-    if (isAdministrador) {
-      router.replace("/");
-      router.refresh();
-      return;
-    }
-
-    /*
-     * FUNCIONÁRIO / TÉCNICO / AJUDANTE
+     * A partir daqui o funcionário já está autenticado,
+     * ativo e autorizado a entrar.
      *
-     * Todos os funcionários que não são administradores
-     * entram primeiro na área operacional.
+     * NÃO vamos decidir o destino pelo perfil.
      *
-     * A própria área controla o que poderá visualizar/fazer.
+     * Isso permite que Gerente, Técnico, Ajudante,
+     * Atendente etc. entrem normalmente.
+     *
+     * O DashboardClient controla as permissões.
      */
-    const isTecnicoOuAjudante =
-      perfilNormalizado === "tecnico" ||
-      perfilNormalizado === "técnico" ||
-      perfilNormalizado === "ajudante" ||
-      perfilNormalizado === "encarregado" ||
-      perfilNormalizado === "atendente" ||
-      funcaoNormalizada === "tecnico" ||
-      funcaoNormalizada === "técnico" ||
-      funcaoNormalizada === "ajudante" ||
-      cargoNormalizado === "tecnico" ||
-      cargoNormalizado === "técnico" ||
-      cargoNormalizado === "ajudante";
+    router.replace("/");
 
-    if (isTecnicoOuAjudante) {
-      router.replace("/tecnico");
-      router.refresh();
-      return;
-    }
-
-    /*
-     * Para outros perfis, verificamos se o funcionário
-     * possui permissão para visualizar o dashboard.
-     */
-    const permissoes =
-      funcionario.permissoes &&
-      typeof funcionario.permissoes === "object"
-        ? (funcionario.permissoes as Record<string, any>)
-        : {};
-
-    const dashboardPermission =
-      permissoes.dashboard;
-
-    const podeVisualizarDashboard =
-      dashboardPermission?.visualizar === true;
-
-    if (podeVisualizarDashboard) {
-      router.replace("/");
-      router.refresh();
-      return;
-    }
-
-    /*
-     * Se não possuir acesso ao dashboard, envia para
-     * a área operacional em vez de mandar para /login,
-     * evitando loop de redirecionamento.
-     */
-    router.replace("/tecnico");
     router.refresh();
   }
 
@@ -285,9 +243,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading
-              ? "Entrando..."
-              : "Entrar"}
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </div>
       </form>
