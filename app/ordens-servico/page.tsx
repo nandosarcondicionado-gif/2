@@ -728,9 +728,13 @@ export default function OrdensServicoPage() {
           ascending: false,
         }),
 
+      // IMPORTANTE:
+      // Os técnicos do ClimaPro estão cadastrados
+      // na tabela funcionarios.
       supabase
-        .from("tecnicos")
-        .select("id, nome")
+        .from("funcionarios")
+        .select("id, nome, status, cargo, perfil")
+        .eq("status", "Ativo")
         .order("nome", {
           ascending: true,
         }),
@@ -759,7 +763,7 @@ export default function OrdensServicoPage() {
 
     if (techniciansResult.error) {
       console.error(
-        "Erro ao carregar técnicos:",
+        "Erro ao carregar técnicos pela tabela funcionarios:",
         techniciansResult.error
       );
     }
@@ -848,12 +852,43 @@ export default function OrdensServicoPage() {
       equipmentsResult.data ?? []
     ) as Equipment[];
 
+    // IMPORTANTE:
+    // A tabela funcionarios possui cargo/perfil.
+    // O Anderson, por exemplo, está com:
+    // cargo = "Técnico"
+    // perfil = "Tecnico"
+    //
+    // Aceitamos as duas formas, com ou sem acento.
     const loadedTechnicians: Technician[] = (
       techniciansResult.data ?? []
-    ).map((item: any) => ({
-      id: item.id,
-      nome: String(item.nome ?? ""),
-    }));
+    )
+      .filter((item: any) => {
+        const cargo = String(
+          item.cargo ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const perfil = String(
+          item.perfil ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
+        return (
+          cargo === "técnico" ||
+          cargo === "tecnico" ||
+          perfil === "técnico" ||
+          perfil === "tecnico"
+        );
+      })
+      .map((item: any) => ({
+        id: String(item.id),
+        nome: String(item.nome ?? ""),
+      }))
+      .filter(
+        (item) => item.nome.trim() !== ""
+      );
 
     setOrders(loadedOrders);
     setClients(loadedClients);
