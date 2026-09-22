@@ -3,6 +3,10 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
 
+function normalizar(valor: unknown) {
+  return String(valor ?? "").trim().toLowerCase();
+}
+
 async function getCurrentEmployee() {
   const supabase = await createServerClient();
 
@@ -11,118 +15,87 @@ async function getCurrentEmployee() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return {
-      user: null,
-      funcionario: null,
-    };
+    return { user: null, funcionario: null };
   }
 
-  const { data: funcionario } =
-    await supabase
-      .from("funcionarios")
-      .select(
-        "id,nome,perfil,funcao,status,permitir_acesso,auth_user_id"
-      )
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
+  const { data: funcionario } = await supabase
+    .from("funcionarios")
+    .select(
+      "id,nome,perfil,funcao,status,permitir_acesso,auth_user_id"
+    )
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
 
-  return {
-    user,
-    funcionario,
-  };
+  return { user, funcionario };
 }
 
 export async function GET() {
   try {
-    const {
-      user,
-      funcionario,
-    } = await getCurrentEmployee();
+    const { user, funcionario } =
+      await getCurrentEmployee();
 
     if (!user || !funcionario) {
       return NextResponse.json(
-        {
-          error: "Não autenticado.",
-        },
-        {
-          status: 401,
-        }
+        { error: "Não autenticado." },
+        { status: 401 }
       );
     }
 
-    const perfil = String(
-      funcionario.perfil || ""
-    )
-      .trim()
-      .toLowerCase();
+    const perfil = normalizar(funcionario.perfil);
+    const funcao = normalizar(funcionario.funcao);
+    const status = normalizar(funcionario.status);
 
-    if (perfil !== "ajudante") {
+    const ajudante =
+      perfil === "ajudante" ||
+      funcao === "ajudante";
+
+    if (!ajudante) {
       return NextResponse.json(
         {
           error:
             "Esta área é exclusiva para ajudantes.",
         },
-        {
-          status: 403,
-        }
+        { status: 403 }
       );
     }
 
     if (
-      String(
-        funcionario.status
-      ).toLowerCase() !== "ativo" ||
-      funcionario.permitir_acesso !== true
+      status !== "ativo" &&
+      status !== "active"
     ) {
       return NextResponse.json(
-        {
-          error: "Acesso bloqueado.",
-        },
-        {
-          status: 403,
-        }
+        { error: "Acesso bloqueado." },
+        { status: 403 }
       );
     }
 
-    const {
-      url,
-      serviceRoleKey,
-    } =
+    if (funcionario.permitir_acesso !== true) {
+      return NextResponse.json(
+        { error: "Acesso bloqueado." },
+        { status: 403 }
+      );
+    }
+
+    const { url, serviceRoleKey } =
       getSupabaseServiceRoleEnv();
 
-    const admin =
-      createAdminClient(
-        url,
-        serviceRoleKey,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        }
-      );
+    const admin = createAdminClient(
+      url,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
 
-    /*
-     * IMPORTANTE:
-     *
-     * Só selecionamos informações necessárias
-     * para o trabalho do ajudante.
-     *
-     * Nenhum valor financeiro é enviado.
-     */
-
-    const {
-      data,
-      error,
-    } = await admin
+    const { data, error } = await admin
       .from("agenda")
       .select(
         "id,cliente_nome,cidade,servico,tecnico,data,horario,status,ajudante_id"
       )
-      .eq(
-        "ajudante_id",
-        funcionario.id
-      )
+      .eq("ajudante_id", funcionario.id)
       .order("data", {
         ascending: true,
       })
@@ -131,14 +104,17 @@ export async function GET() {
       });
 
     if (error) {
+      console.error(
+        "Erro ao carregar serviços:",
+        error
+      );
+
       return NextResponse.json(
         {
           error:
             "Não foi possível carregar seus serviços.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -147,19 +123,14 @@ export async function GET() {
         id: funcionario.id,
         nome: funcionario.nome,
       },
-
       servicos: data || [],
     });
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Erro interno.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro interno." },
+      { status: 500 }
     );
   }
 }
