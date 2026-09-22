@@ -3,71 +3,77 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getSupabaseServiceRoleEnv } from "@/lib/supabase/env";
 
+function normalizar(valor: unknown) {
+  return String(valor ?? "").trim().toLowerCase();
+}
+
 async function getContext() {
-  const supabase =
-    await createServerClient();
+  const supabase = await createServerClient();
 
   const {
     data: { user },
-  } =
-    await supabase.auth.getUser();
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return null;
   }
 
-  const {
-    data: funcionario,
-  } =
+  const { data: funcionario } =
     await supabase
       .from("funcionarios")
       .select(
-        "id,nome,perfil,status,permitir_acesso"
+        "id,nome,perfil,funcao,status,permitir_acesso"
       )
-      .eq(
-        "auth_user_id",
-        user.id
-      )
+      .eq("auth_user_id", user.id)
       .maybeSingle();
 
+  if (!funcionario) {
+    return null;
+  }
+
+  const perfil = normalizar(
+    funcionario.perfil
+  );
+
+  const funcao = normalizar(
+    funcionario.funcao
+  );
+
   if (
-    !funcionario ||
-    String(
-      funcionario.perfil || ""
-    ).toLowerCase() !==
-      "ajudante"
+    perfil !== "ajudante" &&
+    funcao !== "ajudante"
   ) {
     return null;
   }
 
+  const status = normalizar(
+    funcionario.status
+  );
+
   if (
-    String(
-      funcionario.status
-    ).toLowerCase() !==
-      "ativo" ||
-    funcionario.permitir_acesso !==
-      true
+    status !== "ativo" &&
+    status !== "active"
   ) {
     return null;
   }
 
-  const {
-    url,
-    serviceRoleKey,
-  } =
+  if (funcionario.permitir_acesso !== true) {
+    return null;
+  }
+
+  const { url, serviceRoleKey } =
     getSupabaseServiceRoleEnv();
 
-  const admin =
-    createAdminClient(
-      url,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+  const admin = createAdminClient(
+    url,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
 
   return {
     funcionario,
@@ -77,52 +83,40 @@ async function getContext() {
 
 export async function GET() {
   try {
-    const ctx =
-      await getContext();
+    const ctx = await getContext();
 
     if (!ctx) {
       return NextResponse.json(
-        {
-          error:
-            "Acesso negado.",
-        },
-        {
-          status: 403,
-        }
+        { error: "Acesso negado." },
+        { status: 403 }
       );
     }
 
     const {
       data,
       error,
-    } =
-      await ctx.admin
-        .from(
-          "recibos_funcionarios"
-        )
-        .select(
-          "id,periodo_inicio,periodo_fim,horas,valor_hora,valor_total,forma_pagamento,data_pagamento,status,assinatura_data,assinatura_nome,observacoes,created_at"
-        )
-        .eq(
-          "funcionario_id",
-          ctx.funcionario.id
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false,
-          }
-        );
+    } = await ctx.admin
+      .from("recibos_funcionarios")
+      .select(
+        "id,periodo_inicio,periodo_fim,horas,valor_hora,valor_total,forma_pagamento,data_pagamento,status,assinatura_data,assinatura_nome,observacoes,created_at"
+      )
+      .eq(
+        "funcionario_id",
+        ctx.funcionario.id
+      )
+      .order("created_at", {
+        ascending: false,
+      });
 
     if (error) {
+      console.error(error);
+
       return NextResponse.json(
         {
           error:
             "Não foi possível carregar os recibos.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -133,12 +127,8 @@ export async function GET() {
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Erro interno.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro interno." },
+      { status: 500 }
     );
   }
 }
@@ -147,33 +137,23 @@ export async function POST(
   request: Request
 ) {
   try {
-    const ctx =
-      await getContext();
+    const ctx = await getContext();
 
     if (!ctx) {
       return NextResponse.json(
-        {
-          error:
-            "Acesso negado.",
-        },
-        {
-          status: 403,
-        }
+        { error: "Acesso negado." },
+        { status: 403 }
       );
     }
 
-    const body =
-      await request.json();
+    const body = await request.json();
 
     const id =
-      String(
-        body?.id || ""
-      ).trim();
+      String(body?.id || "").trim();
 
     const assinatura =
       String(
-        body?.assinatura_imagem ||
-          ""
+        body?.assinatura_imagem || ""
       ).trim();
 
     const nome =
@@ -183,35 +163,21 @@ export async function POST(
           ""
       ).trim();
 
-    if (
-      !id ||
-      !assinatura
-    ) {
+    if (!id || !assinatura) {
       return NextResponse.json(
         {
           error:
             "Assinatura não informada.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    const {
-      data: recibo,
-    } =
+    const { data: recibo } =
       await ctx.admin
-        .from(
-          "recibos_funcionarios"
-        )
-        .select(
-          "id,status"
-        )
-        .eq(
-          "id",
-          id
-        )
+        .from("recibos_funcionarios")
+        .select("id,status")
+        .eq("id", id)
         .eq(
           "funcionario_id",
           ctx.funcionario.id
@@ -224,9 +190,7 @@ export async function POST(
           error:
             "Recibo não encontrado.",
         },
-        {
-          status: 404,
-        }
+        { status: 404 }
       );
     }
 
@@ -239,9 +203,7 @@ export async function POST(
           error:
             "Este recibo não está pendente de assinatura.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
@@ -251,47 +213,32 @@ export async function POST(
     const {
       data,
       error,
-    } =
-      await ctx.admin
-        .from(
-          "recibos_funcionarios"
-        )
-        .update({
-          status:
-            "Assinado",
-
-          assinatura_data:
-            agora,
-
-          assinatura_nome:
-            nome,
-
-          assinatura_imagem:
-            assinatura,
-
-          updated_at:
-            agora,
-        })
-        .eq(
-          "id",
-          id
-        )
-        .eq(
-          "funcionario_id",
-          ctx.funcionario.id
-        )
-        .select()
-        .single();
+    } = await ctx.admin
+      .from("recibos_funcionarios")
+      .update({
+        status: "Assinado",
+        assinatura_data: agora,
+        assinatura_nome: nome,
+        assinatura_imagem: assinatura,
+        updated_at: agora,
+      })
+      .eq("id", id)
+      .eq(
+        "funcionario_id",
+        ctx.funcionario.id
+      )
+      .select()
+      .single();
 
     if (error) {
+      console.error(error);
+
       return NextResponse.json(
         {
           error:
             "Não foi possível assinar o recibo.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       );
     }
 
@@ -303,12 +250,8 @@ export async function POST(
     console.error(error);
 
     return NextResponse.json(
-      {
-        error: "Erro interno.",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro interno." },
+      { status: 500 }
     );
   }
 }
