@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     setLoading(true);
@@ -21,178 +21,152 @@ export default function LoginPage() {
 
     const emailNormalizado = email.trim().toLowerCase();
 
-    const { data, error: loginError } =
-      await supabase.auth.signInWithPassword({
-        email: emailNormalizado,
-        password,
-      });
+    try {
+      /*
+       * 1. Faz o login no Supabase Auth.
+       */
+      const { data, error: loginError } =
+        await supabase.auth.signInWithPassword({
+          email: emailNormalizado,
+          password,
+        });
 
-    if (loginError || !data.user) {
-      setError("E-mail ou senha inválidos.");
-      setLoading(false);
-      return;
-    }
+      if (loginError || !data.user) {
+        setError("E-mail ou senha inválidos.");
+        setLoading(false);
+        return;
+      }
 
-    const userId = data.user.id;
-
-    /*
-     * O funcionário é vinculado ao usuário do Supabase
-     * através de auth_user_id.
-     */
-    const { data: funcionario, error: funcionarioError } =
-      await supabase
-        .from("funcionarios")
-        .select(
-          `
-            id,
-            auth_user_id,
-            nome,
-            funcao,
-            perfil,
-            cargo,
-            status,
-            permitir_acesso,
-            acesso_status,
-            permissoes
-          `
-        )
-        .eq("auth_user_id", userId)
-        .maybeSingle();
-
-    if (funcionarioError) {
-      console.error(
-        "Erro ao buscar funcionário:",
-        funcionarioError
-      );
-
-      await supabase.auth.signOut();
-
-      setError(
-        "Não foi possível verificar os dados do funcionário."
-      );
-
-      setLoading(false);
-      return;
-    }
-
-    /*
-     * Compatibilidade com uma conta administrativa antiga.
-     */
-    let funcionarioFinal = funcionario;
-
-    if (!funcionarioFinal) {
-      const { data: funcionarioAntigo } =
+      /*
+       * 2. Localiza o funcionário pelo ID do usuário autenticado.
+       *
+       * Usamos somente colunas que fazem parte da estrutura
+       * utilizada pelo middleware do sistema.
+       */
+      const { data: funcionario, error: funcionarioError } =
         await supabase
           .from("funcionarios")
           .select(
-            `
-              id,
-              auth_user_id,
-              nome,
-              funcao,
-              perfil,
-              cargo,
-              status,
-              permitir_acesso,
-              acesso_status,
-              permissoes
-            `
+            "id,nome,status,permitir_acesso,perfil,funcao,permissoes,auth_user_id"
           )
-          .eq("id", userId)
+          .eq("auth_user_id", data.user.id)
           .maybeSingle();
 
-      funcionarioFinal = funcionarioAntigo;
-    }
+      if (funcionarioError) {
+        console.error(
+          "Erro ao buscar funcionário:",
+          funcionarioError
+        );
 
-    if (!funcionarioFinal) {
+        await supabase.auth.signOut();
+
+        setError(
+          "Não foi possível verificar os dados do funcionário."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      /*
+       * 3. O usuário do Supabase precisa estar vinculado
+       * ao cadastro correspondente na tabela funcionarios.
+       */
+      if (!funcionario) {
+        await supabase.auth.signOut();
+
+        setError(
+          "Usuário autenticado, mas o funcionário não está vinculado ao sistema."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      /*
+       * 4. Verifica se o funcionário está ativo.
+       */
+      const statusNormalizado = String(
+        funcionario.status ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (
+        statusNormalizado !== "ativo" &&
+        statusNormalizado !== "active"
+      ) {
+        await supabase.auth.signOut();
+
+        setError(
+          "Este funcionário está inativo e não pode acessar o sistema."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      /*
+       * 5. Verifica se o administrador permitiu o acesso.
+       */
+      if (funcionario.permitir_acesso !== true) {
+        await supabase.auth.signOut();
+
+        setError(
+          "O acesso deste funcionário está bloqueado pelo administrador."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      /*
+       * 6. Normaliza o perfil/função.
+       */
+      const perfilNormalizado = String(
+        funcionario.perfil ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const funcaoNormalizada = String(
+        funcionario.funcao ?? ""
+      )
+        .trim()
+        .toLowerCase();
+
+      /*
+       * 7. Ajudante possui área própria.
+       *
+       * Gerente, administrador, técnico etc. entram no
+       * dashboard principal e o middleware decide o que
+       * cada perfil pode acessar.
+       */
+      if (
+        perfilNormalizado === "ajudante" ||
+        funcaoNormalizada === "ajudante"
+      ) {
+        router.replace("/ajudante");
+      } else {
+        router.replace("/");
+      }
+
+      /*
+       * Atualiza a sessão/cookies antes da navegação.
+       */
+      router.refresh();
+    } catch (err) {
+      console.error("Erro inesperado no login:", err);
+
       await supabase.auth.signOut();
 
       setError(
-        "Usuário autenticado, mas o funcionário não está vinculado ao sistema."
+        "Ocorreu um erro ao entrar no sistema. Tente novamente."
       );
 
       setLoading(false);
-      return;
     }
-
-    /*
-     * STATUS
-     */
-    const statusNormalizado = String(
-      funcionarioFinal.status ?? ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const funcionarioAtivo =
-      statusNormalizado === "ativo" ||
-      statusNormalizado === "active";
-
-    if (!funcionarioAtivo) {
-      await supabase.auth.signOut();
-
-      setError(
-        "Este funcionário está inativo e não pode acessar o sistema."
-      );
-
-      setLoading(false);
-      return;
-    }
-
-    /*
-     * ACESSO
-     */
-    const acessoStatusNormalizado = String(
-      funcionarioFinal.acesso_status ?? ""
-    )
-      .trim()
-      .toLowerCase();
-
-    const acessoPermitido =
-      funcionarioFinal.permitir_acesso === true ||
-      acessoStatusNormalizado === "ativo";
-
-    if (!acessoPermitido) {
-      await supabase.auth.signOut();
-
-      setError(
-        "O acesso deste funcionário está bloqueado pelo administrador."
-      );
-
-      setLoading(false);
-      return;
-    }
-
-    /*
-     * A partir daqui o funcionário já está autenticado,
-     * ativo e autorizado a entrar.
-     *
-     * NÃO vamos decidir o destino pelo perfil.
-     *
-     * Isso permite que Gerente, Técnico, Ajudante,
-     * Atendente etc. entrem normalmente.
-     *
-     * O DashboardClient controla as permissões.
-     */
-    const perfilNormalizado =
-  String(
-    funcionarioFinal.perfil ?? ""
-  )
-    .trim()
-    .toLowerCase();
-
-if (
-  perfilNormalizado ===
-  "ajudante"
-) {
-  router.replace(
-    "/ajudante"
-  );
-} else {
-  router.replace("/");
-}
-
-router.refresh();
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
@@ -219,9 +193,7 @@ router.refresh();
             <input
               type="email"
               value={email}
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="Digite seu e-mail"
               autoComplete="email"
               required
@@ -237,9 +209,7 @@ router.refresh();
             <input
               type="password"
               value={password}
-              onChange={(e) =>
-                setPassword(e.target.value)
-              }
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="Sua senha"
               autoComplete="current-password"
               required
