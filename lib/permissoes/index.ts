@@ -25,12 +25,68 @@ export type PermissionModule =
   | "configuracoes";
 
 type PermissionRow = {
-  visualizar: boolean;
-  criar: boolean;
-  editar: boolean;
-  excluir: boolean;
+  visualizar?: boolean;
+  criar?: boolean;
+  editar?: boolean;
+  excluir?: boolean;
 };
 
+type FuncionarioPermissionData = Record<
+  string,
+  PermissionRow
+>;
+
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizePermissions(
+  value: unknown
+): FuncionarioPermissionData {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      ) {
+        return parsed as FuncionarioPermissionData;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  if (
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    return value as FuncionarioPermissionData;
+  }
+
+  return {};
+}
+
+/**
+ * Verifica se o usuário autenticado possui determinada permissão.
+ *
+ * A tela de Funcionários salva as permissões no campo:
+ *
+ * funcionarios.permissoes
+ *
+ * Esse campo será a fonte principal de permissões.
+ *
+ * A tabela permissoes_funcionarios fica como fallback
+ * para manter compatibilidade com registros antigos.
+ */
 export async function hasPermission(
   modulo: PermissionModule,
   acao: PermissionAction
@@ -47,17 +103,34 @@ export async function hasPermission(
   }
 
   /*
-   * Primeiro procura pelo vínculo correto:
+   * =====================================================
+   * 1. LOCALIZAR FUNCIONÁRIO
+   * =====================================================
+   *
+   * O vínculo correto é:
    *
    * funcionarios.auth_user_id = auth.users.id
    */
+
   let { data: funcionario } =
     await supabase
       .from("funcionarios")
       .select(
-        "id, auth_user_id, funcao, perfil, status, permitir_acesso, acesso_status"
+        `
+          id,
+          auth_user_id,
+          funcao,
+          perfil,
+          status,
+          permitir_acesso,
+          acesso_status,
+          permissoes
+        `
       )
-      .eq("auth_user_id", user.id)
+      .eq(
+        "auth_user_id",
+        user.id
+      )
       .maybeSingle();
 
   /*
@@ -68,39 +141,56 @@ export async function hasPermission(
       await supabase
         .from("funcionarios")
         .select(
-          "id, auth_user_id, funcao, perfil, status, permitir_acesso, acesso_status"
+          `
+            id,
+            auth_user_id,
+            funcao,
+            perfil,
+            status,
+            permitir_acesso,
+            acesso_status,
+            permissoes
+          `
         )
-        .eq("id", user.id)
+        .eq(
+          "id",
+          user.id
+        )
         .maybeSingle();
 
-    funcionario = fallback.data;
+    funcionario =
+      fallback.data;
   }
 
   if (!funcionario) {
     return false;
   }
 
+  /*
+   * =====================================================
+   * 2. VALIDAR STATUS
+   * =====================================================
+   */
+
   const statusNormalizado =
-    String(funcionario.status || "")
-      .trim()
-      .toLowerCase();
+    normalizeText(
+      funcionario.status
+    );
 
   const perfilNormalizado =
-    String(funcionario.perfil || "")
-      .trim()
-      .toLowerCase();
+    normalizeText(
+      funcionario.perfil
+    );
 
   const funcaoNormalizada =
-    String(funcionario.funcao || "")
-      .trim()
-      .toLowerCase();
+    normalizeText(
+      funcionario.funcao
+    );
 
   const acessoStatusNormalizado =
-    String(
-      funcionario.acesso_status || ""
-    )
-      .trim()
-      .toLowerCase();
+    normalizeText(
+      funcionario.acesso_status
+    );
 
   const ativo =
     statusNormalizado === "ativo" ||
@@ -111,75 +201,122 @@ export async function hasPermission(
   }
 
   /*
-   * Se o funcionário possui controle de acesso,
-   * ele também precisa estar liberado.
+   * =====================================================
+   * 3. VALIDAR ACESSO
+   * =====================================================
    */
+
   const possuiControleDeAcesso =
     funcionario.permitir_acesso !== null &&
     funcionario.permitir_acesso !== undefined;
 
-  if (
-    possuiControleDeAcesso &&
-    funcionario.permitir_acesso !== true &&
-    acessoStatusNormalizado !== "ativo"
-  ) {
-    /*
-     * Mantém compatibilidade com contas administrativas
-     * antigas que ainda não passaram pelo novo controle.
-     */
-    const isAdmin =
-      funcaoNormalizada ===
-        "administrador" ||
-      perfilNormalizado ===
-        "administrador";
-
-    if (!isAdmin) {
-      return false;
-    }
-  }
-
   /*
-   * Administrador possui acesso total.
+   * Administrador pode ser identificado tanto pela função
+   * quanto pelo perfil.
    */
   const isAdmin =
     funcaoNormalizada ===
       "administrador" ||
+    funcaoNormalizada ===
+      "admin" ||
     perfilNormalizado ===
-      "administrador";
+      "administrador" ||
+    perfilNormalizado ===
+      "admin";
 
+  if (
+    possuiControleDeAcesso &&
+    funcionario.permitir_acesso !== true &&
+    acessoStatusNormalizado !== "ativo" &&
+    !isAdmin
+  ) {
+    return false;
+  }
+
+  /*
+   * =====================================================
+   * 4. ADMINISTRADOR
+   * =====================================================
+   *
+   * Administrador possui acesso total.
+   */
   if (isAdmin) {
     return true;
   }
 
   /*
-   * Para funcionários, a permissão fica vinculada
-   * ao ID REAL do funcionário.
+   * =====================================================
+   * 5. FONTE PRINCIPAL DE PERMISSÕES
+   * =====================================================
+   *
+   * A tela de Funcionários salva aqui:
+   *
+   * funcionarios.permissoes
+   *
+   * Antes o sistema ignorava esse campo e procurava
+   * diretamente em permissoes_funcionarios.
+   *
+   * Esse era o motivo do gerente autenticar e depois
+   * voltar para a tela de login.
    */
-  const funcionarioId =
-    funcionario.id;
+
+  const permissoes =
+    normalizePermissions(
+      funcionario.permissoes
+    );
+
+  const permissaoDoModulo =
+    permissoes[modulo];
+
+  if (permissaoDoModulo) {
+    return (
+      permissaoDoModulo[acao] === true
+    );
+  }
+
+  /*
+   * =====================================================
+   * 6. FALLBACK PARA SISTEMA ANTIGO
+   * =====================================================
+   *
+   * Se o módulo não existir no JSON,
+   * tenta consultar a tabela antiga.
+   */
 
   const {
     data: permission,
+    error: permissionError,
   } = await supabase
-    .from("permissoes_funcionarios")
+    .from(
+      "permissoes_funcionarios"
+    )
     .select(
       "visualizar, criar, editar, excluir"
     )
     .eq(
       "funcionario_id",
-      funcionarioId
+      funcionario.id
     )
-    .eq("modulo", modulo)
+    .eq(
+      "modulo",
+      modulo
+    )
     .maybeSingle();
 
-  const permissionData =
-    permission as PermissionRow | null;
+  if (permissionError) {
+    console.warn(
+      "Não foi possível consultar a tabela de permissões legada:",
+      permissionError.message
+    );
 
-  if (!permissionData) {
+    return false;
+  }
+
+  if (!permission) {
     return false;
   }
 
   return (
-    permissionData[acao] === true
+    permission[acao] === true
   );
 }
