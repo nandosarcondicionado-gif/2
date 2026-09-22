@@ -174,10 +174,25 @@ export default function LoginPage() {
      *
      * O DashboardClient controla as permissões.
      */
-    router.replace("/");
+    const perfilNormalizado =
+  String(
+    funcionarioFinal.perfil ?? ""
+  )
+    .trim()
+    .toLowerCase();
 
-    router.refresh();
-  }
+if (
+  perfilNormalizado ===
+  "ajudante"
+) {
+  router.replace(
+    "/ajudante"
+  );
+} else {
+  router.replace("/");
+}
+
+router.refresh();
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
