@@ -15,6 +15,7 @@ import {
   Snowflake,
   Users,
   Wrench,
+  UserRound,
   X,
 } from "lucide-react";
 import { createClient } from "../lib/supabase/client";
@@ -32,6 +33,7 @@ type PermissionModule =
   | "relatorios"
   | "tecnico"
   | "tecnicos"
+  | "ajudantes"
   | "area-cliente"
   | "configuracoes";
 
@@ -118,6 +120,12 @@ const menuItems: MenuItem[] = [
     modulo: "tecnicos",
   },
   {
+    name: "Ajudantes",
+    icon: UserRound,
+    path: "/ajudantes",
+    modulo: "ajudantes",
+  },
+  {
     name: "Área do técnico",
     icon: Wrench,
     path: "/tecnico",
@@ -177,16 +185,6 @@ export default function Dashboard() {
           return;
         }
 
-        /*
-         * IMPORTANTE:
-         * O usuário do Supabase Auth é relacionado ao funcionário
-         * através de funcionarios.auth_user_id.
-         *
-         * Antes o sistema estava procurando:
-         * funcionarios.id = user.id
-         *
-         * Isso estava incorreto para a estrutura atual.
-         */
         const { data: funcionario, error: funcionarioError } =
           await supabase
             .from("funcionarios")
@@ -225,12 +223,6 @@ export default function Dashboard() {
           return;
         }
 
-        /*
-         * O cadastro usa "Ativo" e "Inativo".
-         * Fazemos a comparação ignorando maiúsculas/minúsculas
-         * para evitar problemas caso algum registro antigo esteja
-         * como "ativo" ou "inativo".
-         */
         const statusFuncionario = String(
           funcionario.status ?? ""
         )
@@ -258,15 +250,6 @@ export default function Dashboard() {
           return;
         }
 
-        /*
-         * O sistema atual usa "perfil".
-         *
-         * Administrador:
-         * acesso total.
-         *
-         * Demais perfis:
-         * usam o objeto funcionarios.permissoes.
-         */
         const perfil = String(
           funcionario.perfil ?? ""
         )
@@ -282,12 +265,6 @@ export default function Dashboard() {
         if (administrador) {
           setPermissions([]);
         } else {
-          /*
-           * As permissões agora vêm do mesmo campo usado
-           * na tela de funcionários:
-           *
-           * funcionarios.permissoes
-           */
           const permissoesSalvas =
             funcionario.permissoes;
 
@@ -526,23 +503,10 @@ export default function Dashboard() {
   function hasVisualPermission(
     modulo: PermissionModule
   ) {
-    /*
-     * Administrador possui acesso total.
-     */
     if (isAdmin) {
       return true;
     }
 
-    /*
-     * No cadastro de funcionários usamos "tecnico"
-     * no singular.
-     *
-     * O menu antigo usava "tecnicos" para a página
-     * de funcionários.
-     *
-     * Por isso, quando o menu pedir "tecnicos",
-     * também aceitamos a permissão "tecnico".
-     */
     if (modulo === "tecnicos") {
       return permissions.some(
         (permission) =>
