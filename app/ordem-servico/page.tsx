@@ -210,11 +210,7 @@ function escapeHtml(value: string) {
 }
 
 function getEquipmentClientId(equipment: Equipment) {
-  return (
-    equipment.cliente_id ??
-    equipment.clienteId ??
-    ""
-  );
+  return equipment.cliente_id ?? equipment.clienteId ?? "";
 }
 
 function getEquipmentName(equipment: Equipment) {
@@ -820,8 +816,8 @@ export default function OrdemDeServicoPage() {
     try {
       return await applyMonthlyPlanToServiceOrder({
         clientId,
-        serviceType,
-        serviceValue,
+        service: serviceType,
+        normalServiceValue: serviceValue,
       });
     } catch (error) {
       console.error(
@@ -868,7 +864,10 @@ export default function OrdemDeServicoPage() {
       monthlyPlanIncludedService:
         result.plano_mensal_servico_incluso ?? "",
       serviceValue:
-        String(result.valor ?? parseMoney(current.serviceValue)),
+        String(
+          result.valor ??
+            parseMoney(current.serviceValue),
+        ),
     }));
   }
 
@@ -926,9 +925,7 @@ export default function OrdemDeServicoPage() {
 
       const commonData = {
         cliente_id: form.clientId,
-
         cliente_nome: form.client,
-
         cidade: form.city,
 
         equipamento:
@@ -1050,7 +1047,9 @@ export default function OrdemDeServicoPage() {
           }
         }
 
-        alert("Ordem de serviço atualizada com sucesso.");
+        alert(
+          "Ordem de serviço atualizada com sucesso.",
+        );
       } else {
         const number =
           `OS-${String(Date.now()).slice(-6)}`;
@@ -1094,7 +1093,9 @@ export default function OrdemDeServicoPage() {
           }
         }
 
-        alert("Ordem de serviço criada com sucesso.");
+        alert(
+          "Ordem de serviço criada com sucesso.",
+        );
       }
 
       setShowForm(false);
