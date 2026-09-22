@@ -27,6 +27,11 @@ export default function LoginPage() {
         password,
       });
 
+    console.log("LOGIN SUPABASE:", {
+  user: data.user,
+  error: loginError,
+});
+    
     if (loginError || !data.user) {
       setError("E-mail ou senha inválidos.");
       setLoading(false);
