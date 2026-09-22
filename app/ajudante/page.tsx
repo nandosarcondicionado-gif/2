@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   LogOut,
@@ -16,7 +10,6 @@ import {
   StopCircle,
   UserRound,
 } from "lucide-react";
-
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -56,557 +49,302 @@ type Recibo = {
   assinatura_nome: string | null;
 };
 
-function dinheiro(
-  valor: number
-) {
-  return Number(
-    valor || 0
-  ).toLocaleString(
-    "pt-BR",
-    {
-      style: "currency",
-      currency: "BRL",
-    }
-  );
+function dinheiro(v: number) {
+  return Number(v || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
-function dataBR(
-  valor: string
-) {
-  if (!valor) {
-    return "-";
-  }
+function dataBR(v: string) {
+  if (!v) return "-";
 
-  const [
-    ano,
-    mes,
-    dia,
-  ] =
-    valor
-      .slice(0, 10)
-      .split("-");
+  const [a, m, d] = v.slice(0, 10).split("-");
 
-  return `${dia}/${mes}/${ano}`;
+  return `${d}/${m}/${a}`;
 }
 
-function duracao(
-  minutos: number
-) {
-  const horas =
-    Math.floor(
-      minutos / 60
-    );
+function duracao(min: number) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
 
-  const minutosRestantes =
-    minutos % 60;
-
-  return `${horas}h ${String(
-    minutosRestantes
-  ).padStart(
-    2,
-    "0"
-  )}min`;
+  return `${h}h ${String(m).padStart(2, "0")}min`;
 }
 
 export default function AjudantePage() {
-  const router =
-    useRouter();
+  const router = useRouter();
+  const supabase = createClient();
 
-  const supabase =
-    createClient();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
 
-  const canvasRef =
-    useRef<HTMLCanvasElement>(
-      null
-    );
+  const [nome, setNome] = useState("Ajudante");
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [horas, setHoras] = useState<Hora[]>([]);
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
+  const [valorHora, setValorHora] = useState(0);
 
-  const drawing =
-    useRef(false);
-
-  const [
-    nome,
-    setNome,
-  ] =
-    useState(
-      "Ajudante"
-    );
-
-  const [
-    servicos,
-    setServicos,
-  ] =
-    useState<Servico[]>(
-      []
-    );
-
-  const [
-    horas,
-    setHoras,
-  ] =
-    useState<Hora[]>(
-      []
-    );
-
-  const [
-    recibos,
-    setRecibos,
-  ] =
-    useState<Recibo[]>(
-      []
-    );
-
-  const [
-    valorHora,
-    setValorHora,
-  ] =
-    useState(0);
-
-  const [
-    carregando,
-    setCarregando,
-  ] =
-    useState(true);
-
-  const [
-    erro,
-    setErro,
-  ] =
-    useState("");
-
-  const [
-    assinando,
-    setAssinando,
-  ] =
-    useState<
-      string | null
-    >(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [assinando, setAssinando] = useState<string | null>(null);
 
   async function carregar() {
     setCarregando(true);
     setErro("");
 
-    const [
-      servicosResponse,
-      horasResponse,
-      recibosResponse,
-    ] =
-      await Promise.all([
-        fetch(
-          "/api/colaborador/servicos",
-          {
-            cache:
-              "no-store",
-          }
-        ),
+    try {
+      const [s, h, r] = await Promise.all([
+        fetch("/api/colaborador/servicos", {
+          cache: "no-store",
+        }),
 
-        fetch(
-          "/api/colaborador/horas",
-          {
-            cache:
-              "no-store",
-          }
-        ),
+        fetch("/api/colaborador/horas", {
+          cache: "no-store",
+        }),
 
-        fetch(
-          "/api/colaborador/recibos",
-          {
-            cache:
-              "no-store",
-          }
-        ),
+        fetch("/api/colaborador/recibos", {
+          cache: "no-store",
+        }),
       ]);
 
-    if (
-      servicosResponse.status ===
-        401 ||
-      servicosResponse.status ===
-        403
-    ) {
-      router.replace(
-        "/login"
-      );
+      if (s.status === 401 || s.status === 403) {
+        router.replace("/login");
+        return;
+      }
 
-      return;
+      const sd = await s.json();
+      const hd = await h.json();
+      const rd = await r.json();
+
+      if (!s.ok) {
+        setErro(
+          sd.error || "Não foi possível carregar os serviços."
+        );
+      } else {
+        setNome(sd.funcionario?.nome || "Ajudante");
+        setServicos(sd.servicos || []);
+      }
+
+      if (h.ok) {
+        setHoras(hd.horas || []);
+        setValorHora(Number(hd.config?.valor_hora || 0));
+      }
+
+      if (r.ok) {
+        setRecibos(rd.recibos || []);
+      }
+    } catch (error) {
+      console.error(error);
+      setErro("Não foi possível carregar os dados.");
+    } finally {
+      setCarregando(false);
     }
-
-    const servicosData =
-      await servicosResponse.json();
-
-    const horasData =
-      await horasResponse.json();
-
-    const recibosData =
-      await recibosResponse.json();
-
-    if (
-      !servicosResponse.ok
-    ) {
-      setErro(
-        servicosData.error ||
-          "Não foi possível carregar os serviços."
-      );
-    } else {
-      setNome(
-        servicosData
-          .funcionario
-          ?.nome ||
-          "Ajudante"
-      );
-
-      setServicos(
-        servicosData.servicos ||
-          []
-      );
-    }
-
-    if (
-      horasResponse.ok
-    ) {
-      setHoras(
-        horasData.horas ||
-          []
-      );
-
-      setValorHora(
-        Number(
-          horasData.config
-            ?.valor_hora ||
-            0
-        )
-      );
-    }
-
-    if (
-      recibosResponse.ok
-    ) {
-      setRecibos(
-        recibosData.recibos ||
-          []
-      );
-    }
-
-    setCarregando(false);
   }
 
   useEffect(() => {
     carregar();
   }, []);
 
-  const jornadaAberta =
-    horas.find(
-      (hora) =>
-        hora.status ===
-        "Aberta"
+  const aberta = horas.find(
+    (h) => h.status === "Aberta"
+  );
+
+  const pendentes = recibos.filter(
+    (r) => r.status === "Pendente de assinatura"
+  );
+
+  const totalFechado = horas
+    .filter((h) => h.status === "Fechada")
+    .reduce(
+      (s, h) => s + Number(h.valor_total || 0),
+      0
     );
 
-  const recibosPendentes =
-    recibos.filter(
-      (recibo) =>
-        recibo.status ===
-        "Pendente de assinatura"
+  async function iniciar(agendaId?: string) {
+    const res = await fetch(
+      "/api/colaborador/horas",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agenda_id: agendaId || null,
+        }),
+      }
     );
 
-  const totalFechado =
-    horas
-      .filter(
-        (hora) =>
-          hora.status ===
-          "Fechada"
-      )
-      .reduce(
-        (
-          total,
-          hora
-        ) =>
-          total +
-          Number(
-            hora.valor_total ||
-              0
-          ),
-        0
-      );
+    const data = await res.json();
 
-  const hoje =
-    new Date()
-      .toISOString()
-      .slice(0, 10);
-
-  const servicosHoje =
-    useMemo(
-      () =>
-        servicos.filter(
-          (servico) =>
-            servico.data ===
-            hoje
-        ),
-      [
-        servicos,
-        hoje,
-      ]
-    );
-
-  async function iniciarHoras(
-    agendaId?: string
-  ) {
-    const response =
-      await fetch(
-        "/api/colaborador/horas",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            agenda_id:
-              agendaId ||
-              null,
-          }),
-        }
-      );
-
-    const data =
-      await response.json();
-
-    if (!response.ok) {
+    if (!res.ok) {
       alert(
         data.error ||
           "Não foi possível iniciar."
       );
-
       return;
     }
 
     await carregar();
   }
 
-  async function finalizarHoras() {
-    if (
-      !jornadaAberta
-    ) {
-      return;
-    }
+  async function finalizar() {
+    if (!aberta) return;
 
-    const response =
-      await fetch(
-        "/api/colaborador/horas",
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            id:
-              jornadaAberta.id,
-          }),
-        }
-      );
+    const res = await fetch(
+      "/api/colaborador/horas",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: aberta.id,
+        }),
+      }
+    );
 
-    const data =
-      await response.json();
+    const data = await res.json();
 
-    if (!response.ok) {
+    if (!res.ok) {
       alert(
         data.error ||
           "Não foi possível finalizar."
       );
-
       return;
     }
 
     await carregar();
   }
 
-  function iniciarAssinatura(
-    id: string
-  ) {
+  function iniciarAssinatura(id: string) {
     setAssinando(id);
 
-    requestAnimationFrame(
-      () => {
-        limparAssinatura();
-      }
-    );
+    requestAnimationFrame(() => {
+      limparAssinatura();
+    });
   }
 
   function ponto(
-    event: React.PointerEvent<HTMLCanvasElement>
+    e: React.PointerEvent<HTMLCanvasElement>
   ) {
-    const canvas =
-      canvasRef.current;
+    const c = canvasRef.current;
 
-    if (!canvas) {
-      return null;
-    }
+    if (!c) return;
 
-    const rect =
-      canvas.getBoundingClientRect();
+    const r = c.getBoundingClientRect();
 
     return {
-      x:
-        event.clientX -
-        rect.left,
-
-      y:
-        event.clientY -
-        rect.top,
+      x: e.clientX - r.left,
+      y: e.clientY - r.top,
     };
   }
 
-  function iniciarDesenho(
-    event: React.PointerEvent<HTMLCanvasElement>
+  function desenhar(
+    e: React.PointerEvent<HTMLCanvasElement>
   ) {
-    const pontoAtual =
-      ponto(event);
+    if (!drawing.current) return;
 
-    if (!pontoAtual) {
-      return;
-    }
+    const p = ponto(e);
 
-    drawing.current =
-      true;
+    if (!p) return;
 
-    const context =
-      canvasRef.current?.getContext(
-        "2d"
-      );
+    const c = canvasRef.current;
 
-    if (!context) {
-      return;
-    }
+    if (!c) return;
 
-    context.beginPath();
+    const ctx = c.getContext("2d");
 
-    context.moveTo(
-      pontoAtual.x,
-      pontoAtual.y
-    );
+    if (!ctx) return;
+
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#111827";
+
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
   }
 
-  function desenhar(
-    event: React.PointerEvent<HTMLCanvasElement>
+  function iniciarDesenho(
+    e: React.PointerEvent<HTMLCanvasElement>
   ) {
-    if (
-      !drawing.current
-    ) {
-      return;
-    }
+    const p = ponto(e);
 
-    const pontoAtual =
-      ponto(event);
+    if (!p) return;
 
-    if (!pontoAtual) {
-      return;
-    }
+    const c = canvasRef.current;
 
-    const context =
-      canvasRef.current?.getContext(
-        "2d"
-      );
+    if (!c) return;
 
-    if (!context) {
-      return;
-    }
+    const ctx = c.getContext("2d");
 
-    context.lineWidth = 2;
-    context.lineCap =
-      "round";
-    context.strokeStyle =
-      "#111827";
+    if (!ctx) return;
 
-    context.lineTo(
-      pontoAtual.x,
-      pontoAtual.y
-    );
+    drawing.current = true;
 
-    context.stroke();
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
   }
 
   function terminarDesenho() {
-    drawing.current =
-      false;
+    drawing.current = false;
   }
 
   function limparAssinatura() {
-    const canvas =
-      canvasRef.current;
+    const c = canvasRef.current;
 
-    if (!canvas) {
-      return;
-    }
+    if (!c) return;
 
-    const context =
-      canvas.getContext(
-        "2d"
-      );
+    const ctx = c.getContext("2d");
 
-    if (!context) {
-      return;
-    }
+    if (!ctx) return;
 
-    context.clearRect(
+    ctx.clearRect(
       0,
       0,
-      canvas.width,
-      canvas.height
+      c.width,
+      c.height
     );
   }
 
   async function confirmarAssinatura() {
-    if (
-      !assinando ||
-      !canvasRef.current
-    ) {
+    if (!assinando || !canvasRef.current) {
       return;
     }
 
     const imagem =
-      canvasRef.current.toDataURL(
-        "image/png"
-      );
+      canvasRef.current.toDataURL("image/png");
 
-    if (
-      imagem.length <
-      5000
-    ) {
+    const vazia = imagem.length < 5000;
+
+    if (vazia) {
       alert(
         "Faça sua assinatura no quadro."
       );
-
       return;
     }
 
-    const response =
-      await fetch(
-        "/api/colaborador/recibos",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            id: assinando,
+    const res = await fetch(
+      "/api/colaborador/recibos",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: assinando,
+          assinatura_imagem: imagem,
+          assinatura_nome: nome,
+        }),
+      }
+    );
 
-            assinatura_imagem:
-              imagem,
+    const data = await res.json();
 
-            assinatura_nome:
-              nome,
-          }),
-        }
-      );
-
-    const data =
-      await response.json();
-
-    if (!response.ok) {
+    if (!res.ok) {
       alert(
         data.error ||
           "Não foi possível assinar."
       );
-
       return;
     }
 
@@ -618,10 +356,20 @@ export default function AjudantePage() {
   async function sair() {
     await supabase.auth.signOut();
 
-    router.replace(
-      "/login"
-    );
+    router.replace("/login");
   }
+
+  const hoje = new Date()
+    .toISOString()
+    .slice(0, 10);
+
+  const servicosHoje = useMemo(
+    () =>
+      servicos.filter(
+        (s) => s.data === hoje
+      ),
+    [servicos, hoje]
+  );
 
   if (carregando) {
     return (
@@ -636,7 +384,6 @@ export default function AjudantePage() {
       <div className="mx-auto max-w-6xl space-y-6">
 
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
           <div>
             <p className="text-sm text-slate-400">
               Área do ajudante
@@ -647,7 +394,8 @@ export default function AjudantePage() {
             </h1>
 
             <p className="text-slate-400">
-              Aqui aparecem somente os serviços atribuídos a você.
+              Aqui aparecem somente os serviços
+              atribuídos a você.
             </p>
           </div>
 
@@ -658,7 +406,6 @@ export default function AjudantePage() {
             <LogOut size={18} />
             Sair
           </button>
-
         </header>
 
         {erro && (
@@ -685,9 +432,7 @@ export default function AjudantePage() {
             </p>
 
             <p className="text-2xl font-bold">
-              {dinheiro(
-                valorHora
-              )}
+              {dinheiro(valorHora)}
             </p>
           </div>
 
@@ -699,9 +444,7 @@ export default function AjudantePage() {
             <p className="text-2xl font-bold">
               {
                 horas.filter(
-                  (hora) =>
-                    hora.status ===
-                    "Fechada"
+                  (h) => h.status === "Fechada"
                 ).length
               }
             </p>
@@ -713,9 +456,7 @@ export default function AjudantePage() {
             </p>
 
             <p className="text-2xl font-bold">
-              {
-                recibosPendentes.length
-              }
+              {pendentes.length}
             </p>
           </div>
 
@@ -738,110 +479,76 @@ export default function AjudantePage() {
 
           <div className="mt-4 space-y-3">
 
-            {servicos.length ===
-            0 ? (
+            {servicos.length === 0 ? (
               <p className="text-slate-400">
                 Nenhum serviço atribuído.
               </p>
             ) : (
-              servicos.map(
-                (servico) => (
-                  <div
-                    key={
-                      servico.id
-                    }
-                    className="rounded-xl border border-slate-800 bg-slate-950 p-4"
-                  >
+              servicos.map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-xl border border-slate-800 bg-slate-950 p-4"
+                >
 
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
-                      <div className="space-y-2">
+                    <div className="space-y-2">
 
-                        <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="font-semibold">
+                          {s.horario?.slice(0, 5)} —{" "}
+                          {s.cliente_nome}
+                        </span>
 
-                          <span className="font-semibold">
-                            {servico.horario?.slice(
-                              0,
-                              5
-                            )}{" "}
-                            —{" "}
-                            {
-                              servico.cliente_nome
-                            }
-                          </span>
+                        <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">
+                          {s.status}
+                        </span>
+                      </div>
 
-                          <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">
-                            {
-                              servico.status
-                            }
-                          </span>
+                      <p className="text-sm text-slate-300">
+                        {s.servico}
+                      </p>
 
-                        </div>
+                      <div className="flex flex-wrap gap-4 text-sm text-slate-400">
 
-                        <p className="text-sm text-slate-300">
-                          {
-                            servico.servico
-                          }
-                        </p>
+                        <span>
+                          {dataBR(s.data)}
+                        </span>
 
-                        <div className="flex flex-wrap gap-4 text-sm text-slate-400">
+                        <span>
+                          {s.cidade}
+                        </span>
 
-                          <span>
-                            {
-                              dataBR(
-                                servico.data
-                              )
-                            }
-                          </span>
+                        <span className="flex items-center gap-1">
+                          <UserRound size={14} />
 
-                          <span>
-                            {
-                              servico.cidade
-                            }
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <UserRound
-                              size={14}
-                            />
-
-                            Técnico:{" "}
-                            {
-                              servico.tecnico ||
-                                "Não informado"
-                            }
-                          </span>
-
-                        </div>
+                          Técnico:{" "}
+                          {s.tecnico ||
+                            "Não informado"}
+                        </span>
 
                       </div>
 
-                      {!jornadaAberta &&
-                        servico.status !==
-                          "Cancelado" &&
-                        servico.status !==
-                          "Concluído" && (
-                          <button
-                            onClick={() =>
-                              iniciarHoras(
-                                servico.id
-                              )
-                            }
-                            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold"
-                          >
-                            <PlayCircle
-                              size={18}
-                            />
-
-                            Iniciar horas
-                          </button>
-                        )}
-
                     </div>
 
+                    {!aberta &&
+                    s.status !== "Cancelado" &&
+                    s.status !== "Concluído" ? (
+                      <button
+                        onClick={() =>
+                          iniciar(s.id)
+                        }
+                        className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold"
+                      >
+                        <PlayCircle size={18} />
+                        Iniciar horas
+                      </button>
+                    ) : null}
+
                   </div>
-                )
-              )
+
+                </div>
+              ))
             )}
 
           </div>
@@ -862,17 +569,12 @@ export default function AjudantePage() {
               </p>
             </div>
 
-            {jornadaAberta ? (
+            {aberta ? (
               <button
-                onClick={
-                  finalizarHoras
-                }
+                onClick={finalizar}
                 className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold"
               >
-                <StopCircle
-                  size={18}
-                />
-
+                <StopCircle size={18} />
                 Finalizar jornada
               </button>
             ) : (
@@ -889,82 +591,56 @@ export default function AjudantePage() {
 
               <thead>
                 <tr className="border-b border-slate-800 text-left text-slate-400">
-                  <th className="p-3">
-                    Início
-                  </th>
-
-                  <th className="p-3">
-                    Fim
-                  </th>
-
-                  <th className="p-3">
-                    Tempo
-                  </th>
-
-                  <th className="p-3">
-                    Valor
-                  </th>
-
-                  <th className="p-3">
-                    Status
-                  </th>
+                  <th className="p-3">Início</th>
+                  <th className="p-3">Fim</th>
+                  <th className="p-3">Tempo</th>
+                  <th className="p-3">Valor</th>
+                  <th className="p-3">Status</th>
                 </tr>
               </thead>
 
               <tbody>
 
-                {horas.map(
-                  (hora) => (
-                    <tr
-                      key={
-                        hora.id
-                      }
-                      className="border-b border-slate-800"
-                    >
+                {horas.map((h) => (
+                  <tr
+                    key={h.id}
+                    className="border-b border-slate-800"
+                  >
+                    <td className="p-3">
+                      {new Date(
+                        h.inicio
+                      ).toLocaleString("pt-BR")}
+                    </td>
 
-                      <td className="p-3">
-                        {new Date(
-                          hora.inicio
-                        ).toLocaleString(
-                          "pt-BR"
-                        )}
-                      </td>
+                    <td className="p-3">
+                      {h.fim
+                        ? new Date(
+                            h.fim
+                          ).toLocaleString(
+                            "pt-BR"
+                          )
+                        : "Em andamento"}
+                    </td>
 
-                      <td className="p-3">
-                        {hora.fim
-                          ? new Date(
-                              hora.fim
-                            ).toLocaleString(
-                              "pt-BR"
-                            )
-                          : "Em andamento"}
-                      </td>
+                    <td className="p-3">
+                      {h.minutos != null
+                        ? duracao(h.minutos)
+                        : "—"}
+                    </td>
 
-                      <td className="p-3">
-                        {hora.minutos !=
-                        null
-                          ? duracao(
-                              hora.minutos
-                            )
-                          : "—"}
-                      </td>
+                    <td className="p-3">
+                      {h.valor_total != null
+                        ? dinheiro(
+                            h.valor_total
+                          )
+                        : "—"}
+                    </td>
 
-                      <td className="p-3">
-                        {hora.valor_total !=
-                        null
-                          ? dinheiro(
-                              hora.valor_total
-                            )
-                          : "—"}
-                      </td>
-
-                      <td className="p-3">
-                        {hora.status}
-                      </td>
-
-                    </tr>
-                  )
-                )}
+                    <td className="p-3">
+                      {h.status}
+                    </td>
+                  </tr>
+                ))}
 
               </tbody>
 
@@ -975,9 +651,7 @@ export default function AjudantePage() {
           <p className="mt-4 text-sm text-slate-400">
             Horas fechadas aguardando pagamento:{" "}
             <strong className="text-white">
-              {dinheiro(
-                totalFechado
-              )}
+              {dinheiro(totalFechado)}
             </strong>
           </p>
 
@@ -986,107 +660,83 @@ export default function AjudantePage() {
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
           <h2 className="flex items-center gap-2 text-lg font-bold">
-            <ReceiptText
-              size={20}
-            />
-
+            <ReceiptText size={20} />
             Meus recibos
           </h2>
 
           <div className="mt-4 space-y-3">
 
-            {recibos.length ===
-            0 ? (
+            {recibos.length === 0 ? (
               <p className="text-slate-400">
                 Nenhum recibo registrado.
               </p>
             ) : (
-              recibos.map(
-                (recibo) => (
-                  <div
-                    key={
-                      recibo.id
-                    }
-                    className="rounded-xl border border-slate-800 bg-slate-950 p-4"
-                  >
+              recibos.map((r) => (
+                <div
+                  key={r.id}
+                  className="rounded-xl border border-slate-800 bg-slate-950 p-4"
+                >
 
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 
-                      <div>
-                        <p className="font-semibold">
-                          {
-                            dataBR(
-                              recibo.periodo_inicio
-                            )
-                          }{" "}
-                          a{" "}
-                          {
-                            dataBR(
-                              recibo.periodo_fim
-                            )
-                          }
-                        </p>
+                    <div>
 
-                        <p className="text-sm text-slate-400">
-                          {Number(
-                            recibo.horas
-                          ).toFixed(
-                            2
-                          )}{" "}
-                          h ×{" "}
+                      <p className="font-semibold">
+                        {dataBR(
+                          r.periodo_inicio
+                        )}{" "}
+                        a{" "}
+                        {dataBR(
+                          r.periodo_fim
+                        )}
+                      </p>
+
+                      <p className="text-sm text-slate-400">
+                        {Number(r.horas).toFixed(
+                          2
+                        )} h ×{" "}
+                        {dinheiro(
+                          r.valor_hora
+                        )} ={" "}
+                        <strong className="text-white">
                           {dinheiro(
-                            recibo.valor_hora
-                          )}{" "}
-                          ={" "}
-                          <strong className="text-white">
-                            {dinheiro(
-                              recibo.valor_total
-                            )}
-                          </strong>
-                        </p>
+                            r.valor_total
+                          )}
+                        </strong>
+                      </p>
 
-                        <p className="text-xs text-slate-500">
-                          {
-                            recibo.forma_pagamento
-                          }{" "}
-                          ·{" "}
-                          {
-                            recibo.status
-                          }
-                        </p>
-                      </div>
-
-                      {recibo.status ===
-                      "Pendente de assinatura" ? (
-                        <button
-                          onClick={() =>
-                            iniciarAssinatura(
-                              recibo.id
-                            )
-                          }
-                          className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold"
-                        >
-                          <CheckCircle2
-                            size={18}
-                          />
-
-                          Assinar recibo
-                        </button>
-                      ) : (
-                        <span className="text-sm text-emerald-400">
-                          Assinado por{" "}
-                          {
-                            recibo.assinatura_nome ||
-                              nome
-                          }
-                        </span>
-                      )}
+                      <p className="text-xs text-slate-500">
+                        {r.forma_pagamento} ·{" "}
+                        {r.status}
+                      </p>
 
                     </div>
 
+                    {r.status ===
+                    "Pendente de assinatura" ? (
+                      <button
+                        onClick={() =>
+                          iniciarAssinatura(
+                            r.id
+                          )
+                        }
+                        className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold"
+                      >
+                        <CheckCircle2 size={18} />
+                        Assinar recibo
+                      </button>
+                    ) : (
+                      <span className="text-sm text-emerald-400">
+                        Assinado por{" "}
+                        {r.assinatura_nome ||
+                          nome}
+                      </span>
+                    )}
+
                   </div>
-                )
-              )
+
+                </div>
+              ))
             )}
 
           </div>
@@ -1107,32 +757,20 @@ export default function AjudantePage() {
               </p>
 
               <canvas
-                ref={
-                  canvasRef
-                }
+                ref={canvasRef}
                 width={900}
                 height={320}
                 className="mt-4 h-48 w-full touch-none rounded-xl border border-slate-300 bg-white"
-                onPointerDown={
-                  iniciarDesenho
-                }
-                onPointerMove={
-                  desenhar
-                }
-                onPointerUp={
-                  terminarDesenho
-                }
-                onPointerLeave={
-                  terminarDesenho
-                }
+                onPointerDown={iniciarDesenho}
+                onPointerMove={desenhar}
+                onPointerUp={terminarDesenho}
+                onPointerLeave={terminarDesenho}
               />
 
               <div className="mt-4 flex flex-wrap justify-end gap-2">
 
                 <button
-                  onClick={
-                    limparAssinatura
-                  }
+                  onClick={limparAssinatura}
                   className="rounded-xl border px-4 py-3"
                 >
                   Limpar
@@ -1140,9 +778,7 @@ export default function AjudantePage() {
 
                 <button
                   onClick={() =>
-                    setAssinando(
-                      null
-                    )
+                    setAssinando(null)
                   }
                   className="rounded-xl border px-4 py-3"
                 >
@@ -1150,9 +786,7 @@ export default function AjudantePage() {
                 </button>
 
                 <button
-                  onClick={
-                    confirmarAssinatura
-                  }
+                  onClick={confirmarAssinatura}
                   className="rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white"
                 >
                   Confirmar assinatura
