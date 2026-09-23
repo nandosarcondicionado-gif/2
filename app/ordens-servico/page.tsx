@@ -267,7 +267,9 @@ function getEquipmentModel(equipment: Equipment) {
   ).trim();
 }
 
-function getEquipmentCapacity(equipment: Equipment) {
+function getEquipmentCapacity(equipment: Equipment | null | undefined) {
+  if (!equipment) return "";
+
   const value =
     equipment.btus ??
     equipment.capacidade ??
@@ -949,7 +951,7 @@ export default function OrdensServicoPage() {
             (equipment) =>
               String(equipment.id) ===
               String(order.equipmentId)
-          ) ?? {}
+          )
         ),
       city: order.city,
 
