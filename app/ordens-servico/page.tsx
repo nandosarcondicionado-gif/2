@@ -781,9 +781,9 @@ export default function OrdensServicoPage() {
       equipmentModel: String(
         item.equipamento_modelo ?? ""
       ),
-      equipmentCapacity: String(
-        item.equipamento_capacidade ?? ""
-      ),
+      // A capacidade vem do cadastro de equipamentos.
+      // Ela não é gravada na tabela ordens_servico.
+      equipmentCapacity: "",
       city: String(item.cidade ?? ""),
       serviceType:
         (item.tipo_servico as ServiceType) ||
@@ -942,7 +942,15 @@ export default function OrdensServicoPage() {
       equipment: order.equipment,
       equipmentBrand: order.equipmentBrand,
       equipmentModel: order.equipmentModel,
-      equipmentCapacity: order.equipmentCapacity,
+      equipmentCapacity:
+        order.equipmentCapacity ||
+        getEquipmentCapacity(
+          equipments.find(
+            (equipment) =>
+              String(equipment.id) ===
+              String(order.equipmentId)
+          ) ?? {}
+        ),
       city: order.city,
 
       serviceType: order.serviceType,
@@ -1242,9 +1250,6 @@ export default function OrdensServicoPage() {
 
         equipamento_modelo:
           form.equipmentModel || null,
-
-        equipamento_capacidade:
-          form.equipmentCapacity || null,
 
         tipo_servico:
           form.serviceType,
