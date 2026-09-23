@@ -189,9 +189,11 @@ function parseMoney(value: string | number | null | undefined) {
     return Number.isFinite(value) ? value : 0;
   }
 
-  if (!value) return 0;
+  const text = String(value ?? "").trim();
 
-  const normalized = String(value)
+  if (!text) return 0;
+
+  const normalized = text
     .replace(/\s/g, "")
     .replace(/R\$/gi, "")
     .replace(/\./g, "")
