@@ -731,11 +731,12 @@ export default function OrdensServicoPage() {
         }),
 
       supabase
-        .from("tecnicos")
-        .select("id, nome")
-        .order("nome", {
-          ascending: true,
-        }),
+  .from("funcionarios")
+  .select("id, nome")
+  .eq("status", "Ativo")
+  .order("nome", {
+    ascending: true,
+  }),
     ]);
 
     if (ordersResult.error) {
