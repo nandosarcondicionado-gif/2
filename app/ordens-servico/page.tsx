@@ -866,9 +866,32 @@ export default function OrdensServicoPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
+    useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const novo = params.get("novo");
+
+    if (novo) {
+      const orcamentoId = params.get("orcamento");
+      const valorServicoParam = params.get("valor_servico") || params.get("valor");
+      const materiaisParam = params.get("materiais") || params.get("materiais_valor");
+      const obsParam = params.get("observacoes");
+
+      if (orcamentoId || valorServicoParam || materiaisParam) {
+        setForm((old) => ({
+          ...old,
+          value: valorServicoParam ? String(valorServicoParam) : old.value,
+          materialsValue: materiaisParam ? String(materiaisParam) : old.materialsValue,
+          notes: obsParam ? decodeURIComponent(obsParam) : old.notes,
+        }));
+        setShowForm(true);
+      }
+    }
+  }, []);
+
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLowerCase();
