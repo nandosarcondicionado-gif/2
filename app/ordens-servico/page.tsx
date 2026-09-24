@@ -713,9 +713,6 @@ export default function OrdensServicoPage() {
           ascending: false,
         }),
 
-      // IMPORTANTE:
-      // sem .eq("ativo", true), para mostrar
-      // todos os clientes cadastrados.
       supabase
         .from("clientes")
         .select("id, nome, cidade")
@@ -731,12 +728,12 @@ export default function OrdensServicoPage() {
         }),
 
       supabase
-  .from("funcionarios")
-  .select("id, nome")
-  .eq("status", "Ativo")
-  .order("nome", {
-    ascending: true,
-  }),
+        .from("funcionarios")
+        .select("id, nome")
+        .eq("status", "Ativo")
+        .order("nome", {
+          ascending: true,
+        }),
     ]);
 
     if (ordersResult.error) {
@@ -784,8 +781,6 @@ export default function OrdensServicoPage() {
       equipmentModel: String(
         item.equipamento_modelo ?? ""
       ),
-      // A capacidade vem do cadastro de equipamentos.
-      // Ela não é gravada na tabela ordens_servico.
       equipmentCapacity: "",
       city: String(item.cidade ?? ""),
       serviceType:
@@ -866,21 +861,21 @@ export default function OrdensServicoPage() {
     setLoading(false);
   }
 
-    useEffect(() => {
+  useEffect(() => {
     loadData();
   }, []);
 
+  // Leitura segura dos valores da URL vindos do orçamento
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const novo = params.get("novo");
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const novo = params.get("novo");
 
-    if (novo) {
-      const orcamentoId = params.get("orcamento");
-      const valorServicoParam = params.get("valor_servico") || params.get("valor");
-      const materiaisParam = params.get("materiais") || params.get("materiais_valor");
-      const obsParam = params.get("observacoes");
+      if (novo === "1") {
+        const valorServicoParam = params.get("valor_servico");
+        const materiaisParam = params.get("materiais");
+        const obsParam = params.get("observacoes");
 
-      if (orcamentoId || valorServicoParam || materiaisParam) {
         setForm((old) => ({
           ...old,
           value: valorServicoParam ? String(valorServicoParam) : old.value,
@@ -889,9 +884,10 @@ export default function OrdensServicoPage() {
         }));
         setShowForm(true);
       }
+    } catch (e) {
+      console.error("Erro ao ler parâmetros da URL:", e);
     }
   }, []);
-
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -1068,9 +1064,6 @@ export default function OrdensServicoPage() {
     setClientEquipmentLoading(true);
 
     try {
-      // Busca novamente diretamente no Supabase.
-      // Assim mesmo equipamentos cadastrados depois
-      // da abertura da página aparecem.
       const { data, error } = await supabase
         .from("equipamentos")
         .select("*");
@@ -1097,7 +1090,6 @@ export default function OrdensServicoPage() {
 
     setClientEquipmentLoading(false);
 
-    // Verificação inicial do plano mensal.
     await checkPlanForCurrentService(
       client.id,
       form.serviceType,
@@ -1243,8 +1235,6 @@ export default function OrdensServicoPage() {
         form.materialsValue
       );
 
-      // Antes de salvar, fazemos novamente a
-      // verificação automática do plano.
       const monthlyPlanData =
         await applyMonthlyPlanToServiceOrder({
           clientId: form.clientId,
@@ -1387,8 +1377,6 @@ export default function OrdensServicoPage() {
         savedOrder = data;
       }
 
-      // Registra o uso do plano quando a OS
-      // estiver vinculada a um plano mensal.
       if (
         savedOrder?.id &&
         monthlyPlanData.plano_mensal_id
@@ -1585,7 +1573,6 @@ export default function OrdensServicoPage() {
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
 
-        {/* CABEÇALHO */}
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
@@ -1614,7 +1601,6 @@ export default function OrdensServicoPage() {
           </button>
         </div>
 
-        {/* CARDS */}
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
             <p className="text-sm text-slate-400">
@@ -1667,7 +1653,6 @@ export default function OrdensServicoPage() {
           </div>
         </div>
 
-        {/* FILTROS */}
         <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">
@@ -1722,7 +1707,6 @@ export default function OrdensServicoPage() {
           </div>
         </div>
 
-        {/* LISTA */}
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="font-semibold">
@@ -1946,7 +1930,6 @@ export default function OrdensServicoPage() {
         </div>
       </div>
 
-      {/* MODAL NOVA / EDITAR OS */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
           <div className="max-h-[95vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
@@ -1974,7 +1957,6 @@ export default function OrdensServicoPage() {
 
             <div className="space-y-6 p-5">
 
-              {/* CLIENTE */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <User className="h-5 w-5 text-cyan-400" />
@@ -2044,7 +2026,6 @@ export default function OrdensServicoPage() {
                 )}
               </section>
 
-              {/* EQUIPAMENTO */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <Wrench className="h-5 w-5 text-cyan-400" />
@@ -2170,7 +2151,6 @@ export default function OrdensServicoPage() {
                 )}
               </section>
 
-              {/* SERVIÇO */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <ClipboardList className="h-5 w-5 text-cyan-400" />
@@ -2265,7 +2245,6 @@ export default function OrdensServicoPage() {
                 </div>
               </section>
 
-              {/* PLANO MENSAL */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -2348,7 +2327,6 @@ export default function OrdensServicoPage() {
                 )}
               </section>
 
-              {/* TÉCNICO */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <Wrench className="h-5 w-5 text-cyan-400" />
@@ -2392,7 +2370,6 @@ export default function OrdensServicoPage() {
                 )}
               </section>
 
-              {/* VALORES */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-cyan-400" />
@@ -2511,7 +2488,6 @@ export default function OrdensServicoPage() {
                 </div>
               </section>
 
-              {/* STATUS / OBSERVAÇÕES */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="grid gap-4 md:grid-cols-2">
 
@@ -2583,7 +2559,6 @@ export default function OrdensServicoPage() {
 
             </div>
 
-            {/* BOTÕES */}
             <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-800 bg-slate-900 p-5 sm:flex-row sm:justify-end">
               <button
                 onClick={closeForm}
@@ -2609,7 +2584,6 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {/* MODAL DETALHES */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
           <div className="max-h-[95vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
@@ -2694,7 +2668,6 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
-              {/* EQUIPAMENTO */}
               <div className="rounded-xl bg-slate-950 p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Wrench className="h-4 w-4 text-cyan-400" />
@@ -2751,7 +2724,6 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
-              {/* SERVIÇO */}
               <div className="rounded-xl bg-slate-950 p-4">
                 <h3 className="mb-3 font-semibold">
                   Serviço
@@ -2767,7 +2739,6 @@ export default function OrdensServicoPage() {
                 </p>
               </div>
 
-              {/* PLANO */}
               {selectedOrder.monthlyPlanId && (
                 <div
                   className={`rounded-xl border p-4 ${
@@ -2812,7 +2783,6 @@ export default function OrdensServicoPage() {
                 </div>
               )}
 
-              {/* VALORES */}
               <div className="rounded-xl bg-slate-950 p-4">
                 <h3 className="mb-4 font-semibold">
                   Valores
@@ -2910,7 +2880,6 @@ export default function OrdensServicoPage() {
                 </div>
               </div>
 
-              {/* OBSERVAÇÕES */}
               <div className="rounded-xl bg-slate-950 p-4">
                 <h3 className="mb-3 font-semibold">
                   Observações
@@ -2922,7 +2891,6 @@ export default function OrdensServicoPage() {
                 </p>
               </div>
 
-              {/* ALTERAR STATUS */}
               <div className="rounded-xl bg-slate-950 p-4">
                 <h3 className="mb-3 font-semibold">
                   Alterar status
@@ -2962,7 +2930,6 @@ export default function OrdensServicoPage() {
               </div>
             </div>
 
-            {/* AÇÕES */}
             <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-slate-800 bg-slate-900 p-5">
 
               <button
