@@ -1252,8 +1252,8 @@ export default function OrcamentosPage() {
           )}`
       );
 
-      window.location.href =
-        "/ordens-servico";
+      // REDIRECIONAMENTO COM OS VALORES PASSADOS NA URL:
+      window.location.href = `/ordens-servico?novo=1&valor_servico=${valorServicos}&materiais=${valorMateriais}&observacoes=${encodeURIComponent(observations)}`;
     } catch (error) {
       console.error(
         "Erro ao gerar Ordem de Serviço:",
