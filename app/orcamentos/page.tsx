@@ -779,18 +779,284 @@ export default function OrcamentosPage() {
   }
 
   async function generateServiceOrder(
-    budget: Budget
-  ) {
-    if (
-      budget.status !==
-      "Aprovado"
-    ) {
+  budget: Budget
+) {
+  if (budget.status !== "Aprovado") {
+    alert(
+      "O orçamento precisa estar aprovado para gerar uma OS."
+    );
+
+    return;
+  }
+
+  if (!budget.clientId) {
+    alert(
+      "Este orçamento não possui cliente vinculado."
+    );
+
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Gerar Ordem de Serviço para ${budget.client}?\n\n` +
+      `Orçamento: ${budget.number}\n` +
+      `Serviços: ${budget.service}\n` +
+      `Valor dos serviços: ${money(budget.finalValue)}\n` +
+      `Materiais: ${money(budget.materialsValue)}\n` +
+      `Desconto: ${Number(budget.discountPercent ?? 0).toFixed(2)}%\n` +
+      `Total geral: ${money(budget.totalValue)}`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  setGeneratingOrderId(budget.id);
+
+  try {
+    /*
+     * Verifica se este orçamento já gerou uma OS.
+     */
+    const {
+      data: existingOrders,
+      error: existingError,
+    } = await supabase
+      .from("ordens_servico")
+      .select("id, numero, observacoes")
+      .eq("cliente_id", budget.clientId);
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    const alreadyGenerated =
+      (existingOrders ?? []).some((order) =>
+        String(order.observacoes ?? "").includes(
+          budget.number
+        )
+      );
+
+    if (alreadyGenerated) {
       alert(
-        "O orçamento precisa estar aprovado para gerar uma OS."
+        "A Ordem de Serviço deste orçamento já foi gerada."
       );
 
       return;
     }
+
+    /*
+     * Gera o número da OS.
+     */
+    const number =
+      await generateOrderNumber();
+
+    /*
+     * Monta todos os serviços do orçamento.
+     */
+    const serviceLines = budget.items
+      .filter(
+        (item) =>
+          item.description.trim()
+      )
+      .map(
+        (item) =>
+          `${item.quantity}x ${item.description} - ${money(
+            itemTotal(item)
+          )}`
+      );
+
+    /*
+     * Valores do orçamento.
+     */
+    const subtotalServicos =
+      Number(budget.subtotal ?? 0);
+
+    const descontoPercentual =
+      Number(
+        budget.discountPercent ?? 0
+      );
+
+    const descontoValor =
+      Number(
+        budget.discountValue ?? 0
+      );
+
+    const valorServicos =
+      Number(budget.finalValue ?? 0);
+
+    const valorMateriais =
+      Number(
+        budget.materialsValue ?? 0
+      );
+
+    const totalGeral =
+      Number(budget.totalValue ?? 0);
+
+    /*
+     * Descrição completa que será levada
+     * para a Ordem de Serviço.
+     */
+    const serviceDescription = [
+      `Serviços aprovados no orçamento ${budget.number}:`,
+      "",
+      ...serviceLines,
+      "",
+      `Subtotal dos serviços: ${money(
+        subtotalServicos
+      )}`,
+      `Desconto: ${descontoPercentual.toFixed(
+        2
+      )}% - ${money(descontoValor)}`,
+      `Serviços após desconto: ${money(
+        valorServicos
+      )}`,
+      "",
+      `Materiais: ${money(
+        valorMateriais
+      )}`,
+      "",
+      `TOTAL DO ORÇAMENTO: ${money(
+        totalGeral
+      )}`,
+    ].join("\n");
+
+    /*
+     * Tipo de serviço.
+     */
+    const serviceType =
+      getServiceType(
+        budget.service
+      );
+
+    /*
+     * Descrição dos materiais.
+     */
+    const materialDescription =
+      valorMateriais > 0
+        ? `Materiais previstos no orçamento ${budget.number}: ${money(
+            valorMateriais
+          )}`
+        : "";
+
+    /*
+     * Observações completas da OS.
+     */
+    const observations = [
+      `Gerada automaticamente a partir do orçamento ${budget.number}.`,
+      `Subtotal dos serviços: ${money(
+        subtotalServicos
+      )}.`,
+      `Desconto: ${descontoPercentual.toFixed(
+        2
+      )}% (${money(descontoValor)}).`,
+      `Serviços após desconto: ${money(
+        valorServicos
+      )}.`,
+      `Materiais previstos: ${money(
+        valorMateriais
+      )}.`,
+      `Total geral do orçamento: ${money(
+        totalGeral
+      )}.`,
+    ].join(" ");
+
+    /*
+     * CRIA A ORDEM DE SERVIÇO
+     *
+     * Importante:
+     * - valor_servicos = serviços já com desconto
+     * - valor_materiais = materiais
+     * - valor = total final do orçamento
+     */
+    const { error } =
+      await supabase
+        .from("ordens_servico")
+        .insert({
+          numero: number,
+
+          cliente_id:
+            budget.clientId,
+
+          cliente_nome:
+            budget.client,
+
+          equipamento:
+            budget.equipment ||
+            "Não informado",
+
+          cidade:
+            budget.city,
+
+          tipo_servico:
+            serviceType,
+
+          descricao:
+            serviceDescription,
+
+          data:
+            new Date()
+              .toISOString()
+              .slice(0, 10),
+
+          tecnico: null,
+
+          valor_servicos:
+            valorServicos,
+
+          valor_materiais:
+            valorMateriais,
+
+          materiais_descricao:
+            materialDescription ||
+            null,
+
+          valor:
+            totalGeral,
+
+          status:
+            "Aberta",
+
+          observacoes:
+            observations,
+
+          materiais_pago:
+            false,
+
+          materiais_pago_em:
+            null,
+        });
+
+    if (error) {
+      throw error;
+    }
+
+    alert(
+      `OS ${number} criada com sucesso!\n\n` +
+        `Serviços: ${money(valorServicos)}\n` +
+        `Materiais: ${money(valorMateriais)}\n` +
+        `Desconto: ${descontoPercentual.toFixed(
+          2
+        )}% (${money(descontoValor)})\n` +
+        `Total: ${money(totalGeral)}`
+    );
+
+    window.location.href =
+      "/ordens-servico";
+  } catch (error) {
+    console.error(
+      "Erro ao gerar Ordem de Serviço:",
+      error
+    );
+
+    alert(
+      "Não foi possível gerar a Ordem de Serviço."
+    );
+  } finally {
+    setGeneratingOrderId(
+      null
+    );
+  }
+}
 
     if (!budget.clientId) {
       alert(
