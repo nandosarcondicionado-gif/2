@@ -1504,11 +1504,10 @@ export default function OrdensServicoPage() {
     );
   }
 
-  async function toggleMaterialsPayment(
+    async function toggleMaterialsPayment(
     order: ServiceOrder
   ) {
-    const nextPaid =
-      !order.materialsPaid;
+    const nextPaid = !order.materialsPaid;
 
     const { error } =
       await supabase
@@ -1534,6 +1533,24 @@ export default function OrdensServicoPage() {
       return;
     }
 
+    // SE OS MATERIAIS FORAM MARCADOS COMO PAGOS E HOUVER VALOR, LANÇA NO FINANCEIRO:
+    if (nextPaid && order.materialsValue > 0) {
+      try {
+        await supabase.from("lancamentos_financeiros").insert({
+          descricao: `Materiais OS ${order.number} - ${order.client}`,
+          cliente: order.client,
+          tipo: "Entrada",
+          categoria: "Materiais",
+          valor: order.materialsValue,
+          data: new Date().toISOString().slice(0, 10),
+          status: "Pago",
+          observacoes: order.materialsDescription || `Pagamento de materiais referente à OS ${order.number}`,
+        });
+      } catch (finError) {
+        console.error("Erro ao gerar lançamento financeiro automático:", finError);
+      }
+    }
+
     const updated = {
       ...order,
       materialsPaid: nextPaid,
@@ -1552,6 +1569,7 @@ export default function OrdensServicoPage() {
       )
     );
   }
+
 
   function getCurrentPlanInfo() {
     return getPlanoOSInfo({
