@@ -7,13 +7,17 @@ import {
 } from "react";
 
 import {
+  CalendarDays,
   Edit,
   Eye,
   FileText,
+  MapPin,
   MessageCircle,
   Plus,
+  Printer,
   Search,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 
@@ -73,6 +77,15 @@ function money(value: number | null | undefined) {
   );
 }
 
+function formatDate(value: string) {
+  if (!value) return "-";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString("pt-BR");
+}
+
 function toNumber(
   value: string | number | null | undefined
 ) {
@@ -115,6 +128,22 @@ function itemTotal(item: BudgetItem) {
     Number(item.quantity || 0) *
     Number(item.unitValue || 0)
   );
+}
+
+function statusBudgetClass(status: BudgetStatus) {
+  if (status === "Aprovado") {
+    return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  }
+
+  if (status === "Recusado") {
+    return "bg-red-500/10 text-red-400 border-red-500/20";
+  }
+
+  if (status === "Enviado") {
+    return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+  }
+
+  return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
 }
 
 export default function OrcamentosPage() {
@@ -1252,7 +1281,6 @@ export default function OrcamentosPage() {
           )}`
       );
 
-      // REDIRECIONAMENTO COM OS VALORES PASSADOS NA URL:
       window.location.href = `/ordens-servico?novo=1&valor_servico=${valorServicos}&materiais=${valorMateriais}&observacoes=${encodeURIComponent(observations)}`;
     } catch (error) {
       console.error(
@@ -1614,40 +1642,39 @@ export default function OrcamentosPage() {
     }, [budgets]);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold sm:text-3xl text-white">
               Orçamentos
             </h1>
 
-            <p className="text-sm text-slate-500">
-              Crie, edite, envie e transforme
-              orçamentos aprovados em Ordens de Serviço.
+            <p className="text-sm text-slate-400">
+              Crie, edite, envie e transforme orçamentos aprovados em Ordens de Serviço.
             </p>
           </div>
 
           <button
             onClick={openNewBudget}
-            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow hover:bg-blue-700"
+            className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400"
           >
             <Plus size={20} />
             Novo orçamento
           </button>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <button
             onClick={() =>
               setStatusFilter("Todos")
             }
-            className="rounded-xl bg-white p-4 text-left shadow-sm"
+            className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800"
           >
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-400">
               Total
             </div>
-            <div className="text-2xl font-bold">
+            <div className="mt-2 text-2xl font-bold text-white">
               {statusCounts.total}
             </div>
           </button>
@@ -1658,12 +1685,12 @@ export default function OrcamentosPage() {
                 "Rascunho"
               )
             }
-            className="rounded-xl bg-white p-4 text-left shadow-sm"
+            className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800"
           >
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-400">
               Rascunhos
             </div>
-            <div className="text-2xl font-bold">
+            <div className="mt-2 text-2xl font-bold text-yellow-400">
               {statusCounts.rascunho}
             </div>
           </button>
@@ -1674,12 +1701,12 @@ export default function OrcamentosPage() {
                 "Enviado"
               )
             }
-            className="rounded-xl bg-white p-4 text-left shadow-sm"
+            className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800"
           >
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-400">
               Enviados
             </div>
-            <div className="text-2xl font-bold">
+            <div className="mt-2 text-2xl font-bold text-blue-400">
               {statusCounts.enviado}
             </div>
           </button>
@@ -1690,12 +1717,12 @@ export default function OrcamentosPage() {
                 "Aprovado"
               )
             }
-            className="rounded-xl bg-white p-4 text-left shadow-sm"
+            className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800"
           >
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-400">
               Aprovados
             </div>
-            <div className="text-2xl font-bold">
+            <div className="mt-2 text-2xl font-bold text-emerald-400">
               {statusCounts.aprovado}
             </div>
           </button>
@@ -1706,183 +1733,116 @@ export default function OrcamentosPage() {
                 "Recusado"
               )
             }
-            className="rounded-xl bg-white p-4 text-left shadow-sm"
+            className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800"
           >
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-400">
               Recusados
             </div>
-            <div className="text-2xl font-bold">
+            <div className="mt-2 text-2xl font-bold text-red-400">
               {statusCounts.recusado}
             </div>
           </button>
         </div>
 
-        <div className="mb-6 flex flex-col gap-3 md:flex-row">
-          <div className="relative flex-1">
-            <Search
-              size={20}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search
+                size={20}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              />
 
-            <input
-              value={search}
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(
+                    event.target.value
+                  )
+                }
+                placeholder="Buscar por número, cliente ou serviço..."
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
               onChange={(event) =>
-                setSearch(
-                  event.target.value
+                setStatusFilter(
+                  event.target
+                    .value as
+                    | "Todos"
+                    | BudgetStatus
                 )
               }
-              placeholder="Buscar por número, cliente ou serviço..."
-              className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 outline-none focus:border-blue-500"
-            />
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+            >
+              <option value="Todos">
+                Todos os status
+              </option>
+              <option value="Rascunho">
+                Rascunho
+              </option>
+              <option value="Enviado">
+                Enviado
+              </option>
+              <option value="Aprovado">
+                Aprovado
+              </option>
+              <option value="Recusado">
+                Recusado
+              </option>
+            </select>
           </div>
-
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(
-                event.target
-                  .value as
-                  | "Todos"
-                  | BudgetStatus
-              )
-            }
-            className="rounded-xl border border-slate-200 bg-white px-4 py-3"
-          >
-            <option value="Todos">
-              Todos os status
-            </option>
-            <option value="Rascunho">
-              Rascunho
-            </option>
-            <option value="Enviado">
-              Enviado
-            </option>
-            <option value="Aprovado">
-              Aprovado
-            </option>
-            <option value="Recusado">
-              Recusado
-            </option>
-          </select>
         </div>
 
-        {loading ? (
-          <div className="rounded-xl bg-white p-10 text-center text-slate-500 shadow-sm">
-            Carregando orçamentos...
-          </div>
-        ) : filteredBudgets.length ===
-          0 ? (
-          <div className="rounded-xl bg-white p-10 text-center shadow-sm">
-            <FileText
-              size={45}
-              className="mx-auto mb-3 text-slate-300"
-            />
-
-            <h2 className="text-lg font-semibold">
-              Nenhum orçamento encontrado
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 px-5 py-4">
+            <h2 className="font-semibold text-white">
+              Lista de Orçamentos
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Crie um novo orçamento para começar.
+            <p className="text-xs text-slate-400">
+              {filteredBudgets.length} orçamento(s) encontrado(s)
             </p>
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-slate-100">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Número
-                    </th>
 
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Cliente
-                    </th>
+          {loading ? (
+            <div className="p-10 text-center text-slate-400">
+              Carregando orçamentos...
+            </div>
+          ) : filteredBudgets.length ===
+            0 ? (
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <FileText
+                size={45}
+                className="mb-4 text-slate-700"
+              />
 
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Serviço
-                    </th>
+              <h2 className="text-lg font-semibold text-white">
+                Nenhum orçamento encontrado
+              </h2>
 
-                    <th className="px-4 py-3 text-right text-sm font-semibold">
-                      Desconto
-                    </th>
+              <p className="mt-1 text-sm text-slate-400">
+                Crie um novo orçamento para começar.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {filteredBudgets.map(
+                (budget) => (
+                  <div
+                    key={
+                      budget.id
+                    }
+                    className="p-5 transition hover:bg-slate-800/30"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-bold text-white">
+                            {budget.number}
+                          </h3>
 
-                    <th className="px-4 py-3 text-right text-sm font-semibold">
-                      Total
-                    </th>
-
-                    <th className="px-4 py-3 text-center text-sm font-semibold">
-                      Status
-                    </th>
-
-                    <th className="px-4 py-3 text-center text-sm font-semibold">
-                      Ações
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredBudgets.map(
-                    (budget) => (
-                      <tr
-                        key={
-                          budget.id
-                        }
-                        className="border-t border-slate-100"
-                      >
-                        <td className="px-4 py-4 font-semibold">
-                          {
-                            budget.number
-                          }
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="font-medium">
-                            {
-                              budget.client
-                            }
-                          </div>
-
-                          <div className="text-xs text-slate-500">
-                            {
-                              budget.city
-                            }
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          {
-                            budget.service
-                          }
-                        </td>
-
-                        <td className="px-4 py-4 text-right">
-                          <div className="font-medium">
-                            {Number(
-                              budget.discountPercent ??
-                                0
-                            ).toFixed(
-                              2
-                            )}
-                            %
-                          </div>
-
-                          <div className="text-xs text-red-600">
-                            -
-                            {money(
-                              budget.discountValue
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4 text-right font-bold">
-                          {money(
-                            budget.totalValue
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4 text-center">
                           <select
                             value={
                               budget.status
@@ -1897,153 +1857,192 @@ export default function OrcamentosPage() {
                                   .value as BudgetStatus
                               )
                             }
-                            className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold outline-none ${statusBudgetClass(
+                              budget.status
+                            )} bg-slate-950`}
                           >
                             <option value="Rascunho">
                               Rascunho
                             </option>
-
                             <option value="Enviado">
                               Enviado
                             </option>
-
                             <option value="Aprovado">
                               Aprovado
                             </option>
-
                             <option value="Recusado">
                               Recusado
                             </option>
                           </select>
-                        </td>
+                        </div>
 
-                        <td className="px-4 py-4">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              title="Visualizar"
-                              onClick={() => {
-                                setPreviewBudget(
-                                  budget
-                                );
+                        <div className="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-2 lg:grid-cols-3">
+                          <span className="flex items-center gap-2">
+                            <User size={16} className="text-cyan-400" />
+                            {budget.client}
+                          </span>
 
-                                setShowPreview(
-                                  true
-                                );
-                              }}
-                              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-                            >
-                              <Eye
-                                size={18}
-                              />
-                            </button>
+                          <span className="flex items-center gap-2">
+                            <MapPin size={16} className="text-cyan-400" />
+                            {budget.city || "-"}
+                          </span>
 
-                            <button
-                              title="Editar"
-                              onClick={() =>
-                                editBudget(
-                                  budget
-                                )
-                              }
-                              className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
-                            >
-                              <Edit
-                                size={18}
-                              />
-                            </button>
+                          <span className="flex items-center gap-2">
+                            <CalendarDays size={16} className="text-cyan-400" />
+                            {formatDate(budget.date)}
+                          </span>
+                        </div>
 
-                            <button
-                              title="WhatsApp"
-                              onClick={() =>
-                                openWhatsApp(
-                                  budget
-                                )
-                              }
-                              className="rounded-lg p-2 text-green-600 hover:bg-green-50"
-                            >
-                              <MessageCircle
-                                size={
-                                  18
-                                }
-                              />
-                            </button>
+                        <div className="mt-2 text-sm text-slate-300">
+                          Serviço: <span className="font-medium text-white">{budget.service}</span>
+                        </div>
 
-                            <button
-                              title="Imprimir"
-                              onClick={() =>
-                                printBudget(
-                                  budget
-                                )
-                              }
-                              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-                            >
-                              <FileText
-                                size={
-                                  18
-                                }
-                              />
-                            </button>
+                        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+                          <span>
+                            Desconto:{" "}
+                            <strong className="text-red-400">
+                              {Number(
+                                budget.discountPercent ?? 0
+                              ).toFixed(2)}% (-{money(budget.discountValue)})
+                            </strong>
+                          </span>
 
-                            {budget.status ===
-                              "Aprovado" && (
-                              <button
-                                title="Gerar Ordem de Serviço"
-                                onClick={() =>
-                                  generateServiceOrder(
-                                    budget
-                                  )
-                                }
-                                disabled={
-                                  generatingOrderId ===
-                                  budget.id
-                                }
-                                className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                {generatingOrderId ===
-                                budget.id
-                                  ? "Gerando..."
-                                  : "Gerar OS"}
-                              </button>
-                            )}
+                          <span>
+                            Total:{" "}
+                            <strong className="text-cyan-400 font-bold">
+                              {money(
+                                budget.totalValue
+                              )}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
 
-                            <button
-                              title="Excluir"
-                              onClick={() =>
-                                deleteBudget(
-                                  budget
-                                )
-                              }
-                              className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2
-                                size={
-                                  18
-                                }
-                              />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  )}
-                </tbody>
-              </table>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          title="Visualizar"
+                          onClick={() => {
+                            setPreviewBudget(
+                              budget
+                            );
+
+                            setShowPreview(
+                              true
+                            );
+                          }}
+                          className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:bg-slate-800"
+                        >
+                          <Eye
+                            size={18}
+                          />
+                        </button>
+
+                        <button
+                          title="Editar"
+                          onClick={() =>
+                            editBudget(
+                              budget
+                            )
+                          }
+                          className="flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-sm text-cyan-400 hover:bg-slate-800"
+                        >
+                          <Edit
+                            size={16}
+                          />
+                          Editar
+                        </button>
+
+                        <button
+                          title="WhatsApp"
+                          onClick={() =>
+                            openWhatsApp(
+                              budget
+                            )
+                          }
+                          className="rounded-lg border border-emerald-500/20 p-2 text-emerald-400 hover:bg-emerald-500/10"
+                        >
+                          <MessageCircle
+                            size={
+                              18
+                            }
+                          />
+                        </button>
+
+                        <button
+                          title="Imprimir"
+                          onClick={() =>
+                            printBudget(
+                              budget
+                            )
+                          }
+                          className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:bg-slate-800"
+                        >
+                          <Printer
+                            size={
+                              18
+                            }
+                          />
+                        </button>
+
+                        {budget.status ===
+                          "Aprovado" && (
+                          <button
+                            title="Gerar Ordem de Serviço"
+                            onClick={() =>
+                              generateServiceOrder(
+                                budget
+                              )
+                            }
+                            disabled={
+                              generatingOrderId ===
+                              budget.id
+                            }
+                            className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+                          >
+                            {generatingOrderId ===
+                            budget.id
+                              ? "Gerando..."
+                              : "Gerar OS"}
+                          </button>
+                        )}
+
+                        <button
+                          title="Excluir"
+                          onClick={() =>
+                            deleteBudget(
+                              budget
+                            )
+                          }
+                          className="rounded-lg border border-red-500/20 p-2 text-red-400 hover:bg-red-500/10"
+                        >
+                          <Trash2
+                            size={
+                              18
+                            }
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[95vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b bg-white px-5 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+          <div className="max-h-[95vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-5 py-4">
               <div>
-                <h2 className="text-xl font-bold">
+                <h2 className="text-xl font-bold text-white">
                   {editingBudget
                     ? "Editar orçamento"
                     : "Novo orçamento"}
                 </h2>
 
-                <p className="text-sm text-slate-500">
+                <p className="text-xs text-slate-400">
                   Informe os serviços, desconto e materiais.
                 </p>
               </div>
@@ -2054,7 +2053,7 @@ export default function OrcamentosPage() {
                     false
                   )
                 }
-                className="rounded-lg p-2 hover:bg-slate-100"
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-800"
               >
                 <X size={22} />
               </button>
@@ -2063,7 +2062,7 @@ export default function OrcamentosPage() {
             <div className="space-y-6 p-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Cliente
                   </label>
 
@@ -2075,7 +2074,7 @@ export default function OrcamentosPage() {
                           .value
                       )
                     }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   >
                     <option value="">
                       Selecione o cliente
@@ -2101,7 +2100,7 @@ export default function OrcamentosPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Cidade
                   </label>
 
@@ -2113,12 +2112,12 @@ export default function OrcamentosPage() {
                           .value
                       )
                     }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Serviço principal
                   </label>
 
@@ -2131,12 +2130,12 @@ export default function OrcamentosPage() {
                       )
                     }
                     placeholder="Ex.: Instalação de ar-condicionado"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Equipamento
                   </label>
 
@@ -2149,12 +2148,12 @@ export default function OrcamentosPage() {
                       )
                     }
                     placeholder="Ex.: Split 12.000 BTUs"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Data
                   </label>
 
@@ -2167,7 +2166,7 @@ export default function OrcamentosPage() {
                           .value
                       )
                     }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
               </div>
@@ -2175,11 +2174,11 @@ export default function OrcamentosPage() {
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <h3 className="font-bold">
+                    <h3 className="font-bold text-white">
                       Serviços
                     </h3>
 
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-400">
                       Adicione todos os serviços do orçamento.
                     </p>
                   </div>
@@ -2189,7 +2188,7 @@ export default function OrcamentosPage() {
                       addItem
                     }
                     type="button"
-                    className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700"
+                    className="flex items-center gap-2 rounded-lg bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-400 hover:bg-cyan-500/20"
                   >
                     <Plus
                       size={16}
@@ -2205,7 +2204,7 @@ export default function OrcamentosPage() {
                         key={
                           item.id
                         }
-                        className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_100px_140px_140px_45px]"
+                        className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3 md:grid-cols-[1fr_100px_140px_140px_45px]"
                       >
                         <input
                           value={
@@ -2223,7 +2222,7 @@ export default function OrcamentosPage() {
                             )
                           }
                           placeholder="Descrição do serviço"
-                          className="rounded-lg border border-slate-200 px-3 py-2"
+                          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-500"
                         />
 
                         <input
@@ -2245,7 +2244,7 @@ export default function OrcamentosPage() {
                               )
                             )
                           }
-                          className="rounded-lg border border-slate-200 px-3 py-2"
+                          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-500"
                         />
 
                         <input
@@ -2268,11 +2267,11 @@ export default function OrcamentosPage() {
                               )
                             )
                           }
-                          className="rounded-lg border border-slate-200 px-3 py-2"
+                          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-500"
                           placeholder="Valor"
                         />
 
-                        <div className="flex items-center justify-end rounded-lg bg-slate-50 px-3 font-semibold">
+                        <div className="flex items-center justify-end rounded-lg bg-slate-900 px-3 font-semibold text-white">
                           {money(
                             itemTotal(
                               item
@@ -2287,7 +2286,7 @@ export default function OrcamentosPage() {
                               item.id
                             )
                           }
-                          className="flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                          className="flex items-center justify-center rounded-lg text-red-400 hover:bg-red-500/10"
                         >
                           <Trash2
                             size={
@@ -2303,7 +2302,7 @@ export default function OrcamentosPage() {
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Desconto (%)
                   </label>
 
@@ -2324,12 +2323,12 @@ export default function OrcamentosPage() {
                           .value
                       )
                     }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Valor desejado
                   </label>
 
@@ -2350,12 +2349,12 @@ export default function OrcamentosPage() {
                       )
                     }
                     placeholder="Opcional"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-1 block text-sm font-medium text-slate-300">
                     Materiais
                   </label>
 
@@ -2375,14 +2374,14 @@ export default function OrcamentosPage() {
                           .value
                       )
                     }
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                   />
                 </div>
               </div>
 
               {referenceValue >
                 0 && (
-                <div className="rounded-xl bg-blue-50 p-4 text-sm">
+                <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-4 text-sm text-cyan-300">
                   <strong>
                     Valor de referência:
                   </strong>{" "}
@@ -2393,7 +2392,7 @@ export default function OrcamentosPage() {
               )}
 
               <div>
-                <label className="mb-1 block text-sm font-medium">
+                <label className="mb-1 block text-sm font-medium text-slate-300">
                   Observação / negociação
                 </label>
 
@@ -2412,14 +2411,14 @@ export default function OrcamentosPage() {
                   }
                   rows={3}
                   placeholder="Observações do orçamento..."
-                  className="w-full rounded-xl border border-slate-200 px-3 py-3"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                 />
               </div>
 
-              <div className="rounded-2xl bg-slate-900 p-5 text-white">
+              <div className="rounded-2xl bg-slate-950 border border-slate-800 p-5 text-white">
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="flex justify-between">
-                    <span>
+                    <span className="text-slate-400">
                       Subtotal dos serviços
                     </span>
 
@@ -2430,7 +2429,7 @@ export default function OrcamentosPage() {
                     </strong>
                   </div>
 
-                  <div className="flex justify-between text-red-300">
+                  <div className="flex justify-between text-red-400">
                     <span>
                       Desconto (
                       {discountNumber.toFixed(
@@ -2448,7 +2447,7 @@ export default function OrcamentosPage() {
                   </div>
 
                   <div className="flex justify-between">
-                    <span>
+                    <span className="text-slate-400">
                       Serviços após desconto
                     </span>
 
@@ -2460,7 +2459,7 @@ export default function OrcamentosPage() {
                   </div>
 
                   <div className="flex justify-between">
-                    <span>
+                    <span className="text-slate-400">
                       Materiais
                     </span>
 
@@ -2472,7 +2471,7 @@ export default function OrcamentosPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-between border-t border-white/20 pt-4 text-xl font-bold">
+                <div className="mt-4 flex justify-between border-t border-slate-800 pt-4 text-xl font-bold text-cyan-400">
                   <span>
                     TOTAL GERAL
                   </span>
@@ -2486,14 +2485,14 @@ export default function OrcamentosPage() {
               </div>
             </div>
 
-            <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t bg-white p-5 sm:flex-row sm:justify-end">
+            <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-800 bg-slate-900 p-5 sm:flex-row sm:justify-end">
               <button
                 onClick={() =>
                   setShowModal(
                     false
                   )
                 }
-                className="rounded-xl border border-slate-200 px-5 py-3 font-semibold"
+                className="rounded-xl border border-slate-700 px-5 py-3 font-semibold text-white hover:bg-slate-800"
               >
                 Cancelar
               </button>
@@ -2503,7 +2502,7 @@ export default function OrcamentosPage() {
                   saveBudget
                 }
                 disabled={saving}
-                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
               >
                 {saving
                   ? "Salvando..."
@@ -2516,18 +2515,18 @@ export default function OrcamentosPage() {
 
       {showPreview &&
         previewBudget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-              <div className="sticky top-0 flex items-center justify-between border-b bg-white px-5 py-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+            <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+              <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-5 py-4">
                 <div>
-                  <h2 className="text-xl font-bold">
+                  <h2 className="text-xl font-bold text-white">
                     Orçamento{" "}
                     {
                       previewBudget.number
                     }
                   </h2>
 
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-slate-400">
                     {
                       previewBudget.client
                     }
@@ -2540,7 +2539,7 @@ export default function OrcamentosPage() {
                       false
                     )
                   }
-                  className="rounded-lg p-2 hover:bg-slate-100"
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-800"
                 >
                   <X size={22} />
                 </button>
@@ -2548,24 +2547,24 @@ export default function OrcamentosPage() {
 
               <div className="space-y-5 p-5">
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <div className="text-xs text-slate-500">
+                  <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
+                    <div className="text-xs text-slate-400">
                       Cliente
                     </div>
 
-                    <div className="font-semibold">
+                    <div className="font-semibold text-white">
                       {
                         previewBudget.client
                       }
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-slate-50 p-4">
-                    <div className="text-xs text-slate-500">
+                  <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
+                    <div className="text-xs text-slate-400">
                       Equipamento
                     </div>
 
-                    <div className="font-semibold">
+                    <div className="font-semibold text-white">
                       {
                         previewBudget.equipment ||
                         "-"
@@ -2575,13 +2574,13 @@ export default function OrcamentosPage() {
                 </div>
 
                 <div>
-                  <h3 className="mb-3 font-bold">
+                  <h3 className="mb-3 font-bold text-white">
                     Serviços
                   </h3>
 
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                      <thead className="bg-slate-100">
+                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-950 text-slate-400">
                         <tr>
                           <th className="px-3 py-2 text-left">
                             Descrição
@@ -2601,7 +2600,7 @@ export default function OrcamentosPage() {
                         </tr>
                       </thead>
 
-                      <tbody>
+                      <tbody className="divide-y divide-slate-800 text-white">
                         {previewBudget.items
                           .filter(
                             (
@@ -2617,7 +2616,6 @@ export default function OrcamentosPage() {
                                 key={
                                   item.id
                                 }
-                                className="border-t"
                               >
                                 <td className="px-3 py-3">
                                   {
@@ -2652,8 +2650,8 @@ export default function OrcamentosPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 p-5">
-                  <div className="flex justify-between py-1">
+                <div className="rounded-2xl bg-slate-950 border border-slate-800 p-5 text-white">
+                  <div className="flex justify-between py-1 text-slate-300">
                     <span>
                       Subtotal dos serviços
                     </span>
@@ -2665,7 +2663,7 @@ export default function OrcamentosPage() {
                     </strong>
                   </div>
 
-                  <div className="flex justify-between py-1 text-red-600">
+                  <div className="flex justify-between py-1 text-red-400">
                     <span>
                       Desconto (
                       {Number(
@@ -2685,7 +2683,7 @@ export default function OrcamentosPage() {
                     </strong>
                   </div>
 
-                  <div className="flex justify-between py-1">
+                  <div className="flex justify-between py-1 text-slate-300">
                     <span>
                       Serviços após desconto
                     </span>
@@ -2697,7 +2695,7 @@ export default function OrcamentosPage() {
                     </strong>
                   </div>
 
-                  <div className="flex justify-between py-1">
+                  <div className="flex justify-between py-1 text-slate-300">
                     <span>
                       Materiais
                     </span>
@@ -2709,7 +2707,7 @@ export default function OrcamentosPage() {
                     </strong>
                   </div>
 
-                  <div className="mt-3 flex justify-between border-t pt-3 text-xl font-bold">
+                  <div className="mt-3 flex justify-between border-t border-slate-800 pt-3 text-xl font-bold text-cyan-400">
                     <span>
                       TOTAL GERAL
                     </span>
@@ -2729,9 +2727,9 @@ export default function OrcamentosPage() {
                         previewBudget
                       )
                     }
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 font-semibold"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 font-semibold text-white hover:bg-slate-800"
                   >
-                    <FileText
+                    <Printer
                       size={18}
                     />
                     Imprimir
@@ -2743,7 +2741,7 @@ export default function OrcamentosPage() {
                         previewBudget
                       )
                     }
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 font-semibold text-white"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white hover:bg-emerald-500"
                   >
                     <MessageCircle
                       size={18}
@@ -2759,7 +2757,7 @@ export default function OrcamentosPage() {
                           previewBudget
                         )
                       }
-                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 hover:bg-cyan-400"
                     >
                       <FileText
                         size={18}
@@ -2772,6 +2770,6 @@ export default function OrcamentosPage() {
             </div>
           </div>
         )}
-    </div>
+    </main>
   );
 }
