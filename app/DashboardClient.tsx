@@ -594,8 +594,8 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <Snowflake className="h-8 w-8 text-cyan-400" />
 
-            <span className="text-xl font-bold">
-              ClimaPro
+            <span className="text-base font-bold">
+              Nando's Ar-Condicionado
             </span>
           </div>
 
@@ -668,7 +668,7 @@ export default function Dashboard() {
               </h1>
 
               <p className="text-xs text-slate-500">
-                Visão geral do ClimaPro
+                Nando's Ar-Condicionado
               </p>
             </div>
 
