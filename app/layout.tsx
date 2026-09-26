@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ClimaPro",
-  description: "Sistema de gestão para empresas de climatização",
+  title: "Nando's Ar-Condicionado",
+  description: "Qualidade e confiança em todos os detalhes",
 };
 
 export default function RootLayout({
