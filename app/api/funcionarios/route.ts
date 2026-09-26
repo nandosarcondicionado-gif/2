@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "../../../lib/supabase/server
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServiceRoleEnv } from "../../../lib/supabase/env";
 
-const allowedRoles = [
+const LOCAL_ALLOWED_ROLES = [
   "administrador",
   "gerente",
   "atendente",
@@ -138,8 +138,8 @@ export async function POST(request: Request) {
     }
 
     if (
-      !allowedRoles.includes(
-        role as (typeof allowedRoles)[number]
+      !LOCAL_ALLOWED_ROLES.includes(
+        role as (typeof LOCAL_ALLOWED_ROLES)[number]
       )
     ) {
       return NextResponse.json(
