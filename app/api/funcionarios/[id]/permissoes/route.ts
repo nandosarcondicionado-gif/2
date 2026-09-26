@@ -7,7 +7,7 @@ import {
   getSupabaseServiceRoleEnv,
 } from "../../../../../lib/supabase/env";
 
-const allowedModules = [
+const PERMISSIONS_ALLOWED_MODULES = [
   "dashboard",
   "clientes",
   "equipamentos",
@@ -64,13 +64,6 @@ async function checkAdmin() {
       )
       .maybeSingle();
 
-  /*
-   * Aceita administrador tanto pela função
-   * quanto pelo perfil.
-   *
-   * Isso deixa essa rota compatível com a estrutura
-   * atual da tela de Funcionários.
-   */
   const funcaoNormalizada =
     String(
       funcionario?.funcao ?? ""
@@ -301,12 +294,6 @@ export async function PUT(
     const adminSupabase =
       getAdminClient();
 
-    /*
-     * =====================================================
-     * 1. REMOVER PERMISSÕES ANTIGAS
-     * =====================================================
-     */
-
     const {
       error: deleteError,
     } =
@@ -331,12 +318,6 @@ export async function PUT(
         }
       );
     }
-
-    /*
-     * =====================================================
-     * 2. NORMALIZAR PERMISSÕES
-     * =====================================================
-     */
 
     const rows =
       permissions
@@ -382,17 +363,11 @@ export async function PUT(
         )
         .filter(
           (permission) =>
-            allowedModules.includes(
+            PERMISSIONS_ALLOWED_MODULES.includes(
               permission.modulo as
-                (typeof allowedModules)[number]
+                (typeof PERMISSIONS_ALLOWED_MODULES)[number]
             )
         );
-
-    /*
-     * =====================================================
-     * 3. SALVAR NA TABELA LEGADA
-     * =====================================================
-     */
 
     if (
       rows.length > 0
@@ -420,21 +395,9 @@ export async function PUT(
       }
     }
 
-    /*
-     * =====================================================
-     * 4. MONTAR O JSON DE PERMISSÕES
-     * =====================================================
-     *
-     * A aplicação atual utiliza:
-     *
-     * funcionarios.permissoes
-     *
-     * Então mantemos as duas estruturas sincronizadas.
-     */
-
     const permissoesJson =
       Object.fromEntries(
-        allowedModules.map(
+        PERMISSIONS_ALLOWED_MODULES.map(
           (modulo) => {
             const row =
               rows.find(
@@ -466,12 +429,6 @@ export async function PUT(
           }
         )
       );
-
-    /*
-     * =====================================================
-     * 5. SALVAR NO FUNCIONÁRIO
-     * =====================================================
-     */
 
     const {
       error:
@@ -506,12 +463,6 @@ export async function PUT(
         }
       );
     }
-
-    /*
-     * =====================================================
-     * 6. RETORNO
-     * =====================================================
-     */
 
     return NextResponse.json({
       success: true,
