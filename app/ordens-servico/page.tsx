@@ -32,6 +32,12 @@ type Client = {
   cidade: string;
 };
 
+type Helper = {
+  id: string;
+  nome: string;
+  funcao?: string;
+};
+
 type Equipment = {
   id: string;
   cliente_id?: string | null;
@@ -156,10 +162,6 @@ function escapeHtml(value: unknown) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-}
-
-function getEquipmentClientId(equipment: Equipment) {
-  return String(equipment.cliente_id ?? equipment.clienteId ?? equipment.client_id ?? equipment.clientId ?? "");
 }
 
 function SignatureModal({
@@ -329,7 +331,7 @@ function printServiceOrder(order: ServiceOrder) {
 export default function OrdensServicoPage() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [equipments, setEquipments] = useState<Equipment[]>([]);
+  const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -342,10 +344,10 @@ export default function OrdensServicoPage() {
 
   async function loadData() {
     setLoading(true);
-    const [ordersRes, clientsRes, equipmentsRes] = await Promise.all([
+    const [ordersRes, clientsRes, helpersRes] = await Promise.all([
       supabase.from("ordens_servico").select("*").order("created_at", { ascending: false }),
       supabase.from("clientes").select("id, nome, cidade").order("nome", { ascending: true }),
-      supabase.from("equipamentos").select("*").order("created_at", { ascending: false }),
+      supabase.from("ajudantes").select("id, nome, funcao").order("nome", { ascending: true }),
     ]);
 
     const loadedOrders: ServiceOrder[] = (ordersRes.data ?? []).map((item: any) => ({
@@ -380,7 +382,7 @@ export default function OrdensServicoPage() {
 
     setOrders(loadedOrders);
     setClients((clientsRes.data ?? []) as Client[]);
-    setEquipments((equipmentsRes.data ?? []) as Equipment[]);
+    setHelpers((helpersRes.data ?? []) as Helper[]);
     setLoading(false);
   }
 
@@ -560,11 +562,22 @@ export default function OrdensServicoPage() {
               </div>
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Ajudante</label>
-                <input value={form.helper} onChange={(e) => setForm((o) => ({ ...o, helper: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl" placeholder="Nome do ajudante" />
+                <select
+                  value={form.helper}
+                  onChange={(e) => setForm((o) => ({ ...o, helper: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white"
+                >
+                  <option value="">Selecione o ajudante...</option>
+                  {helpers.map((h) => (
+                    <option key={h.id} value={h.nome}>
+                      {h.nome} {h.funcao ? `(${h.funcao})` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            {/* BOTÕES DE ASSINATURA CORRIGIDOS (ADM E AJUDANTE) */}
+            {/* BOTÕES DE ASSINATURA */}
             <div className="flex flex-wrap gap-4 border-t border-slate-800 pt-4">
               <button
                 type="button"
