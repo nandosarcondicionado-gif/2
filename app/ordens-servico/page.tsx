@@ -73,6 +73,8 @@ type ServiceOrder = {
   technician: string;
   technicianId: string;
   serviceValue: number;
+  valorTecnico: number; // Custo técnico interno (não vai para o cliente)
+  lucro: number;        // Lucro calculado automaticamente
   materialsValue: number;
   materialsDescription: string;
   materialsPaid: boolean;
@@ -96,7 +98,8 @@ type FormData = {
   date: string;
   technicianId: string;
   technician: string;
-  value: string;
+  value: string;         // Valor Balcão (Preço do Cliente)
+  valorTecnico: string;  // Valor Técnico / Custo
   materialsValue: string;
   materialsDescription: string;
   materialsPaid: boolean;
@@ -119,6 +122,7 @@ const emptyForm: FormData = {
   technicianId: "",
   technician: "",
   value: "",
+  valorTecnico: "",
   materialsValue: "",
   materialsDescription: "",
   materialsPaid: false,
@@ -209,6 +213,7 @@ function statusClass(status: ServiceOrderStatus) {
   return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
 }
 
+// ATENÇÃO: Aqui o cliente vê APENAS o Valor Balcão (serviceValue). O valor técnico fica oculto.
 function printServiceOrder(order: ServiceOrder) {
   const html = `
 <!DOCTYPE html>
@@ -256,7 +261,7 @@ function printServiceOrder(order: ServiceOrder) {
 </div>
 <h2>Valores</h2>
 <div class="grid">
-  <div class="box"><div class="label">Serviço</div><div class="value">${formatCurrency(order.serviceValue)}</div></div>
+  <div class="box"><div class="label">Valor do Serviço (Balcão)</div><div class="value">${formatCurrency(order.serviceValue)}</div></div>
   <div class="box"><div class="label">Materiais</div><div class="value">${formatCurrency(order.materialsValue)}</div></div>
   <div class="box"><div class="label">Status dos Materiais</div><div class="value">${order.materialsPaid ? "Pago" : "Pendente"}</div></div>
   <div class="box"><div class="label">Total Geral</div><div class="total">${formatCurrency(order.value)}</div></div>
@@ -278,6 +283,7 @@ function printServiceOrder(order: ServiceOrder) {
   printWindow.document.close();
 }
 
+// WhatsApp enviado ao cliente mostra apenas o Valor Balcão
 function sendServiceOrderWhatsApp(order: ServiceOrder) {
   const message = [
     `*NANDO'S AR-CONDICIONADO*`,
@@ -289,7 +295,7 @@ function sendServiceOrderWhatsApp(order: ServiceOrder) {
     `Serviço: ${order.serviceType}`,
     `Equipamento: ${order.equipment || "Não informado"}`,
     ``,
-    `Serviço: ${formatCurrency(order.serviceValue)}`,
+    `Valor do Serviço: ${formatCurrency(order.serviceValue)}`,
     `Materiais: ${formatCurrency(order.materialsValue)}`,
     `*Total: ${formatCurrency(order.value)}*`,
     ``,
@@ -328,6 +334,9 @@ export default function OrdensServicoPage() {
   }, [equipments, form.clientId]);
 
   const serviceValueNumber = parseMoney(form.value);
+  const valorTecnicoNumber = parseMoney(form.valorTecnico);
+  const lucroEstimado = serviceValueNumber - valorTecnicoNumber;
+
   const materialsValueNumber = parseMoney(form.materialsValue);
   const totalValue = serviceValueNumber + materialsValueNumber;
 
@@ -356,6 +365,8 @@ export default function OrdensServicoPage() {
       technician: String(item.tecnico ?? ""),
       technicianId: String(item.tecnico_id ?? ""),
       serviceValue: Number(item.valor_servicos ?? item.valor ?? 0),
+      valorTecnico: Number(item.valor_tecnico ?? 0),
+      lucro: Number(item.lucro ?? 0),
       materialsValue: Number(item.valor_materiais ?? 0),
       materialsDescription: String(item.materiais_descricao ?? ""),
       materialsPaid: Boolean(item.materiais_pago ?? false),
@@ -440,6 +451,7 @@ export default function OrdensServicoPage() {
       technicianId: order.technicianId,
       technician: order.technician,
       value: String(order.serviceValue),
+      valorTecnico: String(order.valorTecnico || ""),
       materialsValue: String(order.materialsValue),
       materialsDescription: order.materialsDescription,
       materialsPaid: order.materialsPaid,
@@ -516,6 +528,8 @@ export default function OrdensServicoPage() {
     setSaving(true);
     try {
       const serviceValue = parseMoney(form.value);
+      const valorTecnico = parseMoney(form.valorTecnico);
+      const lucroCalculado = serviceValue - valorTecnico;
       const materialsValue = parseMoney(form.materialsValue);
       const finalTotal = serviceValue + materialsValue;
 
@@ -531,6 +545,8 @@ export default function OrdensServicoPage() {
         tecnico: form.technician || null,
         tecnico_id: form.technicianId || null,
         valor_servicos: serviceValue,
+        valor_tecnico: valorTecnico,
+        lucro: lucroCalculado,
         valor_materiais: materialsValue,
         materiais_descricao: form.materialsDescription || null,
         valor: finalTotal,
@@ -739,9 +755,10 @@ export default function OrdensServicoPage() {
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-4 text-sm">
-                        <span>Serviço: <strong>{formatCurrency(order.serviceValue)}</strong></span>
+                        <span>Valor Balcão: <strong>{formatCurrency(order.serviceValue)}</strong></span>
                         <span>Materiais: <strong>{formatCurrency(order.materialsValue)}</strong></span>
                         <span>Total: <strong className="text-cyan-400">{formatCurrency(order.value)}</strong></span>
+                        <span className="text-emerald-400">Lucro: <strong>{formatCurrency(order.lucro)}</strong></span>
                         <span className={order.materialsPaid ? "text-emerald-400" : "text-yellow-400"}>
                           Materiais: {order.materialsPaid ? "Pago" : "Pendente"}
                         </span>
@@ -890,17 +907,28 @@ export default function OrdensServicoPage() {
                 </div>
               </section>
 
+              {/* SEÇÃO DE VALORES ATUALIZADA COM VALOR BALCÃO E VALOR TÉCNICO */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-cyan-400" />
-                  <h3 className="font-semibold">Valores</h3>
+                  <h3 className="font-semibold">Valores e Controle de Lucro</h3>
                 </div>
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <label className="mb-2 block text-sm text-slate-400">Valor do serviço</label>
+                    <label className="mb-2 block text-sm text-slate-400">Valor Balcão (Cliente)</label>
                     <input
                       value={form.value}
                       onChange={(e) => setForm((old) => ({ ...old, value: e.target.value }))}
+                      placeholder="Ex: 200.00"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-400">Valor Técnico (Seu Custo)</label>
+                    <input
+                      value={form.valorTecnico}
+                      onChange={(e) => setForm((old) => ({ ...old, valorTecnico: e.target.value }))}
+                      placeholder="Ex: 120.00"
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     />
                   </div>
@@ -909,13 +937,14 @@ export default function OrdensServicoPage() {
                     <input
                       value={form.materialsValue}
                       onChange={(e) => setForm((old) => ({ ...old, materialsValue: e.target.value }))}
+                      placeholder="0.00"
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm text-slate-400">Total</label>
-                    <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-3 text-lg font-bold text-cyan-400">
-                      {formatCurrency(totalValue)}
+                    <label className="mb-2 block text-sm text-slate-400">Lucro Estimado</label>
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-lg font-bold text-emerald-400">
+                      {formatCurrency(lucroEstimado)}
                     </div>
                   </div>
                 </div>
@@ -951,7 +980,10 @@ export default function OrdensServicoPage() {
               </div>
 
               <div className="rounded-xl bg-slate-950 p-4">
-                <h3 className="font-semibold">Serviço: {formatCurrency(selectedOrder.serviceValue)}</h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold">Valor Balcão: {formatCurrency(selectedOrder.serviceValue)}</h3>
+                  <span className="text-emerald-400 font-bold text-sm">Seu Lucro: {formatCurrency(selectedOrder.lucro)}</span>
+                </div>
                 <p className="text-sm text-slate-300 mt-2">{selectedOrder.description}</p>
               </div>
 
