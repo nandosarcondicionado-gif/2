@@ -6,6 +6,7 @@ import {
   Printer,
   X,
   PenTool,
+  Eye,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -228,7 +229,7 @@ function SignatureModal({
           <h3 className="text-lg font-bold">{title}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
-        <p className="mb-4 text-xs text-slate-400">Assine no espaço abaixo usando o dedo ou a caneta do celular.</p>
+        <p className="mb-4 text-xs text-slate-400">Assine no espaço abaixo usando o dedo ou a caneta.</p>
         <div className="overflow-hidden rounded-xl border border-slate-700 bg-white">
           <canvas
             ref={canvasRef}
@@ -255,6 +256,7 @@ function SignatureModal({
   );
 }
 
+// IMPRESSÃO CORRIGIDA: Mostra a Assinatura do Admin e deixa espaço para a Assinatura do Cliente (sem o recibo do ajudante)
 function printServiceOrder(order: ServiceOrder) {
   const html = `
 <!DOCTYPE html>
@@ -273,8 +275,8 @@ function printServiceOrder(order: ServiceOrder) {
   .label { color: #6b7280; font-size: 12px; }
   .value { font-weight: bold; margin-top: 4px; }
   .total { font-size: 20px; font-weight: bold; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }
-  .signature-box { border: 1px solid #ddd; padding: 10px; border-radius: 8px; text-align: center; }
+  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; }
+  .signature-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; min-height: 90px; }
   .signature-box img { max-height: 70px; margin-top: 5px; }
   footer { margin-top: 40px; text-align: center; font-size: 12px; color: #6b7280; }
 </style>
@@ -310,11 +312,11 @@ function printServiceOrder(order: ServiceOrder) {
 <div class="signatures">
   <div class="signature-box">
     <div class="label">Assinatura do Administrador (Nando's)</div>
-    ${order.signatureAdmin ? `<img src="${order.signatureAdmin}" />` : `<div style="margin-top:30px; color:#999;">Não assinada</div>`}
+    ${order.signatureAdmin ? `<img src="${order.signatureAdmin}" />` : `<div style="margin-top:40px; color:#999; border-top: 1px dashed #ccc; padding-top: 5px;">Assinatura Digital ADM</div>`}
   </div>
   <div class="signature-box">
-    <div class="label">Recibo / Diária Ajudante (${escapeHtml(order.helper || "Nenhum")})</div>
-    ${order.signatureHelper ? `<img src="${order.signatureHelper}" />` : `<div style="margin-top:30px; color:#999;">Não assinada</div>`}
+    <div class="label">Assinatura do Cliente (Aprovação)</div>
+    <div style="margin-top:40px; color:#999; border-top: 1px dashed #ccc; padding-top: 5px;">Assine aqui</div>
   </div>
 </div>
 <footer>Nando's Ar-Condicionado</footer>
@@ -525,13 +527,13 @@ export default function OrdensServicoPage() {
             {filteredOrders.map((order) => (
               <div key={order.id} className="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <h3 className="font-bold">{order.number} - {order.client}</h3>
-                  <p className="text-xs text-slate-400 mt-1">Técnico: {order.technician || "Nenhum"} | Ajudante: {order.helper || "Nenhum"}</p>
+                  <h3 className="font-bold">{order.number} — {order.client}</h3>
+                  <p className="text-xs text-slate-400 mt-1">Data: {formatDate(order.date)} | Técnico: {order.technician || "Nenhum"} | Ajudante: {order.helper || "Nenhum"}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setSelectedOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm">Ver</button>
-                  <button onClick={() => openEditOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"><Edit className="h-4 w-4" /> Editar</button>
-                  <button onClick={() => printServiceOrder(order)} className="border border-slate-700 p-1.5 rounded-lg"><Printer className="h-4 w-4" /></button>
+                  <button onClick={() => setSelectedOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-slate-800"><Eye className="h-4 w-4" /> Ver</button>
+                  <button onClick={() => openEditOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-slate-800"><Edit className="h-4 w-4" /> Editar</button>
+                  <button onClick={() => printServiceOrder(order)} className="border border-slate-700 p-1.5 rounded-lg hover:bg-slate-800" title="Imprimir OS"><Printer className="h-4 w-4" /></button>
                 </div>
               </div>
             ))}
@@ -539,6 +541,64 @@ export default function OrdensServicoPage() {
         </div>
       </div>
 
+      {/* MODAL DE VISUALIZAÇÃO ("VER") */}
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4 text-white">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 className="text-lg font-bold">Detalhes da {selectedOrder.number}</h2>
+              <button onClick={() => setSelectedOrder(null)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Cliente</span>
+                <span className="font-semibold">{selectedOrder.client}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Cidade</span>
+                <span className="font-semibold">{selectedOrder.city || "-"}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Data</span>
+                <span className="font-semibold">{formatDate(selectedOrder.date)}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Tipo de Serviço</span>
+                <span className="font-semibold">{selectedOrder.serviceType}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Técnico</span>
+                <span className="font-semibold">{selectedOrder.technician || "Não informado"}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Ajudante</span>
+                <span className="font-semibold">{selectedOrder.helper || "Nenhum"}</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-sm">
+              <span className="text-slate-400 block text-xs mb-1">Equipamento e Descrição</span>
+              <p className="font-semibold">{selectedOrder.equipment}</p>
+              <p className="text-slate-300 mt-2 text-xs whitespace-pre-wrap">{selectedOrder.description || "Sem descrição"}</p>
+            </div>
+
+            <div className="flex justify-between items-center bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <div>
+                <span className="text-slate-400 block text-xs">Valor Total</span>
+                <span className="text-lg font-bold text-cyan-400">{formatCurrency(selectedOrder.value)}</span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { const ord = selectedOrder; setSelectedOrder(null); printServiceOrder(ord); }} className="flex items-center gap-1 border border-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-800">
+                  <Printer className="h-4 w-4" /> Imprimir OS
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FORMULÁRIO DE EDIÇÃO / CRIAÇÃO */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
           <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4">
@@ -549,7 +609,7 @@ export default function OrdensServicoPage() {
 
             <div>
               <label className="text-sm text-slate-400 block mb-1">Cliente</label>
-              <select value={form.clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl">
+              <select value={form.clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white">
                 <option value="">Selecione o cliente...</option>
                 {clients.map((c) => (<option key={c.id} value={c.id}>{c.nome}</option>))}
               </select>
@@ -558,7 +618,7 @@ export default function OrdensServicoPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Técnico</label>
-                <input value={form.technician} onChange={(e) => setForm((o) => ({ ...o, technician: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl" placeholder="Nome do técnico" />
+                <input value={form.technician} onChange={(e) => setForm((o) => ({ ...o, technician: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" placeholder="Nome do técnico" />
               </div>
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Ajudante</label>
