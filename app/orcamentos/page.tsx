@@ -23,8 +23,8 @@ type BudgetItem = {
   id: string;
   description: string;
   quantity: number;
-  unitValue: number; // Valor de Venda (Balcão / Cliente)
-  costValue?: number; // Valor de Custo (Técnico / Loja)
+  unitValue: number;
+  costValue?: number;
 };
 
 type Budget = {
@@ -70,11 +70,22 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
-function toNumber(value: string | number | null | undefined) {
+// CORREÇÃO MONETÁRIA: Converte textos como "150,50" ou "150.50" para número real sem multiplicar errado
+function toNumber(value: string | number | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (!value) return 0;
-  const normalized = String(value).replace(/\./g, "").replace(",", ".");
-  const parsed = Number(normalized);
+  const text = String(value ?? "").trim();
+  if (!text) return 0;
+  
+  // Se contiver vírgula e ponto (ex: 1.250,50), remove ponto de milhar e troca vírgula por ponto
+  // Se contiver apenas vírgula (ex: 150,50), troca vírgula por ponto
+  let cleaned = text.replace("R$", "").trim();
+  if (cleaned.includes(",") && cleaned.includes(".")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(",", ".");
+  }
+  
+  const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -90,10 +101,6 @@ function newItem(): BudgetItem {
 
 function itemTotal(item: BudgetItem) {
   return Number(item.quantity || 0) * Number(item.unitValue || 0);
-}
-
-function itemCostTotal(item: BudgetItem) {
-  return Number(item.quantity || 0) * Number(item.costValue || 0);
 }
 
 function statusBudgetClass(status: BudgetStatus) {
@@ -126,7 +133,7 @@ export default function OrcamentosPage() {
   const [discountPercent, setDiscountPercent] = useState("0");
   const [desiredAmount, setDesiredAmount] = useState("");
   const [materialsValue, setMaterialsValue] = useState("0");
-  const [materialsCostValue, setMaterialsCostValue] = useState("0"); // Custo dos materiais (Loja)
+  const [materialsCostValue, setMaterialsCostValue] = useState("0");
   const [negotiationMessage, setNegotiationMessage] = useState("");
 
   const subtotal = useMemo(() => {
@@ -307,6 +314,13 @@ export default function OrcamentosPage() {
         }
       }
 
+      // Converte limpo com a função toNumber para garantir centavos corretos
+      const cleanedItems = validItems.map(item => ({
+        ...item,
+        unitValue: toNumber(item.unitValue),
+        costValue: toNumber(item.costValue),
+      }));
+
       const payload = {
         numero: number,
         cliente_id: clientId,
@@ -315,7 +329,7 @@ export default function OrcamentosPage() {
         equipamento: equipment,
         servico: service,
         data: date,
-        itens: validItems,
+        itens: cleanedItems,
         subtotal,
         desconto_percentual: discountNumber,
         desconto_valor: discountValue,
@@ -426,7 +440,6 @@ export default function OrcamentosPage() {
         `TOTAL DO ORÇAMENTO: ${money(budget.totalValue)}`,
       ].join("\n");
 
-      // Lucro total = Margem de serviços + Margem de materiais (Venda - Custo)
       const lucroMateriais = (budget.materialsValue ?? 0) - (budget.materialsCostValue ?? 0);
       const lucroTotal = (budget.finalValue ?? 0) + Math.max(0, lucroMateriais);
 
@@ -741,6 +754,44 @@ export default function OrcamentosPage() {
                 </div>
               </div>
 
+              {/* ITENS DE SERVIÇO */}
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-bold text-white text-sm">Serviços / Mão de Obra</h3>
+                  <button type="button" onClick={addItem} className="flex items-center gap-1 text-xs bg-cyan-500/10 text-cyan-400 px-3 py-1.5 rounded-lg font-semibold">
+                    <Plus size={14} /> Adicionar serviço
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {items.map((item) => (
+                    <div key={item.id} className="grid gap-2 grid-cols-1 md:grid-cols-[1fr_80px_120px_40px] items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                      <input
+                        value={item.description}
+                        onChange={(e) => updateItem(item.id, "description", e.target.value)}
+                        placeholder="Descrição do serviço"
+                        className="bg-slate-900 border border-slate-700 p-2 rounded-lg text-sm text-white"
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value))}
+                        className="bg-slate-900 border border-slate-700 p-2 rounded-lg text-sm text-white text-center"
+                        placeholder="Qtd"
+                      />
+                      <input
+                        type="text"
+                        value={item.unitValue}
+                        onChange={(e) => updateItem(item.id, "unitValue", e.target.value)}
+                        className="bg-slate-900 border border-slate-700 p-2 rounded-lg text-sm text-white"
+                        placeholder="Valor unitário"
+                      />
+                      <button type="button" onClick={() => removeItem(item.id)} className="text-red-400 hover:text-red-300 flex justify-center"><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* MATERIAIS: VALOR TÉCNICO (CUSTO) VS VALOR BALCÃO (CLIENTE) */}
               <div className="rounded-2xl bg-slate-950 border border-slate-800 p-4 space-y-4">
                 <h3 className="font-bold text-white text-sm">Controle de Materiais (Custo Loja vs Venda Cliente)</h3>
@@ -748,23 +799,21 @@ export default function OrcamentosPage() {
                   <div>
                     <label className="mb-1 block text-xs text-slate-400">Valor de Custo dos Materiais (Valor Técnico / Loja)</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
                       value={materialsCostValue}
                       onChange={(e) => setMaterialsCostValue(e.target.value)}
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-white text-sm"
-                      placeholder="Ex: 150.00"
+                      placeholder="Ex: 150,00"
                     />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-slate-400">Valor de Venda dos Materiais (Valor Balcão / Cliente)</label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
                       value={materialsValue}
                       onChange={(e) => setMaterialsValue(e.target.value)}
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-white text-sm"
-                      placeholder="Ex: 300.00"
+                      placeholder="Ex: 300,00"
                     />
                   </div>
                 </div>
