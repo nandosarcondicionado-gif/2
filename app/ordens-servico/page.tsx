@@ -72,6 +72,7 @@ type ServiceOrder = {
   date: string;
   technician: string;
   technicianId: string;
+  helper: string; // Adicionado: Ajudante
   serviceValue: number;
   valorTecnico: number;
   lucro: number;
@@ -98,6 +99,7 @@ type FormData = {
   date: string;
   technicianId: string;
   technician: string;
+  helper: string; // Adicionado: Ajudante no formulário
   value: string;
   valorTecnico: string;
   materialsValue: string;
@@ -121,6 +123,7 @@ const emptyForm: FormData = {
   date: new Date().toISOString().slice(0, 10),
   technicianId: "",
   technician: "",
+  helper: "",
   value: "",
   valorTecnico: "",
   materialsValue: "",
@@ -146,7 +149,6 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
-// CORREÇÃO: Lê corretamente a vírgula como centavos (ex: 10,00 vira 10 e não 1000)
 function parseMoney(value: string | number | null | undefined) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -154,7 +156,6 @@ function parseMoney(value: string | number | null | undefined) {
   const text = String(value ?? "").trim();
   if (!text) return 0;
   
-  // Remove caracteres de moeda, espaços, e pontos de milhar
   let normalized = text
     .replace(/\s/g, "")
     .replace(/R\$/gi, "")
@@ -251,7 +252,7 @@ function printServiceOrder(order: ServiceOrder) {
   <div class="box"><div class="label">Nome</div><div class="value">${escapeHtml(order.client)}</div></div>
   <div class="box"><div class="label">Cidade</div><div class="value">${escapeHtml(order.city)}</div></div>
   <div class="box"><div class="label">Data</div><div class="value">${escapeHtml(formatDate(order.date))}</div></div>
-  <div class="box"><div class="label">Técnico</div><div class="value">${escapeHtml(order.technician || "Não definido")}</div></div>
+  <div class="box"><div class="label">Técnico / Equipe</div><div class="value">${escapeHtml(order.technician || "Não definido")} ${order.helper ? `/ Ajudante: ${escapeHtml(order.helper)}` : ""}</div></div>
 </div>
 <h2>Equipamento e Serviço</h2>
 <div class="box">
@@ -273,7 +274,7 @@ function printServiceOrder(order: ServiceOrder) {
 <div class="box">${escapeHtml(order.notes || "Nenhuma observação.")}</div>
 <div class="signatures">
   <div class="signature">Cliente</div>
-  <div class="signature">Técnico</div>
+  <div class="signature">Técnico / Equipe</div>
 </div>
 <footer>Nando's Ar-Condicionado</footer>
 <script>window.onload = function() { window.print(); };</script>
@@ -294,6 +295,8 @@ function sendServiceOrderWhatsApp(order: ServiceOrder) {
     `Cliente: ${order.client}`,
     `Cidade: ${order.city}`,
     `Data: ${formatDate(order.date)}`,
+    `Técnico: ${order.technician || "Não definido"}`,
+    order.helper ? `Ajudante: ${order.helper}` : "",
     `Serviço: ${order.serviceType}`,
     `Equipamento: ${order.equipment || "Não informado"}`,
     ``,
@@ -339,9 +342,6 @@ export default function OrdensServicoPage() {
   const valorTecnicoNumber = parseMoney(form.valorTecnico);
   const lucroEstimado = serviceValueNumber - valorTecnicoNumber;
 
-  const materialsValueNumber = parseMoney(form.materialsValue);
-  const totalValue = serviceValueNumber + materialsValueNumber;
-
   async function loadData() {
     setLoading(true);
     const [ordersResult, clientsResult, equipmentsResult] = await Promise.all([
@@ -366,6 +366,7 @@ export default function OrdensServicoPage() {
       date: String(item.data ?? ""),
       technician: String(item.tecnico ?? ""),
       technicianId: String(item.tecnico_id ?? ""),
+      helper: String(item.ajudante ?? ""), // Mapeando o ajudante do banco
       serviceValue: Number(item.valor_servicos ?? item.valor ?? 0),
       valorTecnico: Number(item.valor_tecnico ?? 0),
       lucro: Number(item.lucro ?? 0),
@@ -396,7 +397,9 @@ export default function OrdensServicoPage() {
         order.number.toLowerCase().includes(term) ||
         order.client.toLowerCase().includes(term) ||
         order.city.toLowerCase().includes(term) ||
-        order.equipment.toLowerCase().includes(term);
+        order.equipment.toLowerCase().includes(term) ||
+        order.technician.toLowerCase().includes(term) ||
+        order.helper.toLowerCase().includes(term);
 
       const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -435,6 +438,7 @@ export default function OrdensServicoPage() {
       date: order.date,
       technicianId: order.technicianId,
       technician: order.technician,
+      helper: order.helper,
       value: String(order.serviceValue),
       valorTecnico: String(order.valorTecnico || ""),
       materialsValue: String(order.materialsValue),
@@ -529,6 +533,7 @@ export default function OrdensServicoPage() {
         data: form.date,
         tecnico: form.technician || null,
         tecnico_id: form.technicianId || null,
+        ajudante: form.helper || null, // Salvando o ajudante no banco de dados
         valor_servicos: serviceValue,
         valor_tecnico: valorTecnico,
         lucro: lucroCalculado,
@@ -675,7 +680,7 @@ export default function OrdensServicoPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Pesquisar OS, cliente, cidade ou equipamento..."
+                placeholder="Pesquisar OS, cliente, cidade, equipamento ou técnico..."
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm outline-none focus:border-cyan-500"
               />
             </div>
@@ -737,6 +742,14 @@ export default function OrdensServicoPage() {
                           <CalendarDays className="h-4 w-4 text-cyan-400" />
                           {formatDate(order.date)}
                         </span>
+                      </div>
+
+                      {/* Exibição da Equipe (Técnico + Ajudante) */}
+                      <div className="mt-2 text-xs text-slate-400">
+                        <span>Técnico: <strong className="text-slate-200">{order.technician || "Não definido"}</strong></span>
+                        {order.helper && (
+                          <span className="ml-4">Ajudante: <strong className="text-slate-200">{order.helper}</strong></span>
+                        )}
                       </div>
 
                       <div className="mt-3 flex flex-wrap gap-4 text-sm">
@@ -880,6 +893,27 @@ export default function OrdensServicoPage() {
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     />
                   </div>
+                  
+                  {/* NOVOS CAMPOS: TÉCNICO E AJUDANTE */}
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-400">Técnico Responsável</label>
+                    <input
+                      value={form.technician}
+                      onChange={(e) => setForm((old) => ({ ...old, technician: e.target.value }))}
+                      placeholder="Nome do técnico"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-400">Ajudante (Opcional)</label>
+                    <input
+                      value={form.helper}
+                      onChange={(e) => setForm((old) => ({ ...old, helper: e.target.value }))}
+                      placeholder="Nome do ajudante"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
                   <div className="md:col-span-2">
                     <label className="mb-2 block text-sm text-slate-400">Descrição</label>
                     <textarea
@@ -961,6 +995,10 @@ export default function OrdensServicoPage() {
               <div className="rounded-xl bg-slate-950 p-4">
                 <h3 className="font-semibold">{selectedOrder.client}</h3>
                 <p className="text-sm text-slate-400">{selectedOrder.city}</p>
+                <div className="mt-3 text-sm text-slate-300">
+                  <p>Técnico: <strong>{selectedOrder.technician || "Não definido"}</strong></p>
+                  {selectedOrder.helper && <p>Ajudante: <strong>{selectedOrder.helper}</strong></p>}
+                </div>
               </div>
 
               <div className="rounded-xl bg-slate-950 p-4">
