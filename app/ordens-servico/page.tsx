@@ -1,18 +1,9 @@
 "use client";
 
 import {
-  CalendarDays,
-  ClipboardList,
-  CreditCard,
   Edit,
-  MapPin,
-  MessageCircle,
   Plus,
   Printer,
-  Search,
-  Trash2,
-  User,
-  Wrench,
   X,
   PenTool,
 } from "lucide-react";
@@ -81,7 +72,7 @@ type ServiceOrder = {
   value: number;
   status: ServiceOrderStatus;
   notes: string;
-  signatureClient: string;
+  signatureAdmin: string;
   signatureHelper: string;
 };
 
@@ -106,7 +97,7 @@ type FormData = {
   materialsPaid: boolean;
   status: ServiceOrderStatus;
   notes: string;
-  signatureClient: string;
+  signatureAdmin: string;
   signatureHelper: string;
 };
 
@@ -131,7 +122,7 @@ const emptyForm: FormData = {
   materialsPaid: false,
   status: "Aberta",
   notes: "",
-  signatureClient: "",
+  signatureAdmin: "",
   signatureHelper: "",
 };
 
@@ -171,24 +162,6 @@ function getEquipmentClientId(equipment: Equipment) {
   return String(equipment.cliente_id ?? equipment.clienteId ?? equipment.client_id ?? equipment.clientId ?? "");
 }
 
-function getEquipmentName(equipment: Equipment) {
-  const name = equipment.nome ?? equipment.descricao ?? equipment.equipamento ?? "";
-  if (String(name).trim()) return String(name);
-  const brand = String(equipment.marca ?? "").trim();
-  const model = String(equipment.modelo ?? "").trim();
-  if (brand || model) return [brand, model].filter(Boolean).join(" ");
-  return "Equipamento";
-}
-
-function statusClass(status: ServiceOrderStatus) {
-  if (status === "Concluída") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-  if (status === "Cancelada") return "bg-red-500/10 text-red-400 border-red-500/20";
-  if (status === "Em andamento") return "bg-blue-500/10 text-blue-400 border-blue-500/20";
-  if (status === "Agendada") return "bg-purple-500/10 text-purple-400 border-purple-500/20";
-  return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-}
-
-// Componente interno para a Janela de Assinatura (Canvas)
 function SignatureModal({
   title,
   onSave,
@@ -312,7 +285,7 @@ function printServiceOrder(order: ServiceOrder) {
 </div>
 <h2>Cliente e Equipe</h2>
 <div class="grid">
-  <div class="box"><div class="label">Nome</div><div class="value">${escapeHtml(order.client)}</div></div>
+  <div class="box"><div class="label">Nome do Cliente</div><div class="value">${escapeHtml(order.client)}</div></div>
   <div class="box"><div class="label">Cidade</div><div class="value">${escapeHtml(order.city)}</div></div>
   <div class="box"><div class="label">Data</div><div class="value">${escapeHtml(formatDate(order.date))}</div></div>
   <div class="box"><div class="label">Técnico / Ajudante</div><div class="value">${escapeHtml(order.technician || "Não definido")} ${order.helper ? `/ ${escapeHtml(order.helper)}` : ""}</div></div>
@@ -331,11 +304,11 @@ function printServiceOrder(order: ServiceOrder) {
   <div class="box"><div class="label">Valor do Serviço</div><div class="value">${formatCurrency(order.serviceValue)}</div></div>
   <div class="box"><div class="label">Total Geral</div><div class="total">${formatCurrency(order.value)}</div></div>
 </div>
-<h2>Assinaturas</h2>
+<h2>Assinaturas e Aprovação</h2>
 <div class="signatures">
   <div class="signature-box">
-    <div class="label">Assinatura do Cliente</div>
-    ${order.signatureClient ? `<img src="${order.signatureClient}" />` : `<div style="margin-top:30px; color:#999;">Não assinada</div>`}
+    <div class="label">Assinatura do Administrador (Nando's)</div>
+    ${order.signatureAdmin ? `<img src="${order.signatureAdmin}" />` : `<div style="margin-top:30px; color:#999;">Não assinada</div>`}
   </div>
   <div class="signature-box">
     <div class="label">Recibo / Diária Ajudante (${escapeHtml(order.helper || "Nenhum")})</div>
@@ -365,17 +338,7 @@ export default function OrdensServicoPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<ServiceOrder | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
-  const [clientEquipmentLoading, setClientEquipmentLoading] = useState(false);
-  const [activeSignatureType, setActiveSignatureType] = useState<"client" | "helper" | null>(null);
-
-  const selectedClientEquipments = useMemo(() => {
-    if (!form.clientId) return [];
-    return equipments.filter((eq) => getEquipmentClientId(eq) === form.clientId);
-  }, [equipments, form.clientId]);
-
-  const serviceValueNumber = parseMoney(form.value);
-  const valorTecnicoNumber = parseMoney(form.valorTecnico);
-  const lucroEstimado = serviceValueNumber - valorTecnicoNumber;
+  const [activeSignatureType, setActiveSignatureType] = useState<"admin" | "helper" | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -411,7 +374,7 @@ export default function OrdensServicoPage() {
       value: Number(item.valor ?? 0),
       status: (item.status as ServiceOrderStatus) || "Aberta",
       notes: String(item.observacoes ?? ""),
-      signatureClient: String(item.assinatura_cliente ?? ""),
+      signatureAdmin: String(item.assinatura_admin ?? ""),
       signatureHelper: String(item.assinatura_ajudante ?? ""),
     }));
 
@@ -468,7 +431,7 @@ export default function OrdensServicoPage() {
       materialsPaid: order.materialsPaid,
       status: order.status,
       notes: order.notes,
-      signatureClient: order.signatureClient,
+      signatureAdmin: order.signatureAdmin,
       signatureHelper: order.signatureHelper,
     });
     setShowForm(true);
@@ -501,6 +464,7 @@ export default function OrdensServicoPage() {
       const valorTecnico = parseMoney(form.valorTecnico);
       const materialsValue = parseMoney(form.materialsValue);
       const finalTotal = serviceValue + materialsValue;
+      const lucroCalculado = serviceValue - valorTecnico;
 
       const commonData = {
         cliente_id: form.clientId,
@@ -516,13 +480,13 @@ export default function OrdensServicoPage() {
         ajudante: form.helper || null,
         valor_servicos: serviceValue,
         valor_tecnico: valorTecnico,
-        lucro: serviceValue - valorTecnico,
+        lucro: lucroCalculado,
         valor_materiais: materialsValue,
         materiais_descricao: form.materialsDescription || null,
         valor: finalTotal,
         status: form.status,
         observacoes: form.notes || null,
-        assinatura_cliente: form.signatureClient || null,
+        assinatura_admin: form.signatureAdmin || null,
         assinatura_ajudante: form.signatureHelper || null,
       };
 
@@ -548,7 +512,7 @@ export default function OrdensServicoPage() {
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Ordens de Serviço com Assinaturas</h1>
+          <h1 className="text-2xl font-bold">Ordens de Serviço</h1>
           <button onClick={openNewOrder} className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 font-semibold text-slate-950">
             <Plus className="h-5 w-5" /> Nova OS
           </button>
@@ -600,15 +564,15 @@ export default function OrdensServicoPage() {
               </div>
             </div>
 
-            {/* BOTÕES DE ASSINATURA NO FORMULÁRIO */}
+            {/* BOTÕES DE ASSINATURA CORRIGIDOS (ADM E AJUDANTE) */}
             <div className="flex flex-wrap gap-4 border-t border-slate-800 pt-4">
               <button
                 type="button"
-                onClick={() => setActiveSignatureType("client")}
+                onClick={() => setActiveSignatureType("admin")}
                 className="flex items-center gap-2 border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-cyan-500/20"
               >
                 <PenTool className="h-4 w-4" />
-                {form.signatureClient ? "Alterar Assinatura do Cliente" : "Coletar Assinatura do Cliente"}
+                {form.signatureAdmin ? "Alterar Assinatura do Administrador" : "Assinatura do Administrador (ADM)"}
               </button>
 
               {form.helper && (
@@ -618,7 +582,7 @@ export default function OrdensServicoPage() {
                   className="flex items-center gap-2 border border-purple-500/30 bg-purple-500/10 text-purple-400 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-purple-500/20"
                 >
                   <PenTool className="h-4 w-4" />
-                  {form.signatureHelper ? "Alterar Assinatura do Ajudante" : `Assinatura Recibo (${form.helper})`}
+                  {form.signatureHelper ? "Alterar Assinatura do Ajudante" : `Recibo Diária (${form.helper})`}
                 </button>
               )}
             </div>
@@ -633,11 +597,11 @@ export default function OrdensServicoPage() {
 
       {activeSignatureType && (
         <SignatureModal
-          title={activeSignatureType === "client" ? "Assinatura de Conclusão do Cliente" : `Recibo de Pagamento - ${form.helper}`}
+          title={activeSignatureType === "admin" ? "Assinatura do Administrador (Nando's)" : `Recibo de Pagamento - ${form.helper}`}
           onClose={() => setActiveSignatureType(null)}
           onSave={(dataUrl) => {
-            if (activeSignatureType === "client") {
-              setForm((o) => ({ ...o, signatureClient: dataUrl }));
+            if (activeSignatureType === "admin") {
+              setForm((o) => ({ ...o, signatureAdmin: dataUrl }));
             } else {
               setForm((o) => ({ ...o, signatureHelper: dataUrl }));
             }
