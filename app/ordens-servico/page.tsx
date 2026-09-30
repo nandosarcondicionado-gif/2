@@ -73,8 +73,8 @@ type ServiceOrder = {
   technician: string;
   technicianId: string;
   serviceValue: number;
-  valorTecnico: number; // Custo técnico interno (não vai para o cliente)
-  lucro: number;        // Lucro calculado automaticamente
+  valorTecnico: number;
+  lucro: number;
   materialsValue: number;
   materialsDescription: string;
   materialsPaid: boolean;
@@ -98,8 +98,8 @@ type FormData = {
   date: string;
   technicianId: string;
   technician: string;
-  value: string;         // Valor Balcão (Preço do Cliente)
-  valorTecnico: string;  // Valor Técnico / Custo
+  value: string;
+  valorTecnico: string;
   materialsValue: string;
   materialsDescription: string;
   materialsPaid: boolean;
@@ -146,17 +146,21 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
+// CORREÇÃO: Lê corretamente a vírgula como centavos (ex: 10,00 vira 10 e não 1000)
 function parseMoney(value: string | number | null | undefined) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
   }
   const text = String(value ?? "").trim();
   if (!text) return 0;
-  const normalized = text
+  
+  // Remove caracteres de moeda, espaços, e pontos de milhar
+  let normalized = text
     .replace(/\s/g, "")
     .replace(/R\$/gi, "")
     .replace(/\./g, "")
     .replace(",", ".");
+
   const number = Number(normalized);
   return Number.isFinite(number) ? number : 0;
 }
@@ -213,7 +217,6 @@ function statusClass(status: ServiceOrderStatus) {
   return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
 }
 
-// ATENÇÃO: Aqui o cliente vê APENAS o Valor Balcão (serviceValue). O valor técnico fica oculto.
 function printServiceOrder(order: ServiceOrder) {
   const html = `
 <!DOCTYPE html>
@@ -283,7 +286,6 @@ function printServiceOrder(order: ServiceOrder) {
   printWindow.document.close();
 }
 
-// WhatsApp enviado ao cliente mostra apenas o Valor Balcão
 function sendServiceOrderWhatsApp(order: ServiceOrder) {
   const message = [
     `*NANDO'S AR-CONDICIONADO*`,
@@ -384,23 +386,6 @@ export default function OrdensServicoPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
-
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("novo") === "1") {
-        setForm((old) => ({
-          ...old,
-          value: params.get("valor_servico") ? String(params.get("valor_servico")) : old.value,
-          materialsValue: params.get("materiais") ? String(params.get("materiais")) : old.materialsValue,
-          notes: params.get("observacoes") ? decodeURIComponent(params.get("observacoes")!) : old.notes,
-        }));
-        setShowForm(true);
-      }
-    } catch (e) {
-      console.error(e);
-    }
   }, []);
 
   const filteredOrders = useMemo(() => {
@@ -907,7 +892,6 @@ export default function OrdensServicoPage() {
                 </div>
               </section>
 
-              {/* SEÇÃO DE VALORES ATUALIZADA COM VALOR BALCÃO E VALOR TÉCNICO */}
               <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                 <div className="mb-4 flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-cyan-400" />
@@ -919,7 +903,7 @@ export default function OrdensServicoPage() {
                     <input
                       value={form.value}
                       onChange={(e) => setForm((old) => ({ ...old, value: e.target.value }))}
-                      placeholder="Ex: 200.00"
+                      placeholder="Ex: 150,00"
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     />
                   </div>
@@ -928,7 +912,7 @@ export default function OrdensServicoPage() {
                     <input
                       value={form.valorTecnico}
                       onChange={(e) => setForm((old) => ({ ...old, valorTecnico: e.target.value }))}
-                      placeholder="Ex: 120.00"
+                      placeholder="Ex: 90,00"
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     />
                   </div>
@@ -937,7 +921,7 @@ export default function OrdensServicoPage() {
                     <input
                       value={form.materialsValue}
                       onChange={(e) => setForm((old) => ({ ...old, materialsValue: e.target.value }))}
-                      placeholder="0.00"
+                      placeholder="0,00"
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm outline-none focus:border-cyan-500"
                     />
                   </div>
