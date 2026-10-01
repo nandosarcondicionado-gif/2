@@ -40,20 +40,6 @@ type Helper = {
   funcao?: string;
 };
 
-type Equipment = {
-  id: string;
-  cliente_id?: string | null;
-  clienteId?: string | null;
-  client_id?: string | null;
-  clientId?: string | null;
-  nome?: string | null;
-  descricao?: string | null;
-  equipamento?: string | null;
-  marca?: string | null;
-  modelo?: string | null;
-  [key: string]: unknown;
-};
-
 type ServiceOrder = {
   id: string;
   number: string;
@@ -543,7 +529,9 @@ export default function OrdensServicoPage() {
               <div key={order.id} className="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="font-bold">{order.number} — {order.client}</h3>
-                  <p className="text-xs text-slate-400 mt-1">Data: {formatDate(order.date)} | Técnico: {order.technician || "Nenhum"} | Ajudante: {order.helper || "Nenhum"}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Status: <span className="font-semibold text-cyan-400">{order.status}</span> | Data: {formatDate(order.date)} | Técnico: {order.technician || "Nenhum"}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setSelectedOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-slate-800"><Eye className="h-4 w-4" /> Ver</button>
@@ -572,6 +560,10 @@ export default function OrdensServicoPage() {
                 <span className="font-semibold">{selectedOrder.client}</span>
               </div>
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-slate-400 block text-xs">Status</span>
+                <span className="font-semibold text-cyan-400">{selectedOrder.status}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
                 <span className="text-slate-400 block text-xs">Cidade</span>
                 <span className="font-semibold">{selectedOrder.city || "-"}</span>
               </div>
@@ -584,12 +576,8 @@ export default function OrdensServicoPage() {
                 <span className="font-semibold">{selectedOrder.serviceType}</span>
               </div>
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Técnico</span>
-                <span className="font-semibold">{selectedOrder.technician || "Não informado"}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Ajudante</span>
-                <span className="font-semibold">{selectedOrder.helper || "Nenhum"}</span>
+                <span className="text-slate-400 block text-xs">Técnico / Ajudante</span>
+                <span className="font-semibold">{selectedOrder.technician || "Não"} {selectedOrder.helper ? `/ ${selectedOrder.helper}` : ""}</span>
               </div>
             </div>
 
@@ -626,12 +614,64 @@ export default function OrdensServicoPage() {
               <button onClick={closeForm}><X className="h-5 w-5" /></button>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Cliente</label>
+                <select value={form.clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white">
+                  <option value="">Selecione o cliente...</option>
+                  {clients.map((c) => (<option key={c.id} value={c.id}>{c.nome}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Status do Pedido</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((o) => ({ ...o, status: e.target.value as ServiceOrderStatus }))}
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white font-semibold text-cyan-400"
+                >
+                  <option value="Aberta">Aberta</option>
+                  <option value="Agendada">Agendada</option>
+                  <option value="Em andamento">Em andamento</option>
+                  <option value="Concluída">Concluída</option>
+                  <option value="Cancelada">Cancelada</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Tipo de Serviço</label>
+                <select
+                  value={form.serviceType}
+                  onChange={(e) => setForm((o) => ({ ...o, serviceType: e.target.value as ServiceType }))}
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white"
+                >
+                  <option value="Preventiva">Preventiva</option>
+                  <option value="Corretiva">Corretiva</option>
+                  <option value="Instalação">Instalação</option>
+                  <option value="Higienização">Higienização</option>
+                  <option value="Visita técnica">Visita técnica</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Data</label>
+                <input type="date" value={form.date} onChange={(e) => setForm((o) => ({ ...o, date: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" />
+              </div>
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Equipamento</label>
+                <input value={form.equipment} onChange={(e) => setForm((o) => ({ ...o, equipment: e.target.value }))} placeholder="Ex: Ar Split 12k" className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" />
+              </div>
+            </div>
+
             <div>
-              <label className="text-sm text-slate-400 block mb-1">Cliente</label>
-              <select value={form.clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white">
-                <option value="">Selecione o cliente...</option>
-                {clients.map((c) => (<option key={c.id} value={c.id}>{c.nome}</option>))}
-              </select>
+              <label className="text-sm text-slate-400 block mb-1">Descrição do Serviço Realizado</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm((o) => ({ ...o, description: e.target.value }))}
+                rows={3}
+                placeholder="Descreva o que foi feito no equipamento..."
+                className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white"
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -653,6 +693,17 @@ export default function OrdensServicoPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Valor do Serviço (R$)</label>
+                <input value={form.value} onChange={(e) => setForm((o) => ({ ...o, value: e.target.value }))} placeholder="0,00" className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" />
+              </div>
+              <div>
+                <label className="text-sm text-slate-400 block mb-1">Valor do Técnico (R$)</label>
+                <input value={form.valorTecnico} onChange={(e) => setForm((o) => ({ ...o, valorTecnico: e.target.value }))} placeholder="0,00" className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" />
               </div>
             </div>
 
@@ -681,7 +732,7 @@ export default function OrdensServicoPage() {
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
               <button onClick={closeForm} className="border border-slate-700 px-4 py-2 rounded-xl">Cancelar</button>
-              <button onClick={saveOrder} disabled={saving} className="bg-cyan-500 text-slate-950 font-bold px-6 py-2 rounded-xl">{saving ? "Salvando..." : "Salvar"}</button>
+              <button onClick={saveOrder} disabled={saving} className="bg-cyan-500 text-slate-950 font-bold px-6 py-2 rounded-xl">{saving ? "Salvando..." : "Salvar OS"}</button>
             </div>
           </div>
         </div>
