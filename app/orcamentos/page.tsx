@@ -70,18 +70,21 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
-// CORREÇÃO MONETÁRIA: Converte textos como "150,50" ou "150.50" para número real sem multiplicar errado
+// CORREÇÃO DEFINITIVA DE CENTAVOS: Se o usuário digitar com vírgula ou ponto, trata corretamente como reais e centavos
 function toNumber(value: string | number | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value ?? "").trim();
   if (!text) return 0;
   
-  // Se contiver vírgula e ponto (ex: 1.250,50), remove ponto de milhar e troca vírgula por ponto
-  // Se contiver apenas vírgula (ex: 150,50), troca vírgula por ponto
-  let cleaned = text.replace("R$", "").trim();
+  // Remove R$ e espaços
+  let cleaned = text.replace("R$", "").replace(/\s/g, "");
+  
+  // Se tem vírgula e ponto (ex: 1.250,81)
   if (cleaned.includes(",") && cleaned.includes(".")) {
     cleaned = cleaned.replace(/\./g, "").replace(",", ".");
-  } else if (cleaned.includes(",")) {
+  } 
+  // Se tem apenas vírgula (ex: 325,81), trata a vírgula como separador decimal
+  else if (cleaned.includes(",")) {
     cleaned = cleaned.replace(",", ".");
   }
   
@@ -143,6 +146,8 @@ export default function OrcamentosPage() {
   const discountNumber = Math.min(100, Math.max(0, toNumber(discountPercent)));
   const discountValue = subtotal * (discountNumber / 100);
   const finalValue = subtotal - discountValue;
+  
+  // Usamos toNumber para calcular os materiais com centavos exatos
   const materialsNumber = Math.max(0, toNumber(materialsValue));
   const materialsCostNumber = Math.max(0, toNumber(materialsCostValue));
   const grandTotal = finalValue + materialsNumber;
@@ -314,7 +319,7 @@ export default function OrcamentosPage() {
         }
       }
 
-      // Converte limpo com a função toNumber para garantir centavos corretos
+      // Converte limpo com a função toNumber para garantir centavos corretos em tudo
       const cleanedItems = validItems.map(item => ({
         ...item,
         unitValue: toNumber(item.unitValue),
