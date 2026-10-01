@@ -42,6 +42,7 @@ type Budget = {
   subtotal: number;
   discountPercent: number;
   discountValue: number;
+  referenceValue: number;
   finalValue: number;
   materialsValue: number;
   materialsCostValue: number;
@@ -70,21 +71,16 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
-// CORREÇÃO DEFINITIVA DE CENTAVOS: Se o usuário digitar com vírgula ou ponto, trata corretamente como reais e centavos
+// CORREÇÃO DOS CENTAVOS: Interpreta vírgula ou ponto corretamente sem multiplicar por 100 errado
 function toNumber(value: string | number | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value ?? "").trim();
   if (!text) return 0;
   
-  // Remove R$ e espaços
   let cleaned = text.replace("R$", "").replace(/\s/g, "");
-  
-  // Se tem vírgula e ponto (ex: 1.250,81)
   if (cleaned.includes(",") && cleaned.includes(".")) {
     cleaned = cleaned.replace(/\./g, "").replace(",", ".");
-  } 
-  // Se tem apenas vírgula (ex: 325,81), trata a vírgula como separador decimal
-  else if (cleaned.includes(",")) {
+  } else if (cleaned.includes(",")) {
     cleaned = cleaned.replace(",", ".");
   }
   
@@ -134,7 +130,7 @@ export default function OrcamentosPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState<BudgetItem[]>([newItem()]);
   const [discountPercent, setDiscountPercent] = useState("0");
-  const [desiredAmount, setDesiredAmount] = useState("");
+  const [desiredAmount, setDesiredAmount] = useState(""); // CALCULADORA DE VALOR DESEJADO
   const [materialsValue, setMaterialsValue] = useState("0");
   const [materialsCostValue, setMaterialsCostValue] = useState("0");
   const [negotiationMessage, setNegotiationMessage] = useState("");
@@ -147,10 +143,13 @@ export default function OrcamentosPage() {
   const discountValue = subtotal * (discountNumber / 100);
   const finalValue = subtotal - discountValue;
   
-  // Usamos toNumber para calcular os materiais com centavos exatos
   const materialsNumber = Math.max(0, toNumber(materialsValue));
   const materialsCostNumber = Math.max(0, toNumber(materialsCostValue));
   const grandTotal = finalValue + materialsNumber;
+
+  // Lógica da Calculadora de Valor Desejado
+  const desiredNumber = toNumber(desiredAmount);
+  const referenceValue = desiredNumber > 0 && discountNumber < 100 ? desiredNumber / (1 - discountNumber / 100) : 0;
 
   async function loadData() {
     setLoading(true);
@@ -178,6 +177,7 @@ export default function OrcamentosPage() {
         const subtotalValue = Number(row.subtotal ?? parsedItems.reduce((total, item) => total + itemTotal(item), 0));
         const discount = Number(row.desconto_percentual ?? 0);
         const discountAmount = Number(row.desconto_valor ?? subtotalValue * (discount / 100));
+        const reference = Number(row.valor_referencia ?? 0);
         const final = Number(row.valor_final ?? subtotalValue - discountAmount);
         const materials = Number(row.materiais_valor ?? 0);
         const materialsCost = Number(row.materiais_custo_valor ?? 0);
@@ -198,6 +198,7 @@ export default function OrcamentosPage() {
           subtotal: subtotalValue,
           discountPercent: discount,
           discountValue: discountAmount,
+          referenceValue: reference,
           finalValue: final,
           materialsValue: materials,
           materialsCostValue: materialsCost,
@@ -319,7 +320,6 @@ export default function OrcamentosPage() {
         }
       }
 
-      // Converte limpo com a função toNumber para garantir centavos corretos em tudo
       const cleanedItems = validItems.map(item => ({
         ...item,
         unitValue: toNumber(item.unitValue),
@@ -338,6 +338,7 @@ export default function OrcamentosPage() {
         subtotal,
         desconto_percentual: discountNumber,
         desconto_valor: discountValue,
+        valor_referencia: referenceValue,
         valor_final: finalValue,
         materiais_valor: materialsNumber,
         materiais_custo_valor: materialsCostNumber,
@@ -797,30 +798,71 @@ export default function OrcamentosPage() {
                 </div>
               </div>
 
-              {/* MATERIAIS: VALOR TÉCNICO (CUSTO) VS VALOR BALCÃO (CLIENTE) */}
-              <div className="rounded-2xl bg-slate-950 border border-slate-800 p-4 space-y-4">
-                <h3 className="font-bold text-white text-sm">Controle de Materiais (Custo Loja vs Venda Cliente)</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-400">Valor de Custo dos Materiais (Valor Técnico / Loja)</label>
-                    <input
-                      type="text"
-                      value={materialsCostValue}
-                      onChange={(e) => setMaterialsCostValue(e.target.value)}
-                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-white text-sm"
-                      placeholder="Ex: 150,00"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-400">Valor de Venda dos Materiais (Valor Balcão / Cliente)</label>
-                    <input
-                      type="text"
-                      value={materialsValue}
-                      onChange={(e) => setMaterialsValue(e.target.value)}
-                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-white text-sm"
-                      placeholder="Ex: 300,00"
-                    />
-                  </div>
+              {/* CAMPOS DE DESCONTO E VALOR DESEJADO (CALCULADORA) */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Desconto (%)</label>
+                  <input
+                    type="text"
+                    value={discountPercent}
+                    onChange={(e) => setDiscountPercent(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Valor desejado (Calculadora)</label>
+                  <input
+                    type="text"
+                    value={desiredAmount}
+                    onChange={(e) => setDesiredAmount(e.target.value)}
+                    placeholder="Opcional"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Materiais (Venda Cliente)</label>
+                  <input
+                    type="text"
+                    value={materialsValue}
+                    onChange={(e) => setMaterialsValue(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
+                    placeholder="Ex: 300,00"
+                  />
+                </div>
+              </div>
+
+              {/* VALOR DE CUSTO DOS MATERIAIS (TÉCNICO / LOJA) */}
+              <div className="rounded-2xl bg-slate-950 border border-slate-800 p-4 space-y-2">
+                <h3 className="font-bold text-white text-xs text-slate-400">CONTROLE INTERNO DE MATERIAIS</h3>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Valor de Custo (Preço pago na Loja)</label>
+                  <input
+                    type="text"
+                    value={materialsCostValue}
+                    onChange={(e) => setMaterialsCostValue(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-white text-sm"
+                    placeholder="Ex: 150,00"
+                  />
+                </div>
+              </div>
+
+              {referenceValue > 0 && (
+                <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-4 text-sm text-cyan-300">
+                  <strong>Valor de referência sugerido:</strong> {money(referenceValue)}
+                </div>
+              )}
+
+              {/* RESUMO DE TOTAIS */}
+              <div className="rounded-2xl bg-slate-950 border border-slate-800 p-5 text-white">
+                <div className="grid gap-3 md:grid-cols-2 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-400">Subtotal dos serviços</span><strong>{money(subtotal)}</strong></div>
+                  <div className="flex justify-between text-red-400"><span>Desconto ({discountNumber.toFixed(2)}%)</span><strong>- {money(discountValue)}</strong></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Serviços após desconto</span><strong>{money(finalValue)}</strong></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Materiais</span><strong>{money(materialsNumber)}</strong></div>
+                </div>
+                <div className="mt-4 flex justify-between border-t border-slate-800 pt-4 text-xl font-bold text-cyan-400">
+                  <span>TOTAL GERAL</span>
+                  <span>{money(grandTotal)}</span>
                 </div>
               </div>
 
