@@ -140,10 +140,18 @@ function formatDate(value: string) {
 
 function parseMoney(value: string | number | null | undefined) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const text = String(value ?? "").trim();
+  let text = String(value ?? "").trim();
   if (!text) return 0;
-  const normalized = text.replace(/\s/g, "").replace(/R\$/gi, "").replace(/\./g, "").replace(",", ".");
-  const number = Number(normalized);
+  
+  // Remove R$, espaços e ajusta formato brasileiro para ponto decimal padrão
+  text = text.replace(/\s/g, "").replace(/R\$/gi, "");
+  if (text.includes(",") && text.includes(".")) {
+    text = text.replace(/\./g, "").replace(",", ".");
+  } else if (text.includes(",")) {
+    text = text.replace(",", ".");
+  }
+  
+  const number = Number(text);
   return Number.isFinite(number) ? number : 0;
 }
 
@@ -360,7 +368,7 @@ export default function OrdensServicoPage() {
       technician: String(item.tecnico ?? ""),
       technicianId: String(item.tecnico_id ?? ""),
       helper: String(item.ajudante ?? ""),
-      serviceValue: Number(item.valor_servicos ?? item.valor ?? 0),
+      serviceValue: Number(item.valor_servicios ?? item.valor ?? 0),
       valorTecnico: Number(item.valor_tecnico ?? 0),
       lucro: Number(item.lucro ?? 0),
       materialsValue: Number(item.valor_materiais ?? 0),
@@ -497,7 +505,7 @@ export default function OrdensServicoPage() {
         tecnico: form.technician || null,
         tecnico_id: form.technicianId || null,
         ajudante: form.helper || null,
-        valor_servicos: serviceValue,
+        valor_servicios: serviceValue,
         valor_tecnico: valorTecnico,
         lucro: lucroCalculado,
         valor_materiais: materialsValue,
