@@ -19,7 +19,8 @@ type ServiceOrderStatus =
   | "Agendada"
   | "Em andamento"
   | "Concluída"
-  | "Cancelada";
+  | "Cancelada"
+  | "Assinado";
 
 type ServiceType =
   | "Preventiva"
@@ -38,6 +39,12 @@ type Helper = {
   id: string;
   nome: string;
   funcao?: string;
+};
+
+type Technician = {
+  id: string;
+  nome: string;
+  cargo?: string;
 };
 
 type ServiceOrder = {
@@ -317,6 +324,7 @@ export default function OrdensServicoPage() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -329,10 +337,11 @@ export default function OrdensServicoPage() {
 
   async function loadData() {
     setLoading(true);
-    const [ordersRes, clientsRes, helpersRes] = await Promise.all([
+    const [ordersRes, clientsRes, helpersRes, techRes] = await Promise.all([
       supabase.from("ordens_servico").select("*").order("created_at", { ascending: false }),
       supabase.from("clientes").select("id, nome, cidade").order("nome", { ascending: true }),
       supabase.from("ajudantes").select("id, nome, funcao").order("nome", { ascending: true }),
+      supabase.from("funcionarios").select("id, nome, cargo").order("nome", { ascending: true }),
     ]);
 
     const loadedOrders: ServiceOrder[] = (ordersRes.data ?? []).map((item: any) => ({
@@ -367,6 +376,7 @@ export default function OrdensServicoPage() {
     setOrders(loadedOrders);
     setClients((clientsRes.data ?? []) as Client[]);
     setHelpers((helpersRes.data ?? []) as Helper[]);
+    setTechnicians((techRes.data ?? []) as Technician[]);
     setLoading(false);
   }
 
@@ -450,6 +460,15 @@ export default function OrdensServicoPage() {
       return;
     }
     setForm((old) => ({ ...old, clientId: client.id, client: client.nome, city: client.cidade ?? "", equipmentId: "", equipment: "" }));
+  }
+
+  function handleTechnicianChange(techId: string) {
+    const tech = technicians.find((t) => t.id === techId);
+    if (!tech) {
+      setForm((old) => ({ ...old, technicianId: "", technician: "" }));
+      return;
+    }
+    setForm((old) => ({ ...old, technicianId: tech.id, technician: tech.nome }));
   }
 
   async function saveOrder() {
@@ -628,6 +647,7 @@ export default function OrdensServicoPage() {
                   <option value="Em andamento">Em andamento</option>
                   <option value="Concluída">Concluída</option>
                   <option value="Cancelada">Cancelada</option>
+                  <option value="Assinado">Assinado</option>
                 </select>
               </div>
             </div>
@@ -671,7 +691,18 @@ export default function OrdensServicoPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Técnico</label>
-                <input value={form.technician} onChange={(e) => setForm((o) => ({ ...o, technician: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" placeholder="Nome do técnico" />
+                <select
+                  value={form.technicianId}
+                  onChange={(e) => handleTechnicianChange(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white"
+                >
+                  <option value="">Selecione o técnico...</option>
+                  {technicians.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nome} {t.cargo ? `(${t.cargo})` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Ajudante</label>
