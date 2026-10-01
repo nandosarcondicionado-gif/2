@@ -223,7 +223,7 @@ export default function OrdensServicoPage() {
         cidade: city,
         equipamento: equipment,
         tipo_servico: serviceType,
-        descricao,
+        descricao: description,
         data,
         tecnico: technician,
         ajudante: helper,
