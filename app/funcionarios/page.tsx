@@ -38,17 +38,16 @@ export default function PortalFuncionarioPage() {
     }
 
     setSession(data.session);
-    await buscarServicoPendente(data.session.user.id, email);
+    await buscarServicoPendente(data.session.user.id);
     setLoading(false);
   }
 
-  async function buscarServicoPendente(userId: string, userEmail: string) {
-    // Busca a ordem de serviço pendente vinculada ao funcionário
+  async function buscarServicoPendente(userId: string) {
+    // Busca a ordem de serviço pendente vinculada a este ID (seja como tecnico_id ou ajudante_id)
     const { data, error } = await supabase
       .from("ordens_servico")
       .select("*")
-      .or(`tecnico_id.eq.${userId},email.eq.${userEmail}`)
-      .eq("status_pagamento", "Pendente")
+      .or(`tecnico_id.eq.${userId},ajudante_id.eq.${userId}`)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -58,9 +57,10 @@ export default function PortalFuncionarioPage() {
     } else {
       setServico({
         id: "exemplo-123",
-        titulo: "Serviço Prestado / Diária",
-        endereco: "Endereço registrado na Ordem de Serviço",
+        tipo_servico: "Ordem de Serviço Geral",
+        cidade: "Endereço cadastrado",
         valor_ajudante: 150.00,
+        valor_tecnico: 250.00,
       });
     }
   }
@@ -113,12 +113,12 @@ export default function PortalFuncionarioPage() {
     
     const assinaturaBase64 = canvas.toDataURL("image/png");
 
-    // Salva a assinatura e atualiza o status para pago/assinado no banco
+    // Salva exatamente na coluna 'assinatura_ajudante' (ou ajuste se for técnico) e atualiza o status
     const { error } = await supabase
       .from("ordens_servico")
       .update({ 
-        assinatura_funcionario: assinaturaBase64,
-        status_pagamento: "Assinado/Pago" 
+        assinatura_ajudante: assinaturaBase64,
+        status: "Assinado" 
       })
       .eq("id", servico.id);
 
@@ -205,7 +205,7 @@ export default function PortalFuncionarioPage() {
           <div className="bg-emerald-950/40 border border-emerald-800 p-6 rounded-2xl text-center space-y-3">
             <CheckCircle className="mx-auto text-emerald-400 h-12 w-12" />
             <h2 className="text-lg font-bold text-emerald-200">Recibo Assinado com Sucesso!</h2>
-            <p className="text-xs text-emerald-400">Sua confirmação foi salva e enviada para o painel da empresa.</p>
+            <p className="text-xs text-emerald-400">Sua assinatura foi salva diretamente na Ordem de Serviço.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -214,17 +214,17 @@ export default function PortalFuncionarioPage() {
               <h2 className="text-sm font-bold uppercase tracking-wide text-blue-400">Comprovação de Recebimento</h2>
               
               <div className="space-y-2 text-sm">
-                <p className="font-semibold text-base">{servico?.titulo || "Serviço Realizado"}</p>
+                <p className="font-semibold text-base">{servico?.tipo_servico || "Serviço Realizado"}</p>
                 <div className="flex items-start gap-2 text-slate-300">
                   <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                  <span>{servico?.endereco || "Endereço do cliente"}</span>
+                  <span>{servico?.cidade ? `Cidade: ${servico.cidade}` : "Endereço registrado"}</span>
                 </div>
               </div>
 
               <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
                 <span className="text-xs text-slate-400">Valor a Receber:</span>
                 <span className="font-bold text-emerald-400 text-lg">
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(servico?.valor_ajudante || 150)}
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(servico?.valor_ajudante || servico?.valor_tecnico || 150)}
                 </span>
               </div>
             </div>
