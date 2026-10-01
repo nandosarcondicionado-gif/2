@@ -67,7 +67,6 @@ type ServiceOrder = {
   status: ServiceOrderStatus;
   notes: string;
   signatureAdmin: string;
-  signatureHelper: string;
 };
 
 type FormData = {
@@ -92,7 +91,6 @@ type FormData = {
   status: ServiceOrderStatus;
   notes: string;
   signatureAdmin: string;
-  signatureHelper: string;
 };
 
 const emptyForm: FormData = {
@@ -117,7 +115,6 @@ const emptyForm: FormData = {
   status: "Aberta",
   notes: "",
   signatureAdmin: "",
-  signatureHelper: "",
 };
 
 function formatCurrency(value: number) {
@@ -328,7 +325,7 @@ export default function OrdensServicoPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<ServiceOrder | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
-  const [activeSignatureType, setActiveSignatureType] = useState<"admin" | "helper" | null>(null);
+  const [isSigningAdmin, setIsSigningAdmin] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -365,7 +362,6 @@ export default function OrdensServicoPage() {
       status: (item.status as ServiceOrderStatus) || "Aberta",
       notes: String(item.observacoes ?? ""),
       signatureAdmin: String(item.assinatura_admin ?? ""),
-      signatureHelper: String(item.assinatura_ajudante ?? ""),
     }));
 
     setOrders(loadedOrders);
@@ -422,7 +418,6 @@ export default function OrdensServicoPage() {
       status: order.status,
       notes: order.notes,
       signatureAdmin: order.signatureAdmin,
-      signatureHelper: order.signatureHelper,
     });
     setShowForm(true);
   }
@@ -492,7 +487,6 @@ export default function OrdensServicoPage() {
         status: form.status,
         observacoes: form.notes || null,
         assinatura_admin: form.signatureAdmin || null,
-        assinatura_ajudante: form.signatureHelper || null,
       };
 
       if (editingId) {
@@ -707,27 +701,16 @@ export default function OrdensServicoPage() {
               </div>
             </div>
 
-            {/* BOTÕES DE ASSINATURA */}
+            {/* APENAS A ASSINATURA DO ADMINISTRADOR (ADM) */}
             <div className="flex flex-wrap gap-4 border-t border-slate-800 pt-4">
               <button
                 type="button"
-                onClick={() => setActiveSignatureType("admin")}
+                onClick={() => setIsSigningAdmin(true)}
                 className="flex items-center gap-2 border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-cyan-500/20"
               >
                 <PenTool className="h-4 w-4" />
                 {form.signatureAdmin ? "Alterar Assinatura do Administrador" : "Assinatura do Administrador (ADM)"}
               </button>
-
-              {form.helper && (
-                <button
-                  type="button"
-                  onClick={() => setActiveSignatureType("helper")}
-                  className="flex items-center gap-2 border border-purple-500/30 bg-purple-500/10 text-purple-400 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-purple-500/20"
-                >
-                  <PenTool className="h-4 w-4" />
-                  {form.signatureHelper ? "Alterar Assinatura do Ajudante" : `Recibo Diária (${form.helper})`}
-                </button>
-              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
@@ -738,17 +721,13 @@ export default function OrdensServicoPage() {
         </div>
       )}
 
-      {activeSignatureType && (
+      {isSigningAdmin && (
         <SignatureModal
-          title={activeSignatureType === "admin" ? "Assinatura do Administrador (Nando's)" : `Recibo de Pagamento - ${form.helper}`}
-          onClose={() => setActiveSignatureType(null)}
+          title="Assinatura do Administrador (Nando's)"
+          onClose={() => setIsSigningAdmin(false)}
           onSave={(dataUrl) => {
-            if (activeSignatureType === "admin") {
-              setForm((o) => ({ ...o, signatureAdmin: dataUrl }));
-            } else {
-              setForm((o) => ({ ...o, signatureHelper: dataUrl }));
-            }
-            setActiveSignatureType(null);
+            setForm((o) => ({ ...o, signatureAdmin: dataUrl }));
+            setIsSigningAdmin(false);
           }}
         />
       )}
