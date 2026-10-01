@@ -1,143 +1,57 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
+  CalendarDays,
   Edit,
+  Eye,
+  FileText,
+  MapPin,
   Plus,
   Printer,
+  Search,
+  Trash2,
+  User,
   X,
-  PenTool,
-  Eye,
+  Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-const supabase = createClient();
-
-type ServiceOrderStatus =
-  | "Aberta"
-  | "Agendada"
-  | "Em andamento"
-  | "Concluída"
-  | "Cancelada";
-
-type ServiceType =
-  | "Preventiva"
-  | "Corretiva"
-  | "Instalação"
-  | "Higienização"
-  | "Visita técnica";
-
-type Client = {
-  id: string;
-  nome: string;
-  cidade: string;
-};
-
-type Helper = {
-  id: string;
-  nome: string;
-  funcao?: string;
-};
-
-type Equipment = {
-  id: string;
-  cliente_id?: string | null;
-  clienteId?: string | null;
-  client_id?: string | null;
-  clientId?: string | null;
-  nome?: string | null;
-  descricao?: string | null;
-  equipamento?: string | null;
-  marca?: string | null;
-  modelo?: string | null;
-  [key: string]: unknown;
-};
+type ServiceOrderStatus = "Aberta" | "Em andamento" | "Concluída" | "Cancelada";
 
 type ServiceOrder = {
   id: string;
   number: string;
-  clientId: string;
   client: string;
-  equipment: string;
-  equipmentId: string;
-  equipmentBrand: string;
-  equipmentModel: string;
+  clientId: string;
   city: string;
-  serviceType: ServiceType;
+  equipment: string;
+  serviceType: string;
   description: string;
   date: string;
   technician: string;
-  technicianId: string;
   helper: string;
-  serviceValue: number;
-  valorTecnico: number;
-  lucro: number;
+  status: ServiceOrderStatus;
+  servicesValue: number;
   materialsValue: number;
-  materialsDescription: string;
-  materialsPaid: boolean;
-  materialsPaidAt: string | null;
-  value: number;
-  status: ServiceOrderStatus;
-  notes: string;
-  signatureAdmin: string;
-  signatureHelper: string;
+  profit: number;
+  totalValue: number;
+  observations: string;
 };
 
-type FormData = {
-  clientId: string;
-  client: string;
-  equipmentId: string;
-  equipment: string;
-  equipmentBrand: string;
-  equipmentModel: string;
-  city: string;
-  serviceType: ServiceType;
-  description: string;
-  date: string;
-  technicianId: string;
-  technician: string;
-  helper: string;
-  value: string;
-  valorTecnico: string;
-  materialsValue: string;
-  materialsDescription: string;
-  materialsPaid: boolean;
-  status: ServiceOrderStatus;
-  notes: string;
-  signatureAdmin: string;
-  signatureHelper: string;
+type Client = {
+  id: string;
+  nome: string;
+  cidade: string | null;
 };
 
-const emptyForm: FormData = {
-  clientId: "",
-  client: "",
-  equipmentId: "",
-  equipment: "",
-  equipmentBrand: "",
-  equipmentModel: "",
-  city: "",
-  serviceType: "Preventiva",
-  description: "",
-  date: new Date().toISOString().slice(0, 10),
-  technicianId: "",
-  technician: "",
-  helper: "",
-  value: "",
-  valorTecnico: "",
-  materialsValue: "",
-  materialsDescription: "",
-  materialsPaid: false,
-  status: "Aberta",
-  notes: "",
-  signatureAdmin: "",
-  signatureHelper: "",
-};
+const supabase = createClient();
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function money(value: number | null | undefined) {
+  return Number(value ?? 0).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Number(value || 0));
+  });
 }
 
 function formatDate(value: string) {
@@ -147,540 +61,495 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
-function parseMoney(value: string | number | null | undefined) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const text = String(value ?? "").trim();
-  if (!text) return 0;
-  const normalized = text.replace(/\s/g, "").replace(/R\$/gi, "").replace(/\./g, "").replace(",", ".");
-  const number = Number(normalized);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function escapeHtml(value: unknown) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function SignatureModal({
-  title,
-  onSave,
-  onClose,
-}: {
-  title: string;
-  onSave: (dataUrl: string) => void;
-  onClose: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  const startDrawing = (e: React.TouchEvent | React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    setIsDrawing(true);
-    const rect = canvas.getBoundingClientRect();
-    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-  };
-
-  const draw = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => setIsDrawing(false);
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  };
-
-  const handleSave = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    onSave(canvas.toDataURL("image/png"));
-  };
-
-  return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-5 text-white shadow-2xl">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-bold">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
-        </div>
-        <p className="mb-4 text-xs text-slate-400">Assine no espaço abaixo usando o dedo ou a caneta.</p>
-        <div className="overflow-hidden rounded-xl border border-slate-700 bg-white">
-          <canvas
-            ref={canvasRef}
-            width={350}
-            height={200}
-            className="touch-none cursor-crosshair w-full bg-white"
-            onMouseDown={startDrawing}
-            onMouseMove={draw}
-            onMouseUp={stopDrawing}
-            onTouchStart={startDrawing}
-            onTouchMove={draw}
-            onTouchEnd={stopDrawing}
-          />
-        </div>
-        <div className="mt-4 flex justify-between gap-2">
-          <button onClick={clearCanvas} className="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Limpar</button>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Cancelar</button>
-            <button onClick={handleSave} className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-400">Salvar Assinatura</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// IMPRESSÃO CORRIGIDA: Mostra a Assinatura do Admin e deixa espaço para a Assinatura do Cliente (sem o recibo do ajudante)
-function printServiceOrder(order: ServiceOrder) {
-  const html = `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>OS ${escapeHtml(order.number)}</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 0; padding: 30px; color: #111827; }
-  .header { border-bottom: 2px solid #111827; padding-bottom: 15px; margin-bottom: 25px; }
-  h1 { margin: 0; font-size: 24px; }
-  h2 { font-size: 17px; margin-top: 25px; border-bottom: 1px solid #ddd; padding-bottom: 7px; }
-  .muted { color: #6b7280; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .box { border: 1px solid #ddd; padding: 12px; border-radius: 8px; }
-  .label { color: #6b7280; font-size: 12px; }
-  .value { font-weight: bold; margin-top: 4px; }
-  .total { font-size: 20px; font-weight: bold; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; }
-  .signature-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; min-height: 90px; }
-  .signature-box img { max-height: 70px; margin-top: 5px; }
-  footer { margin-top: 40px; text-align: center; font-size: 12px; color: #6b7280; }
-</style>
-</head>
-<body>
-<div class="header">
-  <h1>Nando's Ar-Condicionado</h1>
-  <div class="muted">Qualidade e confiança em todos os detalhes.</div>
-  <div style="margin-top:8px"><strong>ORDEM DE SERVIÇO ${escapeHtml(order.number)}</strong></div>
-</div>
-<h2>Cliente e Equipe</h2>
-<div class="grid">
-  <div class="box"><div class="label">Nome do Cliente</div><div class="value">${escapeHtml(order.client)}</div></div>
-  <div class="box"><div class="label">Cidade</div><div class="value">${escapeHtml(order.city)}</div></div>
-  <div class="box"><div class="label">Data</div><div class="value">${escapeHtml(formatDate(order.date))}</div></div>
-  <div class="box"><div class="label">Técnico / Ajudante</div><div class="value">${escapeHtml(order.technician || "Não definido")} ${order.helper ? `/ ${escapeHtml(order.helper)}` : ""}</div></div>
-</div>
-<h2>Equipamento e Serviço</h2>
-<div class="box">
-  <div class="label">Equipamento</div>
-  <div class="value">${escapeHtml(order.equipment || "Não informado")}</div>
-  <div style="margin-top:12px" class="label">Tipo de Serviço</div>
-  <div class="value">${escapeHtml(order.serviceType)}</div>
-  <div style="margin-top:12px" class="label">Descrição</div>
-  <div style="margin-top:4px">${escapeHtml(order.description || "Não informada")}</div>
-</div>
-<h2>Valores</h2>
-<div class="grid">
-  <div class="box"><div class="label">Valor do Serviço</div><div class="value">${formatCurrency(order.serviceValue)}</div></div>
-  <div class="box"><div class="label">Total Geral</div><div class="total">${formatCurrency(order.value)}</div></div>
-</div>
-<h2>Assinaturas e Aprovação</h2>
-<div class="signatures">
-  <div class="signature-box">
-    <div class="label">Assinatura do Administrador (Nando's)</div>
-    ${order.signatureAdmin ? `<img src="${order.signatureAdmin}" />` : `<div style="margin-top:40px; color:#999; border-top: 1px dashed #ccc; padding-top: 5px;">Assinatura Digital ADM</div>`}
-  </div>
-  <div class="signature-box">
-    <div class="label">Assinatura do Cliente (Aprovação)</div>
-    <div style="margin-top:40px; color:#999; border-top: 1px dashed #ccc; padding-top: 5px;">Assine aqui</div>
-  </div>
-</div>
-<footer>Nando's Ar-Condicionado</footer>
-<script>window.onload = function() { window.print(); };</script>
-</body>
-</html>
-`;
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
-  printWindow.document.write(html);
-  printWindow.document.close();
+function statusClass(status: ServiceOrderStatus) {
+  if (status === "Concluída") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  if (status === "Cancelada") return "bg-red-500/10 text-red-400 border-red-500/20";
+  if (status === "Em andamento") return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+  return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
 }
 
 export default function OrdensServicoPage() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [helpers, setHelpers] = useState<Helper[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"Todos" | ServiceOrderStatus>("Todos");
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<ServiceOrder | null>(null);
-  const [form, setForm] = useState<FormData>(emptyForm);
-  const [activeSignatureType, setActiveSignatureType] = useState<"admin" | "helper" | null>(null);
+  
+  const [showModal, setShowModal] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<ServiceOrder | null>(null);
+  const [previewOrder, setPreviewOrder] = useState<ServiceOrder | null>(null);
+
+  const [clientId, setClientId] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [city, setCity] = useState("");
+  const [equipment, setEquipment] = useState("");
+  const [serviceType, setServiceType] = useState("Corretiva");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [technician, setTechnician] = useState("");
+  const [helper, setHelper] = useState("");
+  const [servicesValue, setServicesValue] = useState("0");
+  const [materialsValue, setMaterialsValue] = useState("0");
+  const [observations, setObservations] = useState("");
 
   async function loadData() {
     setLoading(true);
-    const [ordersRes, clientsRes, helpersRes] = await Promise.all([
-      supabase.from("ordens_servico").select("*").order("created_at", { ascending: false }),
-      supabase.from("clientes").select("id, nome, cidade").order("nome", { ascending: true }),
-      supabase.from("ajudantes").select("id, nome, funcao").order("nome", { ascending: true }),
-    ]);
+    try {
+      const [ordersRes, clientsRes] = await Promise.all([
+        supabase.from("ordens_servico").select("*").order("created_at", { ascending: false }),
+        supabase.from("clientes").select("id, nome, cidade").order("nome"),
+      ]);
 
-    const loadedOrders: ServiceOrder[] = (ordersRes.data ?? []).map((item: any) => ({
-      id: item.id,
-      number: String(item.numero ?? ""),
-      clientId: String(item.cliente_id ?? ""),
-      client: String(item.cliente_nome ?? ""),
-      equipment: String(item.equipamento ?? ""),
-      equipmentId: String(item.equipamento_id ?? ""),
-      equipmentBrand: String(item.equipamento_marca ?? ""),
-      equipmentModel: String(item.equipamento_modelo ?? ""),
-      city: String(item.cidade ?? ""),
-      serviceType: (item.tipo_servico as ServiceType) || "Preventiva",
-      description: String(item.descricao ?? ""),
-      date: String(item.data ?? ""),
-      technician: String(item.tecnico ?? ""),
-      technicianId: String(item.tecnico_id ?? ""),
-      helper: String(item.ajudante ?? ""),
-      serviceValue: Number(item.valor_servicos ?? item.valor ?? 0),
-      valorTecnico: Number(item.valor_tecnico ?? 0),
-      lucro: Number(item.lucro ?? 0),
-      materialsValue: Number(item.valor_materiais ?? 0),
-      materialsDescription: String(item.materiais_descricao ?? ""),
-      materialsPaid: Boolean(item.materiais_pago ?? false),
-      materialsPaidAt: item.materiais_pago_em ?? null,
-      value: Number(item.valor ?? 0),
-      status: (item.status as ServiceOrderStatus) || "Aberta",
-      notes: String(item.observacoes ?? ""),
-      signatureAdmin: String(item.assinatura_admin ?? ""),
-      signatureHelper: String(item.assinatura_ajudante ?? ""),
-    }));
+      if (ordersRes.error) throw ordersRes.error;
+      if (clientsRes.error) throw clientsRes.error;
 
-    setOrders(loadedOrders);
-    setClients((clientsRes.data ?? []) as Client[]);
-    setHelpers((helpersRes.data ?? []) as Helper[]);
-    setLoading(false);
+      const loadedOrders = (ordersRes.data ?? []).map((row: any) => ({
+        id: row.id,
+        number: row.numero ?? `OS-${String(row.id).slice(0, 6)}`,
+        client: row.cliente_nome ?? "",
+        clientId: row.cliente_id ?? "",
+        city: row.cidade ?? "",
+        equipment: row.equipamento ?? "",
+        serviceType: row.tipo_servico ?? "Corretiva",
+        description: row.descricao ?? "",
+        date: row.data ?? row.created_at ?? new Date().toISOString().slice(0, 10),
+        technician: row.tecnico ?? "",
+        helper: row.ajudante ?? "",
+        status: row.status ?? "Aberta",
+        servicesValue: Number(row.valor_servicos ?? row.valor ?? 0),
+        materialsValue: Number(row.valor_materiais ?? 0),
+        profit: Number(row.lucro ?? 0),
+        totalValue: Number(row.valor ?? 0),
+        observations: row.observacoes ?? "",
+      }));
+
+      setOrders(loadedOrders);
+      setClients((clientsRes.data ?? []) as Client[]);
+    } catch (error) {
+      console.error("Erro ao carregar Ordens de Serviço:", error);
+      alert("Não foi possível carregar as ordens de serviço.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const filteredOrders = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return orders.filter((order) => {
-      const matchesSearch =
-        !term ||
-        order.number.toLowerCase().includes(term) ||
-        order.client.toLowerCase().includes(term) ||
-        order.city.toLowerCase().includes(term) ||
-        order.technician.toLowerCase().includes(term);
-      const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [orders, search, statusFilter]);
+  function resetForm() {
+    setEditingOrder(null);
+    setClientId("");
+    setClientName("");
+    setCity("");
+    setEquipment("");
+    setServiceType("Corretiva");
+    setDescription("");
+    setDate(new Date().toISOString().slice(0, 10));
+    setTechnician("");
+    setHelper("");
+    setServicesValue("0");
+    setMaterialsValue("0");
+    setObservations("");
+  }
 
   function openNewOrder() {
-    setEditingId(null);
-    setForm({ ...emptyForm, date: new Date().toISOString().slice(0, 10) });
-    setShowForm(true);
+    resetForm();
+    setShowModal(true);
   }
 
-  function openEditOrder(order: ServiceOrder) {
-    setEditingId(order.id);
-    setForm({
-      clientId: order.clientId,
-      client: order.client,
-      equipmentId: order.equipmentId,
-      equipment: order.equipment,
-      equipmentBrand: order.equipmentBrand,
-      equipmentModel: order.equipmentModel,
-      city: order.city,
-      serviceType: order.serviceType,
-      description: order.description,
-      date: order.date,
-      technicianId: order.technicianId,
-      technician: order.technician,
-      helper: order.helper,
-      value: String(order.serviceValue),
-      valorTecnico: String(order.valorTecnico || ""),
-      materialsValue: String(order.materialsValue),
-      materialsDescription: order.materialsDescription,
-      materialsPaid: order.materialsPaid,
-      status: order.status,
-      notes: order.notes,
-      signatureAdmin: order.signatureAdmin,
-      signatureHelper: order.signatureHelper,
-    });
-    setShowForm(true);
+  function editOrder(order: ServiceOrder) {
+    setEditingOrder(order);
+    setClientId(order.clientId);
+    setClientName(order.client);
+    setCity(order.city);
+    setEquipment(order.equipment);
+    setServiceType(order.serviceType);
+    setDescription(order.description);
+    setDate(order.date ? order.date.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setTechnician(order.technician);
+    setHelper(order.helper);
+    setServicesValue(String(order.servicesValue));
+    setMaterialsValue(String(order.materialsValue));
+    setObservations(order.observations);
+    setShowModal(true);
   }
 
-  function closeForm() {
-    setShowForm(false);
-    setEditingId(null);
-    setForm(emptyForm);
-  }
-
-  async function handleClientChange(clientId: string) {
-    const client = clients.find((item) => item.id === clientId);
-    if (!client) {
-      setForm((old) => ({ ...old, clientId: "", client: "", city: "", equipmentId: "", equipment: "" }));
-      return;
+  function handleClientChange(id: string) {
+    setClientId(id);
+    const client = clients.find((c) => c.id === id);
+    if (client) {
+      setClientName(client.nome);
+      setCity(client.cidade ?? "");
     }
-    setForm((old) => ({ ...old, clientId: client.id, client: client.nome, city: client.cidade ?? "", equipmentId: "", equipment: "" }));
   }
 
   async function saveOrder() {
-    if (!form.clientId) {
+    if (!clientId) {
       alert("Selecione um cliente.");
       return;
     }
 
     setSaving(true);
     try {
-      const serviceValue = parseMoney(form.value);
-      const valorTecnico = parseMoney(form.valorTecnico);
-      const materialsValue = parseMoney(form.materialsValue);
-      const finalTotal = serviceValue + materialsValue;
-      const lucroCalculado = serviceValue - valorTecnico;
+      let number = editingOrder?.number;
+      if (!number) {
+        const { data } = await supabase
+          .from("ordens_servico")
+          .select("numero")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      const commonData = {
-        cliente_id: form.clientId,
-        cliente_nome: form.client,
-        cidade: form.city,
-        equipamento: form.equipment || "Não informado",
-        equipamento_id: form.equipmentId || null,
-        tipo_servico: form.serviceType,
-        descricao: form.description || null,
-        data: form.date,
-        tecnico: form.technician || null,
-        tecnico_id: form.technicianId || null,
-        ajudante: form.helper || null,
-        valor_servicos: serviceValue,
-        valor_tecnico: valorTecnico,
-        lucro: lucroCalculado,
-        valor_materiais: materialsValue,
-        materiais_descricao: form.materialsDescription || null,
-        valor: finalTotal,
-        status: form.status,
-        observacoes: form.notes || null,
-        assinatura_admin: form.signatureAdmin || null,
-        assinatura_ajudante: form.signatureHelper || null,
-      };
-
-      if (editingId) {
-        const { error } = await supabase.from("ordens_servico").update(commonData).eq("id", editingId);
-        if (error) throw error;
-      } else {
-        const number = `OS-${String(Date.now()).slice(-6)}`;
-        const { error } = await supabase.from("ordens_servico").insert({ ...commonData, numero: number });
-        if (error) throw error;
+        if (data?.numero) {
+          const match = String(data.numero).match(/(\d+)$/);
+          const next = match ? Number(match[1]) + 1 : 1;
+          number = `OS-${String(next).padStart(4, "0")}`;
+        } else {
+          number = "OS-0001";
+        }
       }
 
-      alert("Ordem de serviço salva com sucesso!");
-      closeForm();
+      const sVal = Number(servicesValue) || 0;
+      const mVal = Number(materialsValue) || 0;
+      const total = sVal + mVal;
+
+      const payload = {
+        numero: number,
+        cliente_id: clientId,
+        cliente_nome: clientName,
+        cidade: city,
+        equipamento: equipment,
+        tipo_servico: serviceType,
+        descricao,
+        data,
+        tecnico: technician,
+        ajudante: helper,
+        valor_servicos: sVal,
+        valor_materiais: mVal,
+        valor: total,
+        status: editingOrder?.status ?? "Aberta",
+        observacoes,
+      };
+
+      let error;
+      if (editingOrder) {
+        const res = await supabase.from("ordens_servico").update(payload).eq("id", editingOrder.id);
+        error = res.error;
+      } else {
+        const res = await supabase.from("ordens_servico").insert(payload);
+        error = res.error;
+      }
+
+      if (error) throw error;
+
+      alert(editingOrder ? "Ordem de Serviço atualizada!" : "Ordem de Serviço criada com sucesso!");
+      setShowModal(false);
+      resetForm();
       await loadData();
-    } catch (error: any) {
-      alert(error?.message || "Erro ao salvar.");
+    } catch (error) {
+      console.error("Erro ao salvar OS:", error);
+      alert("Não foi possível salvar a Ordem de Serviço.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
+
+  async function deleteOrder(order: ServiceOrder) {
+    const confirmed = window.confirm(`Deseja realmente excluir a Ordem de Serviço ${order.number}?`);
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase.from("ordens_servico").delete().eq("id", order.id);
+      if (error) throw error;
+      alert("Ordem de Serviço excluída com sucesso.");
+      await loadData();
+    } catch (error) {
+      console.error("Erro ao excluir OS:", error);
+      alert("Não foi possível excluir a Ordem de Serviço.");
+    }
+  }
+
+  async function updateStatus(order: ServiceOrder, status: ServiceOrderStatus) {
+    try {
+      const { error } = await supabase.from("ordens_servico").update({ status }).eq("id", order.id);
+      if (error) throw error;
+      await loadData();
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error);
+      alert("Não foi possível atualizar o status.");
+    }
+  }
+
+  function printOrder(order: ServiceOrder) {
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>${order.number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 30px; color: #222; }
+          h1 { margin-bottom: 5px; }
+          .box { border: 1px solid #ddd; padding: 15px; margin-top: 15px; border-radius: 8px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+          .total { font-size: 18px; font-weight: bold; margin-top: 15px; border-top: 2px solid #222; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <h1>Ordem de Serviço: ${order.number}</h1>
+        <p><strong>Cliente:</strong> ${order.client}</p>
+        <p><strong>Cidade:</strong> ${order.city || "-"}</p>
+        <p><strong>Equipamento:</strong> ${order.equipment || "-"}</p>
+        <p><strong>Data:</strong> ${formatDate(order.date)}</p>
+        <p><strong>Técnico:</strong> ${order.technician || "Não informado"} | <strong>Ajudante:</strong> ${order.helper || "Nenhum"}</p>
+        
+        <div class="box">
+          <h3>Descrição dos Serviços</h3>
+          <p style="white-space: pre-line;">${order.description || "Nenhuma descrição informada."}</p>
+        </div>
+
+        <div class="total">
+          <div class="row"><span>Valor Total:</span> <span>${money(order.totalValue)}</span></div>
+        </div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+  }
+
+  const filteredOrders = useMemo(() => {
+    const query = search.toLowerCase().trim();
+    return orders.filter((o) => {
+      const matchSearch =
+        !query ||
+        o.number.toLowerCase().includes(query) ||
+        o.client.toLowerCase().includes(query) ||
+        o.equipment.toLowerCase().includes(query);
+      const matchStatus = statusFilter === "Todos" || o.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [orders, search, statusFilter]);
+
+  const statusCounts = useMemo(() => {
+    return {
+      total: orders.length,
+      aberta: orders.filter((o) => o.status === "Aberta").length,
+      andamento: orders.filter((o) => o.status === "Em andamento").length,
+      concluida: orders.filter((o) => o.status === "Concluída").length,
+      cancelada: orders.filter((o) => o.status === "Cancelada").length,
+    };
+  }, [orders]);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Ordens de Serviço</h1>
-          <button onClick={openNewOrder} className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 font-semibold text-slate-950">
-            <Plus className="h-5 w-5" /> Nova OS
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold sm:text-3xl text-white">Ordens de Serviço</h1>
+            <p className="text-sm text-slate-400">Acompanhe e gerencie os serviços técnicos executados.</p>
+          </div>
+          <button
+            onClick={openNewOrder}
+            className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400"
+          >
+            <Plus size={20} /> Nova OS
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-          <div className="divide-y divide-slate-800">
-            {filteredOrders.map((order) => (
-              <div key={order.id} className="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h3 className="font-bold">{order.number} — {order.client}</h3>
-                  <p className="text-xs text-slate-400 mt-1">Data: {formatDate(order.date)} | Técnico: {order.technician || "Nenhum"} | Ajudante: {order.helper || "Nenhum"}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setSelectedOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-slate-800"><Eye className="h-4 w-4" /> Ver</button>
-                  <button onClick={() => openEditOrder(order)} className="border border-slate-700 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-slate-800"><Edit className="h-4 w-4" /> Editar</button>
-                  <button onClick={() => printServiceOrder(order)} className="border border-slate-700 p-1.5 rounded-lg hover:bg-slate-800" title="Imprimir OS"><Printer className="h-4 w-4" /></button>
-                </div>
-              </div>
-            ))}
+        {/* CARDS DE STATUS */}
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <button onClick={() => setStatusFilter("Todos")} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800">
+            <div className="text-sm text-slate-400">Total</div>
+            <div className="mt-2 text-2xl font-bold text-white">{statusCounts.total}</div>
+          </button>
+          <button onClick={() => setStatusFilter("Aberta")} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800">
+            <div className="text-sm text-slate-400">Abertas</div>
+            <div className="mt-2 text-2xl font-bold text-yellow-400">{statusCounts.aberta}</div>
+          </button>
+          <button onClick={() => setStatusFilter("Em andamento")} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800">
+            <div className="text-sm text-slate-400">Em andamento</div>
+            <div className="mt-2 text-2xl font-bold text-blue-400">{statusCounts.andamento}</div>
+          </button>
+          <button onClick={() => setStatusFilter("Concluída")} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800">
+            <div className="text-sm text-slate-400">Concluídas</div>
+            <div className="mt-2 text-2xl font-bold text-emerald-400">{statusCounts.concluida}</div>
+          </button>
+          <button onClick={() => setStatusFilter("Cancelada")} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:bg-slate-800">
+            <div className="text-sm text-slate-400">Canceladas</div>
+            <div className="mt-2 text-2xl font-bold text-red-400">{statusCounts.cancelada}</div>
+          </button>
+        </div>
+
+        {/* BUSCA */}
+        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por número, cliente ou equipamento..."
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-4 text-sm text-white outline-none focus:border-cyan-500"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-cyan-500"
+            >
+              <option value="Todos">Todos os status</option>
+              <option value="Aberta">Aberta</option>
+              <option value="Em andamento">Em andamento</option>
+              <option value="Concluída">Concluída</option>
+              <option value="Cancelada">Cancelada</option>
+            </select>
           </div>
+        </div>
+
+        {/* LISTA */}
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 px-5 py-4">
+            <h2 className="font-semibold text-white">Lista de Ordens de Serviço</h2>
+          </div>
+
+          {loading ? (
+            <div className="p-10 text-center text-slate-400">Carregando ordens de serviço...</div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <Wrench size={45} className="mb-4 text-slate-700" />
+              <h2 className="text-lg font-semibold text-white">Nenhuma ordem de serviço encontrada</h2>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {filteredOrders.map((order) => (
+                <div key={order.id} className="p-5 transition hover:bg-slate-800/30">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-bold text-white">{order.number} — {order.client}</h3>
+                        <select
+                          value={order.status}
+                          onChange={(e) => updateStatus(order, e.target.value as ServiceOrderStatus)}
+                          className={`rounded-full border px-3 py-1 text-xs font-semibold outline-none ${statusClass(order.status)} bg-slate-950`}
+                        >
+                          <option value="Aberta">Aberta</option>
+                          <option value="Em andamento">Em andamento</option>
+                          <option value="Concluída">Concluída</option>
+                          <option value="Cancelada">Cancelada</option>
+                        </select>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-2 lg:grid-cols-3">
+                        <span className="flex items-center gap-2"><MapPin size={16} className="text-cyan-400" />{order.city || "-"}</span>
+                        <span className="flex items-center gap-2"><CalendarDays size={16} className="text-cyan-400" />{formatDate(order.date)}</span>
+                        <span>Técnico: <strong className="text-white">{order.technician || "Não informado"}</strong> | Ajudante: <strong className="text-white">{order.helper || "Nenhum"}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button title="Visualizar" onClick={() => { setPreviewOrder(order); setShowPreview(true); }} className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:bg-slate-800"><Eye size={18} /></button>
+                      <button title="Editar" onClick={() => editOrder(order)} className="flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-sm text-cyan-400 hover:bg-slate-800"><Edit size={16} /> Editar</button>
+                      <button title="Imprimir" onClick={() => printOrder(order)} className="rounded-lg border border-slate-700 p-2 text-slate-300 hover:bg-slate-800"><Printer size={18} /></button>
+                      <button title="Excluir" onClick={() => deleteOrder(order)} className="rounded-lg border border-red-500/20 p-2 text-red-400 hover:bg-red-500/10"><Trash2 size={18} /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* MODAL DE VISUALIZAÇÃO ("VER") */}
-      {selectedOrder && (
+      {/* MODAL DE CRIAÇÃO / EDIÇÃO */}
+      {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
-          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4 text-white">
+          <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl p-6 space-y-5 text-white">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h2 className="text-lg font-bold">Detalhes da {selectedOrder.number}</h2>
-              <button onClick={() => setSelectedOrder(null)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Cliente</span>
-                <span className="font-semibold">{selectedOrder.client}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Cidade</span>
-                <span className="font-semibold">{selectedOrder.city || "-"}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Data</span>
-                <span className="font-semibold">{formatDate(selectedOrder.date)}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Tipo de Serviço</span>
-                <span className="font-semibold">{selectedOrder.serviceType}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Técnico</span>
-                <span className="font-semibold">{selectedOrder.technician || "Não informado"}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-slate-400 block text-xs">Ajudante</span>
-                <span className="font-semibold">{selectedOrder.helper || "Nenhum"}</span>
-              </div>
+              <h2 className="text-xl font-bold">{editingOrder ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}</h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white"><X size={22} /></button>
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-sm">
-              <span className="text-slate-400 block text-xs mb-1">Equipamento e Descrição</span>
-              <p className="font-semibold">{selectedOrder.equipment}</p>
-              <p className="text-slate-300 mt-2 text-xs whitespace-pre-wrap">{selectedOrder.description || "Sem descrição"}</p>
-            </div>
-
-            <div className="flex justify-between items-center bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <div className="space-y-4">
               <div>
-                <span className="text-slate-400 block text-xs">Valor Total</span>
-                <span className="text-lg font-bold text-cyan-400">{formatCurrency(selectedOrder.value)}</span>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => { const ord = selectedOrder; setSelectedOrder(null); printServiceOrder(ord); }} className="flex items-center gap-1 border border-slate-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-800">
-                  <Printer className="h-4 w-4" /> Imprimir OS
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FORMULÁRIO DE EDIÇÃO / CRIAÇÃO */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
-          <div className="max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h2 className="text-lg font-bold">{editingId ? "Editar OS" : "Nova OS"}</h2>
-              <button onClick={closeForm}><X className="h-5 w-5" /></button>
-            </div>
-
-            <div>
-              <label className="text-sm text-slate-400 block mb-1">Cliente</label>
-              <select value={form.clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white">
-                <option value="">Selecione o cliente...</option>
-                {clients.map((c) => (<option key={c.id} value={c.id}>{c.nome}</option>))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-slate-400 block mb-1">Técnico</label>
-                <input value={form.technician} onChange={(e) => setForm((o) => ({ ...o, technician: e.target.value }))} className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white" placeholder="Nome do técnico" />
-              </div>
-              <div>
-                <label className="text-sm text-slate-400 block mb-1">Ajudante</label>
+                <label className="mb-1 block text-sm font-medium text-slate-300">Cliente</label>
                 <select
-                  value={form.helper}
-                  onChange={(e) => setForm((o) => ({ ...o, helper: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white"
+                  value={clientId}
+                  onChange={(e) => handleClientChange(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
                 >
-                  <option value="">Selecione o ajudante...</option>
-                  {helpers.map((h) => (
-                    <option key={h.id} value={h.nome}>
-                      {h.nome} {h.funcao ? `(${h.funcao})` : ""}
-                    </option>
-                  ))}
+                  <option value="">Selecione o cliente</option>
+                  {clients.map((c) => (<option key={c.id} value={c.id}>{c.nome}</option>))}
                 </select>
               </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Equipamento</label>
+                  <input value={equipment} onChange={(e) => setEquipment(e.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Data</label>
+                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500" />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Técnico responsável</label>
+                  <input value={technician} onChange={(e) => setTechnician(e.target.value)} placeholder="Ex: Anderson" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-300">Ajudante</label>
+                  <input value={helper} onChange={(e) => setHelper(e.target.value)} placeholder="Ex: Leticia" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-300">Descrição do Serviço</label>
+                <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-white outline-none focus:border-cyan-500" />
+              </div>
             </div>
 
-            {/* BOTÕES DE ASSINATURA */}
-            <div className="flex flex-wrap gap-4 border-t border-slate-800 pt-4">
-              <button
-                type="button"
-                onClick={() => setActiveSignatureType("admin")}
-                className="flex items-center gap-2 border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-cyan-500/20"
-              >
-                <PenTool className="h-4 w-4" />
-                {form.signatureAdmin ? "Alterar Assinatura do Administrador" : "Assinatura do Administrador (ADM)"}
+            <div className="flex justify-end gap-3 border-t border-slate-800 pt-4">
+              <button onClick={() => setShowModal(false)} className="border border-slate-700 px-5 py-3 rounded-xl hover:bg-slate-800">Cancelar</button>
+              <button onClick={saveOrder} disabled={saving} className="bg-cyan-500 text-slate-950 font-bold px-6 py-3 rounded-xl hover:bg-cyan-400 disabled:opacity-50">
+                {saving ? "Salvando..." : "Salvar OS"}
               </button>
-
-              {form.helper && (
-                <button
-                  type="button"
-                  onClick={() => setActiveSignatureType("helper")}
-                  className="flex items-center gap-2 border border-purple-500/30 bg-purple-500/10 text-purple-400 px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-purple-500/20"
-                >
-                  <PenTool className="h-4 w-4" />
-                  {form.signatureHelper ? "Alterar Assinatura do Ajudante" : `Recibo Diária (${form.helper})`}
-                </button>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
-              <button onClick={closeForm} className="border border-slate-700 px-4 py-2 rounded-xl">Cancelar</button>
-              <button onClick={saveOrder} disabled={saving} className="bg-cyan-500 text-slate-950 font-bold px-6 py-2 rounded-xl">{saving ? "Salvando..." : "Salvar"}</button>
             </div>
           </div>
         </div>
       )}
 
-      {activeSignatureType && (
-        <SignatureModal
-          title={activeSignatureType === "admin" ? "Assinatura do Administrador (Nando's)" : `Recibo de Pagamento - ${form.helper}`}
-          onClose={() => setActiveSignatureType(null)}
-          onSave={(dataUrl) => {
-            if (activeSignatureType === "admin") {
-              setForm((o) => ({ ...o, signatureAdmin: dataUrl }));
-            } else {
-              setForm((o) => ({ ...o, signatureHelper: dataUrl }));
-            }
-            setActiveSignatureType(null);
-          }}
-        />
+      {/* PREVIEW MODAL */}
+      {showPreview && previewOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl p-6 space-y-4 text-white">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 className="text-xl font-bold">{previewOrder.number}</h2>
+              <button onClick={() => setShowPreview(false)} className="text-slate-400 hover:text-white"><X size={22} /></button>
+            </div>
+            <div>
+              <p><strong>Cliente:</strong> {previewOrder.client}</p>
+              <p><strong>Equipamento:</strong> {previewOrder.equipment || "-"}</p>
+              <p><strong>Técnico:</strong> {previewOrder.technician || "Não informado"}</p>
+              <div className="mt-4 bg-slate-950 p-4 rounded-xl border border-slate-800 whitespace-pre-line text-sm text-slate-300">
+                {previewOrder.description}
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => printOrder(previewOrder)} className="border border-slate-700 bg-slate-950 px-4 py-2 rounded-xl flex items-center gap-2"><Printer size={16} /> Imprimir</button>
+              <button onClick={() => deleteOrder(previewOrder)} className="border border-red-500/20 text-red-400 bg-red-500/10 px-4 py-2 rounded-xl flex items-center gap-2"><Trash2 size={16} /> Excluir</button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
