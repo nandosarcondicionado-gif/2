@@ -71,7 +71,6 @@ function formatDate(value: string) {
   return date.toLocaleDateString("pt-BR");
 }
 
-// CORREÇÃO DOS CENTAVOS: Interpreta vírgula ou ponto corretamente sem multiplicar por 100 errado
 function toNumber(value: string | number | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value ?? "").trim();
@@ -130,7 +129,7 @@ export default function OrcamentosPage() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState<BudgetItem[]>([newItem()]);
   const [discountPercent, setDiscountPercent] = useState("0");
-  const [desiredAmount, setDesiredAmount] = useState(""); // CALCULADORA DE VALOR DESEJADO
+  const [desiredAmount, setDesiredAmount] = useState("");
   const [materialsValue, setMaterialsValue] = useState("0");
   const [materialsCostValue, setMaterialsCostValue] = useState("0");
   const [negotiationMessage, setNegotiationMessage] = useState("");
@@ -147,7 +146,6 @@ export default function OrcamentosPage() {
   const materialsCostNumber = Math.max(0, toNumber(materialsCostValue));
   const grandTotal = finalValue + materialsNumber;
 
-  // Lógica da Calculadora de Valor Desejado
   const desiredNumber = toNumber(desiredAmount);
   const referenceValue = desiredNumber > 0 && discountNumber < 100 ? desiredNumber / (1 - discountNumber / 100) : 0;
 
@@ -471,9 +469,9 @@ export default function OrcamentosPage() {
 
       alert(`OS ${number} criada com sucesso!`);
       window.location.href = `/ordens-servico`;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao gerar Ordem de Serviço:", error);
-      alert("Não foi possível gerar a Ordem de Serviço.");
+      alert(`Erro detalhado do banco: ${error?.message || JSON.stringify(error)}`);
     } finally {
       setGeneratingOrderId(null);
     }
