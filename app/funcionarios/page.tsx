@@ -26,9 +26,10 @@ export default function PortalFuncionarioPage() {
     }
 
     setLoading(true);
+    // CORRIGIDO AQUI: 'password' em vez de 'senha' para respeitar a tipagem do Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      senha,
+      password: senha,
     });
 
     if (error) {
@@ -43,7 +44,6 @@ export default function PortalFuncionarioPage() {
   }
 
   async function buscarServicoPendente(userId: string) {
-    // Busca a ordem de serviço pendente vinculada a este ID (seja como tecnico_id ou ajudante_id)
     const { data, error } = await supabase
       .from("ordens_servico")
       .select("*")
@@ -113,7 +113,6 @@ export default function PortalFuncionarioPage() {
     
     const assinaturaBase64 = canvas.toDataURL("image/png");
 
-    // Salva exatamente na coluna 'assinatura_ajudante' (ou ajuste se for técnico) e atualiza o status
     const { error } = await supabase
       .from("ordens_servico")
       .update({ 
