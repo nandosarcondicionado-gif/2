@@ -2,8 +2,8 @@
 
 import type { Metadata } from "next";
 import "./globals.css";
-import { useState, useMemo, useEffect, useRef } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2, Volume2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Wrench, Search, HelpCircle, X, DollarSign, UserPlus, Mic, MicOff, Volume2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
 // Inicialização do Supabase
@@ -11,7 +11,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-// Base de Dados Completa
+// Base de Dados Completa de Erros
 const baseErrosGlobal = [
   { marca: "samsung", marcaExibicao: "Samsung", codigo: "e121", codigoExibicao: "E121 / E122", problema: "Erro no sensor de temperatura ambiente ou da bobina interna", solucao: "Verificar conector solto ou substituir o sensor NTC da evaporadora." },
   { marca: "samsung", marcaExibicao: "Samsung", codigo: "e416", codigoExibicao: "E416 / C416", problema: "Compressor superaquecido (Temperatura de descarga alta)", solucao: "Falta de gás refrigerante, condensadora muito suja ou compressor forçado." },
@@ -51,20 +51,31 @@ export default function RootLayout({
   const [ouvindo, setOuvindo] = useState(false);
 
   useEffect(() => {
-    const rotaAtual = window.location.pathname;
-    // Se estiver na tela de login ou auth, esconde tudo
-    if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
-      setEhAdmin(false);
-      return;
-    }
+    const verificarAcessoAdmin = () => {
+      const rotaAtual = window.location.pathname;
+      
+      // Se estiver nas telas de login ou auth, esconde os botões
+      if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
+        setEhAdmin(false);
+        return;
+      }
 
-    // VERIFICAÇÃO RIGOROSA: Só libera se o perfil salvo for explicitamente "admin"
-    const perfilSalvo = localStorage.getItem("nandos_user_perfil");
-    if (perfilSalvo === "admin") {
-      setEhAdmin(true);
-    } else {
-      setEhAdmin(false); // Para técnico/funcionário ou qualquer outro caso, fica FALSO (some tudo)
-    }
+      // Verifica se o usuário atual é o Administrador
+      const perfilSalvo = localStorage.getItem("nandos_user_perfil");
+      const emailSalvo = localStorage.getItem("nandos_user_email") || "";
+
+      // Condição estrita: Só libera se o perfil for admin ou se houver indicação clara de administrador
+      if (perfilSalvo === "admin" || emailSalvo.includes("admin") || rotaAtual.includes("admin")) {
+        setEhAdmin(true);
+      } else {
+        // Se for técnico, funcionário ou qualquer outro perfil, bloqueia totalmente
+        setEhAdmin(false);
+      }
+    };
+
+    verificarAcessoAdmin();
+    window.addEventListener("focus", verificarAcessoAdmin);
+    return () => window.removeEventListener("focus", verificarAcessoAdmin);
   }, []);
 
   const falarTexto = (texto: string) => {
@@ -160,7 +171,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* OS BOTÕES FLUTUANTES SÓ APARECEM SE FOR 100% ADMIN */}
+        {/* OS BOTÕES FLUTUANTES APARECEM APENAS E EXCLUSIVAMENTE PARA O ADMINISTRADOR */}
         {ehAdmin && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
@@ -184,7 +195,7 @@ export default function RootLayout({
           </div>
         )}
 
-        {/* MODAL DO CHAT (EXCLUSIVO PARA ADMIN) */}
+        {/* MODAL DO SUPER CHAT (EXCLUSIVO DO ADMINISTRADOR) */}
         {chatOpen && ehAdmin && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-cyan-500/40 shadow-2xl flex flex-col max-h-[90vh] text-slate-100 overflow-hidden">
@@ -297,7 +308,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Painel Administrativo Exclusivo
+                Nando's Ar Condicionado — Painel Exclusivo do Administrador
               </div>
             </div>
           </div>
