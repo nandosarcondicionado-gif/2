@@ -130,10 +130,10 @@ export default function ContratosPage() {
         .select("*")
         .order("created_at", { ascending: false }),
 
+      // Removido o filtro .eq("ativo", true) para trazer todos os clientes cadastrados
       supabase
         .from("clientes")
         .select("id,nome,cidade,endereco,documento,ativo")
-        .eq("ativo", true)
         .order("nome"),
     ]);
 
@@ -625,9 +625,9 @@ export default function ContratosPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="rounded-lg bg-slate-950 border border-slate-700 px-4 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
             >
-              <option value="Todos">Todos os status</option>
+              <option value="Todos" className="bg-slate-900 text-white">Todos os status</option>
               {statusOptions.map((status) => (
-                <option key={status} value={status}>{status}</option>
+                <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>
               ))}
             </select>
           </div>
@@ -755,9 +755,11 @@ export default function ContratosPage() {
                   onChange={(e) => handleClientChange(e.target.value)}
                   className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
                 >
-                  <option value="">Selecione um cliente</option>
+                  <option value="" className="bg-slate-900 text-white">Selecione um cliente</option>
                   {clients.map((client) => (
-                    <option key={client.id} value={client.id}>{client.nome}</option>
+                    <option key={client.id} value={client.id} className="bg-slate-900 text-white">
+                      {client.nome} {client.cidade ? `(${client.cidade})` : ""}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -779,9 +781,9 @@ export default function ContratosPage() {
                     onChange={(e) => handlePlanChange(e.target.value as Plan)}
                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
                   >
-                    <option value="Residencial">Residencial (R$ 149 base)</option>
-                    <option value="Comercial">Comercial (R$ 299 base)</option>
-                    <option value="Empresarial">Empresarial (R$ 599 base)</option>
+                    <option value="Residencial" className="bg-slate-900 text-white">Residencial (R$ 149 base)</option>
+                    <option value="Comercial" className="bg-slate-900 text-white">Comercial (R$ 299 base)</option>
+                    <option value="Empresarial" className="bg-slate-900 text-white">Empresarial (R$ 599 base)</option>
                   </select>
                 </div>
               </div>
@@ -842,7 +844,7 @@ export default function ContratosPage() {
                   className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
                 >
                   {statusOptions.map((status) => (
-                    <option key={status} value={status}>{status}</option>
+                    <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>
                   ))}
                 </select>
               </div>
@@ -896,9 +898,9 @@ export default function ContratosPage() {
                 onChange={(e) => setCarneParcelas(Number(e.target.value))}
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-slate-100 outline-none text-sm"
               >
-                <option value={3}>3 Meses (Trimestral)</option>
-                <option value={6}>6 Meses (Semestral)</option>
-                <option value={12}>12 Meses (Anual)</option>
+                <option value={3} className="bg-slate-900 text-white">3 Meses (Trimestral)</option>
+                <option value={6} className="bg-slate-900 text-white">6 Meses (Semestral)</option>
+                <option value={12} className="bg-slate-900 text-white">12 Meses (Anual)</option>
               </select>
             </div>
             <div className="flex justify-end gap-3">
