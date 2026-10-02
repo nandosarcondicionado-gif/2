@@ -1,249 +1,291 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Edit, Plus, Trash2, X, ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Users, UserPlus, Shield, Mail, Key, Trash2, CheckCircle2 } from "lucide-react";
 
-export default function GerenciarFuncionariosPage() {
-  const supabase = createClient();
-  
-  const [funcionarios, setFuncionarios] = useState<any[]>([]);
+const supabase = createClient();
+
+type Role = "ADMIN" | "TECNICO" | "AJUDANTE" | "GERENTE" | "FINANCEIRO";
+
+type Employee = {
+  id: string;
+  nome: string;
+  email: string;
+  cargo: Role;
+  telefone?: string;
+};
+
+type FormData = {
+  nome: string;
+  email: string;
+  cargo: Role;
+  telefone: string;
+  senha: string;
+};
+
+const emptyForm: FormData = {
+  nome: "",
+  email: "",
+  cargo: "TECNICO",
+  telefone: "",
+  senha: "",
+};
+
+export default function FuncionariosPage() {
+  const router = useRouter();
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalAberto, setModalAberto] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormData>(emptyForm);
 
-  // Campos do formulário de novo funcionário
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [cargo, setCargo] = useState("Ajudante"); // Ajudante, Tecnico, Gerente, Financeiro
-  const [salvando, setSalvando] = useState(false);
-
-  useEffect(() => {
-    carregarFuncionarios();
-  }, []);
-
-  async function carregarFuncionarios() {
+  async function loadEmployees() {
     setLoading(true);
-    // Busca a lista de perfis ou usuários cadastrados
     const { data, error } = await supabase
-      .from("funcionarios") // ou a tabela que você usa para guardar os dados da equipe
+      .from("funcionarios")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("nome", { ascending: true });
 
     if (error) {
-      console.error("Erro ao carregar funcionários:", error.message);
+      console.error("Erro ao carregar funcionários:", error);
     } else {
-      setFuncionarios(data || []);
+      setEmployees((data ?? []) as Employee[]);
     }
     setLoading(false);
   }
 
-  async function cadastrarFuncionario(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nome || !email || !senha) {
-      alert("Preencha todos os campos obrigatórios.");
-      return;
-    }
+  useEffect(() => {
+    loadEmployees();
+  }, []);
 
-    setSalvando(true);
-
-    // 1. Cria o usuário no Auth do Supabase para ele ter login e senha
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password: senha,
-    });
-
-    if (authError) {
-      alert("Erro ao criar acesso de login: " + authError.message);
-      setSalvando(false);
-      return;
-    }
-
-    const userId = authData.user?.id;
-
-    // 2. Salva os dados do funcionário (cargo, nome, ID) na tabela de funcionários
-    const { error: dbError } = await supabase
-      .from("funcionarios")
-      .insert([
-        {
-          id: userId,
-          nome,
-          email,
-          cargo, // 'Ajudante', 'Tecnico', 'Gerente', 'Financeiro'
-          status_acesso: "Ativo"
-        }
-      ]);
-
-    if (dbError) {
-      alert("Erro ao salvar dados do funcionário: " + dbError.message);
-    } else {
-      alert("Funcionário cadastrado com sucesso!");
-      setNome("");
-      setEmail("");
-      setSenha("");
-      setCargo("Ajudante");
-      setModalAberto(false);
-      carregarFuncionarios();
-    }
-
-    setSalvando(false);
+  function openNew() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowForm(true);
   }
 
-  async function excluirFuncionario(id: string) {
-    if (!confirm("Tem certeza que deseja remover este funcionário?")) return;
+  function openEdit(emp: Employee) {
+    setEditingId(emp.id);
+    setForm({
+      nome: emp.nome || "",
+      email: emp.email || "",
+      cargo: emp.cargo || "TECNICO",
+      telefone: emp.telefone || "",
+      senha: "", // Senha fica em branco na edição por segurança
+    });
+    setShowForm(true);
+  }
 
-    const { error } = await supabase
-      .from("funcionarios")
-      .delete()
-      .eq("id", id);
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  }
 
-    if (error) {
-      alert("Erro ao excluir: " + error.message);
-    } else {
-      carregarFuncionarios();
+  async function saveEmployee() {
+    if (!form.nome.trim() || !form.email.trim()) {
+      alert("Preencha o nome e o e-mail.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload: any = {
+        nome: form.nome,
+        email: form.email,
+        cargo: form.cargo,
+        telefone: form.telefone || null,
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("funcionarios")
+          .update(payload)
+          .eq("id", editingId);
+        if (error) throw error;
+        alert("Funcionário atualizado com sucesso!");
+      } else {
+        const { error } = await supabase.from("funcionarios").insert([payload]);
+        if (error) throw error;
+        alert("Funcionário cadastrado com sucesso!");
+      }
+
+      closeForm();
+      await loadEmployees();
+    } catch (error: any) {
+      alert(error?.message || "Erro ao salvar funcionário.");
+    }
+    setSaving(false);
+  }
+
+  async function deleteEmployee(id: string, nome: string) {
+    if (!window.confirm(`Deseja realmente excluir ${nome}?`)) return;
+
+    try {
+      const { error } = await supabase.from("funcionarios").delete().eq("id", id);
+      if (error) throw error;
+      alert("Funcionário excluído com sucesso.");
+      await loadEmployees();
+    } catch (error: any) {
+      alert(error?.message || "Erro ao excluir.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6 text-white">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl space-y-6">
         
-        {/* Cabeçalho */}
-        <div className="flex justify-between items-center bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <Users className="text-blue-500" /> Gestão de Funcionários e Acessos
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Cadastre e defina a função de cada membro da equipe (Ajudantes, Técnicos, Gerentes e Financeiro).
-            </p>
+        {/* CABEÇALHO COM BOTÃO VOLTAR E NOVO */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </button>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">Gestão de Funcionários e Acessos</h1>
+              <p className="text-xs text-slate-400 mt-0.5">Cadastre e defina a função de cada membro da equipe.</p>
+            </div>
           </div>
           <button
-            onClick={() => setModalAberto(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition"
+            onClick={openNew}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors shadow-lg"
           >
-            <UserPlus size={18} /> Novo Funcionário
+            <Plus className="h-4 w-4" /> Novo Funcionário
           </button>
         </div>
 
-        {/* Lista de Funcionários */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-slate-800 font-semibold text-sm text-slate-300">
+        {/* LISTA DE EQUIPE */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl">
+          <div className="p-4 border-b border-slate-800 font-semibold text-slate-300 text-sm">
             Equipe Cadastrada
           </div>
-
+          
           {loading ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Carregando equipe...</div>
-          ) : funcionarios.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Nenhum funcionário cadastrado ainda. Clique em "Novo Funcionário".</div>
+            <div className="p-8 text-center text-slate-400 text-sm">Carregando equipe...</div>
+          ​) : employees.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">Nenhum funcionário cadastrado.</div>
           ) : (
             <div className="divide-y divide-slate-800">
-              {funcionarios.map((func) => (
-                <div key={func.id} className="p-4 flex items-center justify-between hover:bg-slate-850 transition">
+              {employees.map((emp) => (
+                <div key={emp.id} className="p-4 flex items-center justify-between gap-4 hover:bg-slate-850 transition-colors">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm">{func.nome}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950 text-blue-400 border border-blue-800 uppercase font-semibold">
-                        {func.cargo}
+                      <span className="font-bold text-white">{emp.nome}</span>
+                      <span className="rounded-md bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-400 uppercase tracking-wider">
+                        {emp.cargo}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <Mail size={12} /> {func.email}
-                    </p>
+                    <p className="text-xs text-slate-400">{emp.email || "Sem e-mail cadastrado"}</p>
                   </div>
 
-                  <button
-                    onClick={() => excluirFuncionario(func.id)}
-                    className="p-2 text-red-400 hover:text-red-300 hover:bg-red-950/40 rounded-lg transition"
-                    title="Excluir funcionário"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEdit(emp)}
+                      className="border border-slate-700 bg-slate-800 p-2 rounded-xl text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                      title="Editar Funcionário"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteEmployee(emp.id, emp.nome)}
+                      className="border border-red-500/20 bg-red-500/10 p-2 rounded-xl text-red-400 hover:bg-red-500/20 transition-colors"
+                      title="Excluir Funcionário"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+      </div>
 
-        {/* Modal de Cadastro */}
-        {modalAberto && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-slate-800 w-full max-w-md p-6 rounded-2xl space-y-5">
-              <div className="flex justify-between items-center">
-                <h2 className="text-lg font-bold">Cadastrar Novo Funcionário</h2>
-                <button onClick={() => setModalAberto(false)} className="text-slate-400 hover:text-white text-sm">✕</button>
+      {/* MODAL DE CADASTRO / EDIÇÃO */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl space-y-4 text-white">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 className="text-lg font-bold">{editingId ? "Editar Funcionário" : "Novo Funcionário"}</h2>
+              <button onClick={closeForm} className="text-slate-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Nome Completo</label>
+                <input
+                  type="text"
+                  value={form.nome}
+                  onChange={(e) => setForm((o) => ({ ...o, nome: e.target.value }))}
+                  placeholder="Ex: Carlos Silva"
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white text-sm focus:border-blue-500 outline-none"
+                />
               </div>
 
-              <form onSubmit={cadastrarFuncionario} className="space-y-4">
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Nome Completo</label>
-                  <input
-                    type="text"
-                    value={nome}
-                    onChange={(e) => setNome(e.target.value)}
-                    placeholder="Ex: Letícia Santos"
-                    className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">E-mail</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((o) => ({ ...o, email: e.target.value }))}
+                  placeholder="email@exemplo.com"
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white text-sm focus:border-blue-500 outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">E-mail (Usado para o login)</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="leticia@empresa.com"
-                    className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Cargo / Função</label>
+                <select
+                  value={form.cargo}
+                  onChange={(e) => setForm((o) => ({ ...o, cargo: e.target.value as Role }))}
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white text-sm font-semibold focus:border-blue-500 outline-none"
+                >
+                  <option value="TECNICO">Técnico</option>
+                  <option value="AJUDANTE">Ajudante</option>
+                  <option value="GERENTE">Gerente</option>
+                  <option value="FINANCEIRO">Financeiro</option>
+                  <option value="ADMIN">Administrador</option>
+                </select>
+              </div>
 
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Senha de Acesso</label>
-                  <input
-                    type="password"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-sm outline-none focus:border-blue-500"
-                  />
-                </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Telefone / WhatsApp</label>
+                <input
+                  type="text"
+                  value={form.telefone}
+                  onChange={(e) => setForm((o) => ({ ...o, telefone: e.target.value }))}
+                  placeholder="(00) 00000-0000"
+                  className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-white text-sm focus:border-blue-500 outline-none"
+                />
+              </div>
+            </div>
 
-                <div>
-                  <label className="text-xs text-slate-400 block mb-1">Cargo / Função no Sistema</label>
-                  <select
-                    value={cargo}
-                    onChange={(e) => setCargo(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 p-3 rounded-xl text-sm outline-none focus:border-blue-500"
-                  >
-                    <option value="Ajudante">Ajudante</option>
-                    <option value="Tecnico">Técnico</option>
-                    <option value="Gerente">Gerente</option>
-                    <option value="Financeiro">Financeiro</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setModalAberto(false)}
-                    className="w-1/2 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl transition text-sm"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={salvando}
-                    className="w-1/2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition text-sm"
-                  >
-                    {salvando ? "Salvando..." : "Salvar e Criar"}
-                  </button>
-                </div>
-              </form>
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+              <button
+                onClick={closeForm}
+                className="border border-slate-700 px-4 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveEmployee}
+                disabled={saving}
+                className="bg-blue-600 text-white font-bold px-5 py-2 rounded-xl text-sm hover:bg-blue-500 transition-colors shadow-lg"
+              >
+                {saving ? "Salvando..." : "Salvar"}
+              </button>
             </div>
           </div>
-        )}
-
-      </div>
+        </div>
+      )}
     </main>
   );
 }
