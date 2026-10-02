@@ -130,7 +130,6 @@ export default function ContratosPage() {
         .select("*")
         .order("created_at", { ascending: false }),
 
-      // Traz todos os clientes cadastrados sem travas
       supabase
         .from("clientes")
         .select("id,nome,cidade,endereco,documento,ativo")
