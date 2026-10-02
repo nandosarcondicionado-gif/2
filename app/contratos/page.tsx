@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Plus,
   Search,
@@ -15,6 +15,8 @@ import {
   Ban,
   Printer,
   FileCode,
+  PenTool,
+  Settings,
 } from "lucide-react";
 import { createClient } from "../../lib/supabase/client";
 
@@ -115,9 +117,15 @@ export default function ContratosPage() {
   const [selectedForCarne, setSelectedForCarne] = useState<Contract | null>(null);
   const [carneParcelas, setCarneParcelas] = useState(12);
 
+  // Estados para a Assinatura Salva do Administrador
+  const [configAssinaturaOpen, setConfigAssinaturaOpen] = useState(false);
+  const [assinaturaSalva, setAssinaturaSalva] = useState<string | null>(null);
+  
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedContract, setSelectedContract] =
-    useState<Contract | null>(null);
+  const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
 
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -126,34 +134,23 @@ export default function ContratosPage() {
     setLoading(true);
 
     const [contractsResult, clientsResult] = await Promise.all([
-      supabase
-        .from("contratos")
-        .select("*")
-        .order("created_at", { ascending: false }),
-
-      supabase
-        .from("clientes")
-        .select("id, nome, cidade, endereco, documento, status, telefone")
-        .order("nome"),
+      supabase.from("contratos").select("*").order("created_at", { ascending: false }),
+      supabase.from("clientes").select("id, nome, cidade, endereco, documento, status, telefone").order("nome"),
     ]);
 
-    if (contractsResult.error) {
-      console.error("Erro ao carregar contratos:", contractsResult.error);
-    } else {
-      setContracts((contractsResult.data || []) as Contract[]);
-    }
-
-    if (clientsResult.error) {
-      console.error("Erro ao carregar clientes:", clientsResult.error);
-    } else {
-      setClients((clientsResult.data || []) as Client[]);
-    }
+    if (!contractsResult.error) setContracts((contractsResult.data || []) as Contract[]);
+    if (!clientsResult.error) setClients((clientsResult.data || []) as Client[]);
 
     setLoading(false);
   }
 
   useEffect(() => {
     loadData();
+    // Carregar assinatura salva do navegador, se houver
+    const assinaturaArmazenada = localStorage.getItem("nandos_assinatura_admin");
+    if (assinaturaArmazenada) {
+      setAssinaturaSalva(assinaturaArmazenada);
+    }
   }, []);
 
   useEffect(() => {
@@ -162,9 +159,7 @@ export default function ContratosPage() {
     let calculado = base;
     const qtd = typeof form.quantidade_equipamentos === "number" ? form.quantidade_equipamentos : 1;
 
-    if (qtd === 1) {
-      calculado = base;
-    } else if (qtd === 2 || qtd === 3) {
+    if (qtd === 2 || qtd === 3) {
       calculado = qtd * (base * 0.90);
     } else if (qtd >= 4) {
       calculado = qtd * (base * 0.82);
@@ -180,16 +175,12 @@ export default function ContratosPage() {
   function openNew() {
     setEditingId(null);
     const config = plansConfig["Residencial"];
-    setForm({
-      ...emptyForm,
-      observacoes: config.clausulasCompletas
-    });
+    setForm({ ...emptyForm, observacoes: config.clausulasCompletas });
     setModalOpen(true);
   }
 
   function openEdit(contract: Contract) {
     setEditingId(contract.id);
-
     setForm({
       cliente_id: contract.cliente_id || "",
       cidade: contract.cidade || "",
@@ -201,7 +192,6 @@ export default function ContratosPage() {
       status: contract.status,
       observacoes: contract.observacoes || "",
     });
-
     setModalOpen(true);
   }
 
@@ -219,7 +209,6 @@ export default function ContratosPage() {
 
   function handleClientChange(clientId: string) {
     const client = clients.find((item) => item.id === clientId);
-
     setForm((previous) => ({
       ...previous,
       cliente_id: clientId,
@@ -237,43 +226,30 @@ export default function ContratosPage() {
   }
 
   async function generateNumber() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("contratos")
       .select("numero")
       .order("created_at", { ascending: false })
       .limit(1);
 
-    if (error || !data || data.length === 0) {
-      return "CTR-0001";
-    }
-
+    if (!data || data.length === 0) return "CTR-0001";
     const lastNumber = String(data[0].numero || "CTR-0000");
     const match = lastNumber.match(/(\d+)$/);
-
-    if (!match) {
-      return "CTR-0001";
-    }
-
-    const next = Number(match[1]) + 1;
-    return `CTR-${String(next).padStart(4, "0")}`;
+    if (!match) return "CTR-0001";
+    return `CTR-${String(Number(match[1]) + 1).padStart(4, "0")}`;
   }
 
   async function saveContract(event: React.FormEvent) {
     event.preventDefault();
-
     if (!form.cliente_id) {
       alert("Selecione um cliente.");
       return;
     }
 
     const client = clients.find((item) => item.id === form.cliente_id);
-    if (!client) {
-      alert("Cliente não encontrado.");
-      return;
-    }
+    if (!client) return;
 
     setSaving(true);
-
     try {
       const qtdFinal = typeof form.quantidade_equipamentos === "number" && form.quantidade_equipamentos > 0 ? form.quantidade_equipamentos : 1;
       const baseData = {
@@ -290,19 +266,12 @@ export default function ContratosPage() {
       };
 
       if (editingId) {
-        const { error } = await supabase
-          .from("contratos")
-          .update(baseData)
-          .eq("id", editingId);
-
+        const { error } = await supabase.from("contratos").update(baseData).eq("id", editingId);
         if (error) throw error;
         alert("Contrato atualizado com sucesso.");
       } else {
         const numero = await generateNumber();
-        const { error } = await supabase
-          .from("contratos")
-          .insert({ numero, ...baseData });
-
+        const { error } = await supabase.from("contratos").insert({ numero, ...baseData });
         if (error) throw error;
         alert("Contrato criado com sucesso.");
       }
@@ -310,7 +279,6 @@ export default function ContratosPage() {
       closeModal();
       await loadData();
     } catch (error: any) {
-      console.error(error);
       alert(`Erro ao salvar contrato: ${error.message}`);
     } finally {
       setSaving(false);
@@ -319,13 +287,11 @@ export default function ContratosPage() {
 
   async function deleteContract(id: string) {
     if (!window.confirm("Tem certeza que deseja excluir este contrato?")) return;
-
     const { error } = await supabase.from("contratos").delete().eq("id", id);
     if (error) {
       alert(`Erro ao excluir: ${error.message}`);
       return;
     }
-
     setContracts((prev) => prev.filter((c) => c.id !== id));
     if (selectedContract?.id === id) {
       setSelectedContract(null);
@@ -334,7 +300,70 @@ export default function ContratosPage() {
     alert("Contrato excluído.");
   }
 
-  function imprimirContrato(contract: Contract) {
+  // Funções do Canvas de Assinatura do Administrador
+  function limparCanvasAssinatura() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function iniciarDesenho(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }
+
+  function desenhar(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = "touches" in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = "touches" in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+
+  function pararDesenho() {
+    setIsDrawing(false);
+  }
+
+  function salvarAssinaturaAdmin() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    localStorage.setItem("nandos_assinatura_admin", dataUrl);
+    setAssinaturaSalva(dataUrl);
+    setConfigAssinaturaOpen(false);
+    alert("Assinatura do administrador salva com sucesso! Ela será aplicada automaticamente em todos os contratos.");
+  }
+
+  function removerAssinaturaAdmin() {
+    if (!window.confirm("Deseja remover a assinatura salva?")) return;
+    localStorage.removeItem("nandos_assinatura_admin");
+    setAssinaturaSalva(null);
+    alert("Assinatura removida.");
+  }
+
+  function imprimirContratoComAssinaturaSalva(contract: Contract) {
     const clientData = clients.find((c) => c.id === contract.cliente_id);
     const win = window.open("", "_blank");
     if (!win) {
@@ -348,6 +377,10 @@ export default function ContratosPage() {
       year: "numeric",
     });
 
+    const assinaturaHtml = assinaturaSalva
+      ? `<img src="${assinaturaSalva}" alt="Assinatura Salva" style="max-height: 55px; display: block; margin: 0 auto;" />`
+      : `<div style="height: 35px;"></div><p style="font-size: 9px; color: #64748b;">(Cadastre sua assinatura no painel)</p>`;
+
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -356,50 +389,28 @@ export default function ContratosPage() {
         <title>Contrato - ${contract.numero} - Nando's Ar Condicionado</title>
         <style>
           body { font-family: Arial, sans-serif; color: #111; line-height: 1.5; margin: 0; padding: 30px; font-size: 12px; position: relative; }
-          
-          /* MARCA D'ÁGUA DO CONTRATO */
           .marca-dagua-contrato {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-20deg);
-            font-size: 45px;
-            font-weight: bold;
-            color: rgba(30, 58, 138, 0.04);
-            text-align: center;
-            width: 100%;
-            pointer-events: none;
-            z-index: -1;
-            line-height: 1.3;
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg);
+            font-size: 45px; font-weight: bold; color: rgba(30, 58, 138, 0.10); text-align: center;
+            width: 100%; pointer-events: none; z-index: -1; line-height: 1.3;
           }
-
           .topo-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 20px; }
           .logo-area { font-size: 20px; font-weight: bold; color: #1e3a8a; }
           .logo-sub { font-size: 10px; color: #0284c7; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
           .parceiros-topo { font-size: 11px; font-weight: bold; color: #334155; text-align: right; }
           .parceiros-topo span { color: #dc2626; font-weight: 900; }
-
           .titulo-doc { text-align: center; font-size: 15px; font-weight: bold; color: #1e3a8a; margin: 15px 0 20px 0; background: #f1f5f9; padding: 8px; border-radius: 4px; }
-          
           .section-title { font-weight: bold; background: #1e3a8a; color: #fff; padding: 6px 10px; margin-top: 15px; margin-bottom: 10px; font-size: 12px; border-radius: 3px; }
           .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
           .field { margin-bottom: 5px; font-size: 12px; }
           .field span { font-weight: bold; color: #1e3a8a; }
-          
           .clausulas { white-space: pre-wrap; text-align: justify; background: #fafafa; padding: 15px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 10px; line-height: 1.6; font-size: 11px; }
-          
           .data-local { margin-top: 30px; text-align: right; font-size: 12px; font-weight: bold; color: #334155; }
-
           .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; page-break-inside: avoid; }
           .sig-box { width: 42%; border-top: 2px solid #1e3a8a; padding-top: 8px; }
           .sig-box p { margin: 2px 0; font-size: 11px; }
-
           .rodape-contrato { margin-top: 40px; background: #1e3a8a; color: #fff; padding: 8px; text-align: center; font-size: 10px; border-radius: 4px; font-weight: bold; }
-
-          @media print {
-            button { display: none; }
-            body { padding: 10px; }
-          }
+          @media print { button { display: none; } body { padding: 10px; } }
         </style>
       </head>
       <body>
@@ -412,7 +423,7 @@ export default function ContratosPage() {
           </div>
           <div class="parceiros-topo">
             <span>FUJITSU</span> &nbsp;|&nbsp; <span>SAMSUNG</span><br>
-            <small>Instalação • Manutenção • Higienização • Jaú e região</small>
+            <small>Instalação • Manutenção • Higienização • Araraquara e região</small>
           </div>
         </div>
 
@@ -420,7 +431,7 @@ export default function ContratosPage() {
 
         <div class="section-title">1. IDENTIFICAÇÃO DAS PARTES</div>
         <div class="grid">
-          <div class="field"><span>CONTRATADA:</span> Nando's Ar Condicionado (Anderson F. J. Gomes)</div>
+          <div class="field"><span>CONTRATADA:</span> Nando's Ar Condicionado</div>
           <div class="field"><span>CONTRATANTE:</span> ${contract.cliente_nome}</div>
           <div class="field"><span>CPF / CNPJ:</span> ${clientData?.documento || "Não informado"}</div>
           <div class="field"><span>Telefone / Contato:</span> ${clientData?.telefone || "Não informado"}</div>
@@ -439,16 +450,17 @@ export default function ContratosPage() {
         <div class="clausulas">${contract.observacoes || "Nenhuma cláusula adicional informada."}</div>
 
         <div class="data-local">
-          ${contract.cidade || "Jaú"}, ${dataAtual}.
+          ${contract.cidade || "Araraquara"}, ${dataAtual}.
         </div>
 
         <div class="signatures">
           <div class="sig-box">
+            ${assinaturaHtml}
             <p><strong>NANDO'S AR CONDICIONADO</strong></p>
-            <p>Anderson Fernando de Jesus Gomes</p>
             <p>Representante Legal / Contratada</p>
           </div>
           <div class="sig-box">
+            <div style="height: 35px;"></div>
             <p><strong>${contract.cliente_nome}</strong></p>
             <p>CPF/CNPJ: ${clientData?.documento || "____________________"}</p>
             <p>Contratante</p>
@@ -481,15 +493,10 @@ export default function ContratosPage() {
     for (let c = 0; c < payload.length; c++) {
       crc ^= payload.charCodeAt(c) << 8;
       for (let i = 0; i < 8; i++) {
-        if (crc & 0x8000) {
-          crc = (crc << 1) ^ 0x1021;
-        } else {
-          crc = crc << 1;
-        }
+        crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
       }
     }
-    let hex = (crc & 0xffff).toString(16).toUpperCase();
-    return hex.padStart(4, "0");
+    return (crc & 0xffff).toString(16).toUpperCase().padStart(4, "0");
   }
 
   function gerarPayloadPix(valor: number): string {
@@ -497,7 +504,6 @@ export default function ContratosPage() {
     const nome = "Anderson F J Gomes";
     const cidade = "Brotas";
     const valorStr = valor.toFixed(2);
-
     const tlv = (id: string, val: string) => id + String(val.length).padStart(2, "0") + val;
     const gui = tlv("00", "br.gov.bcb.pix") + tlv("01", chave);
     
@@ -512,7 +518,6 @@ export default function ContratosPage() {
     payload += tlv("60", cidade);
     payload += tlv("62", tlv("05", "***"));
     payload += "6304";
-
     return payload + calcularCRC16(payload);
   }
 
@@ -538,41 +543,27 @@ export default function ContratosPage() {
       parcelasHtml += `
         <div class="bloco-carne">
           <div class="marca-dagua-carne">Nando's Ar Condicionado<br>qualidade e confiança em todos os detalhes</div>
-
-          <!-- CANHOTO DO CLIENTE -->
           <div class="canhoto">
-            <div class="canhoto-topo-logo">❄️ Nando's Ar</div>
+            <div class="canhoto-topo-logo">❄️️ Nando's Ar</div>
             <div class="canhoto-sub">COMPROVANTE DO CLIENTE</div>
             <div class="canhoto-info"><strong>Contrato:</strong> ${selectedForCarne.numero}</div>
             <div class="canhoto-info"><strong>Parcela:</strong> ${i}/${carneParcelas}</div>
             <div class="canhoto-info"><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
             <div class="canhoto-info" style="font-size: 11px; font-weight: bold; color: #1e3a8a;"><strong>Valor:</strong> ${formatCurrency(valorParcela)}</div>
             <div style="font-size: 9px; margin-top: 4px;">
-              [ &nbsp; ] Pago &nbsp;&nbsp;&nbsp; [ &nbsp; ] Não pago<br>
-              Forma: [ ] Dinheiro [ ] Cartão<br>
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[ ] Pix [ ] Outro: ____
+              [ &nbsp; ] Pago &nbsp;&nbsp;&nbsp; [ &nbsp; ] Não pago<br>Forma: [ ] Dinheiro [ ] Cartão [ ] Pix
             </div>
-            <div class="canhoto-assinatura">
-              Assinatura / Data<br>_______________________
-            </div>
-            <div style="font-size: 8px; text-align: center; color: #1e3a8a; font-style: italic; margin-top: 3px;">Obrigado pela confiança!</div>
+            <div class="canhoto-assinatura">Assinatura / Data<br>_______________________</div>
           </div>
-
-          <!-- FICHA PRINCIPAL DO CARNÊ COM QR CODE -->
           <div class="ficha">
             <div class="ficha-topo">
               <div>
                 <div class="ficha-empresa">❄️ Nando's Ar Condicionado</div>
                 <div class="ficha-empresa-sub">qualidade e confiança em todos os detalhes</div>
               </div>
-              <div class="ficha-parceiros">
-                <span>FUJITSU</span> | <span>SAMSUNG</span><br>
-                <small>Jaú e região</small>
-              </div>
+              <div class="ficha-parceiros"><span>FUJITSU</span> | <span>SAMSUNG</span><br><small>Araraquara e região</small></div>
             </div>
-
             <div class="titulo-carne-barra">CARNÊ DE PAGAMENTO</div>
-
             <div class="ficha-campos-sup">
               <div><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
               <div style="display: flex; justify-content: space-between; margin-top: 2px;">
@@ -580,27 +571,21 @@ export default function ContratosPage() {
                 <span><strong>Nº do Carnê:</strong> ${selectedForCarne.numero}</span>
               </div>
             </div>
-
             <div class="ficha-corpo-baixo">
               <div class="ficha-detalhes-parcela">
                 <div style="font-size: 13px; font-weight: bold; color: #1e3a8a; background: #e0f2fe; padding: 4px 8px; border-radius: 4px; display: inline-block;">
                   Parcela ${i}/${carneParcelas} — Vencimento: ${vencimento.toLocaleDateString("pt-BR")}
                 </div>
-                <div style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px;">
-                  Valor: ${formatCurrency(valorParcela)}
-                </div>
-                <div class="pix-instrucao">
-                  📲 <strong>Pix Direto (Itaú):</strong> Escaneie o QR Code ao lado com o app do seu banco para pagar instantaneamente. Chave Celular: (14) 99168-9815.
-                </div>
+                <div style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px;">Valor: ${formatCurrency(valorParcela)}</div>
+                <div class="pix-instrucao">📲 <strong>Pix Direto (Itaú):</strong> Escaneie o QR Code ao lado. Chave Celular: (14) 99168-9815.</div>
               </div>
               <div class="ficha-qrcode">
                 <img src="${qrCodeUrl}" alt="QR Code Pix" width="95" height="95" />
                 <span class="pix-label">Pix (Itaú)</span>
               </div>
             </div>
-
             <div class="ficha-rodape">
-              <span>Mantenha seu pagamento em dia! Isso garante a continuidade dos serviços.</span>
+              <span>Mantenha seu pagamento em dia!</span>
               <span style="font-style: italic; color: #1e3a8a; font-weight: bold;">Capricho, garantia e preço justo!</span>
             </div>
           </div>
@@ -617,94 +602,33 @@ export default function ContratosPage() {
         <style>
           body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 10px; font-size: 10px; background: #fff; }
           .print-btn { text-align: center; margin-bottom: 15px; }
-          
-          .bloco-carne { 
-            position: relative; 
-            display: flex; 
-            border: 2px solid #1e3a8a; 
-            border-radius: 6px; 
-            margin-bottom: 10px; 
-            background: #ffffff; 
-            overflow: hidden; 
-            page-break-inside: avoid;
-            height: 165px;
-          }
-
-          /* MARCA D'ÁGUA NO CARNÊ */
-          .marca-dagua-carne {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-15deg);
-            font-size: 22px;
-            font-weight: bold;
-            color: rgba(30, 58, 138, 0.04);
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 1;
-            text-align: center;
-            line-height: 1.2;
-          }
-
-          /* CANHOTO */
-          .canhoto {
-            width: 27%;
-            border-right: 2px dashed #64748b;
-            padding: 6px 8px;
-            background: #f8fafc;
-            position: relative;
-            z-index: 2;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-          }
+          .bloco-carne { position: relative; display: flex; border: 2px solid #1e3a8a; border-radius: 6px; margin-bottom: 10px; background: #ffffff; overflow: hidden; page-break-inside: avoid; height: 165px; }
+          .marca-dagua-carne { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-size: 22px; font-weight: bold; color: rgba(30, 58, 138, 0.10); white-space: nowrap; pointer-events: none; z-index: 1; text-align: center; }
+          .canhoto { width: 27%; border-right: 2px dashed #64748b; padding: 6px 8px; background: #f8fafc; position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; }
           .canhoto-topo-logo { font-size: 11px; font-weight: bold; color: #1e3a8a; }
           .canhoto-sub { font-size: 9px; font-weight: bold; color: #0284c7; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; margin-bottom: 3px; }
           .canhoto-info { font-size: 9px; margin-bottom: 2px; }
           .canhoto-assinatura { border-top: 1px dotted #94a3b8; padding-top: 2px; font-size: 8px; text-align: center; color: #334155; }
-
-          /* FICHA */
-          .ficha {
-            width: 73%;
-            padding: 6px 10px;
-            position: relative;
-            z-index: 2;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-          }
+          .ficha { width: 73%; padding: 6px 10px; position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; }
           .ficha-topo { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }
           .ficha-empresa { font-size: 12px; font-weight: bold; color: #1e3a8a; }
           .ficha-empresa-sub { font-size: 8px; color: #0284c7; font-weight: bold; text-transform: uppercase; }
           .ficha-parceiros { font-size: 9px; font-weight: bold; text-align: right; color: #334155; }
           .ficha-parceiros span { color: #dc2626; font-weight: 900; }
-
-          .titulo-carne-barra { background: #1e3a8a; color: #fff; text-align: center; font-size: 10px; font-weight: bold; padding: 2px; margin: 4px 0; border-radius: 2px; letter-spacing: 1px; }
-
+          .titulo-carne-barra { background: #1e3a8a; color: #fff; text-align: center; font-size: 10px; font-weight: bold; padding: 2px; margin: 4px 0; border-radius: 2px; }
           .ficha-campos-sup { font-size: 10px; background: #f8fafc; padding: 3px 6px; border: 1px solid #e2e8f0; border-radius: 3px; }
-
           .ficha-corpo-baixo { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; }
           .ficha-detalhes-parcela { flex: 1; padding-right: 8px; }
-          .pix-instrucao { font-size: 8.5px; color: #475569; margin-top: 3px; line-height: 1.2; }
-          
+          .pix-instrucao { font-size: 8.5px; color: #475569; margin-top: 3px; }
           .ficha-qrcode { display: flex; flex-direction: column; align-items: center; background: #fff; padding: 3px; border: 1px solid #cbd5e1; border-radius: 4px; }
           .pix-label { font-size: 8px; font-weight: bold; color: #1e3a8a; margin-top: 1px; }
-
           .ficha-rodape { display: flex; justify-content: space-between; font-size: 8px; border-top: 1px solid #e2e8f0; padding-top: 3px; color: #475569; }
-
-          @media print {
-            .print-btn { display: none; }
-            body { padding: 0; }
-          }
+          @media print { .print-btn { display: none; } body { padding: 0; } }
         </style>
       </head>
       <body>
-        <div class="print-btn">
-          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer; font-size: 12px;">Imprimir Carnê Profissional</button>
-        </div>
-        <div>
-          ${parcelasHtml}
-        </div>
+        <div class="print-btn"><button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir Carnê</button></div>
+        <div>${parcelasHtml}</div>
       </body>
       </html>
     `;
@@ -717,16 +641,8 @@ export default function ContratosPage() {
   const filteredContracts = useMemo(() => {
     const term = search.trim().toLowerCase();
     return contracts.filter((contract) => {
-      const matchesSearch =
-        !term ||
-        contract.numero.toLowerCase().includes(term) ||
-        contract.cliente_nome.toLowerCase().includes(term) ||
-        contract.cidade.toLowerCase().includes(term) ||
-        contract.plano.toLowerCase().includes(term);
-
-      const matchesStatus =
-        statusFilter === "Todos" || contract.status === statusFilter;
-
+      const matchesSearch = !term || contract.numero.toLowerCase().includes(term) || contract.cliente_nome.toLowerCase().includes(term) || contract.cidade.toLowerCase().includes(term);
+      const matchesStatus = statusFilter === "Todos" || contract.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [contracts, search, statusFilter]);
@@ -734,15 +650,10 @@ export default function ContratosPage() {
   const totalContracts = contracts.length;
   const activeContracts = contracts.filter((i) => i.status === "Ativo").length;
   const pendingContracts = contracts.filter((i) => i.status === "Pendente").length;
-  const monthlyTotal = contracts
-    .filter((i) => i.status === "Ativo")
-    .reduce((tot, i) => tot + Number(i.valor_mensal || 0), 0);
+  const monthlyTotal = contracts.filter((i) => i.status === "Ativo").reduce((tot, i) => tot + Number(i.valor_mensal || 0), 0);
 
   function formatCurrency(value: number) {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(value);
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
   }
 
   function formatDate(value: string | null) {
@@ -771,70 +682,48 @@ export default function ContratosPage() {
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Contratos</h1>
-            <p className="mt-1 text-sm text-slate-400">
-              Gerencie contratos, imprima documentos com assinaturas e gere carnês com Pix.
-            </p>
+            <p className="mt-1 text-sm text-slate-400">Gerencie contratos, imprima com a assinatura automática do administrador e gere carnês.</p>
           </div>
-
-          <button
-            onClick={openNew}
-            className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500 transition-colors shadow-sm"
-          >
-            <Plus size={19} />
-            Novo contrato
-          </button>
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setConfigAssinaturaOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3 font-semibold text-white hover:bg-amber-500 transition-colors shadow-sm text-sm"
+            >
+              <Settings size={18} />
+              Configurar Assinatura Admin
+            </button>
+            <button
+              onClick={openNew}
+              className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500 transition-colors shadow-sm text-sm"
+            >
+              <Plus size={19} />
+              Novo contrato
+            </button>
+          </div>
         </div>
 
+        {/* MÉTRICAS */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Total de contratos</p>
-                <p className="mt-1 text-2xl font-bold text-white">{totalContracts}</p>
-              </div>
-              <div className="rounded-lg bg-blue-950 border border-blue-900 p-3 text-blue-400">
-                <FileText size={22} />
-              </div>
-            </div>
+            <p className="text-sm text-slate-400">Total de contratos</p>
+            <p className="mt-1 text-2xl font-bold text-white">{totalContracts}</p>
           </div>
-
           <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Contratos ativos</p>
-                <p className="mt-1 text-2xl font-bold text-green-400">{activeContracts}</p>
-              </div>
-              <div className="rounded-lg bg-green-950 border border-green-900 p-3 text-green-400">
-                <CheckCircle size={22} />
-              </div>
-            </div>
+            <p className="text-sm text-slate-400">Contratos ativos</p>
+            <p className="mt-1 text-2xl font-bold text-green-400">{activeContracts}</p>
           </div>
-
           <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Pendentes</p>
-                <p className="mt-1 text-2xl font-bold text-yellow-400">{pendingContracts}</p>
-              </div>
-              <div className="rounded-lg bg-yellow-950 border border-yellow-900 p-3 text-yellow-400">
-                <Clock size={22} />
-              </div>
-            </div>
+            <p className="text-sm text-slate-400">Pendentes</p>
+            <p className="mt-1 text-2xl font-bold text-yellow-400">{pendingContracts}</p>
           </div>
-
           <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Receita mensal</p>
-                <p className="mt-1 text-2xl font-bold text-blue-400">{formatCurrency(monthlyTotal)}</p>
-              </div>
-              <div className="rounded-lg bg-blue-950 border border-blue-900 p-3 text-blue-400">
-                <FileText size={22} />
-              </div>
-            </div>
+            <p className="text-sm text-slate-400">Receita mensal</p>
+            <p className="mt-1 text-2xl font-bold text-blue-400">{formatCurrency(monthlyTotal)}</p>
           </div>
         </div>
 
+        {/* BUSCA */}
         <div className="mb-5 rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">
@@ -846,20 +735,20 @@ export default function ContratosPage() {
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 py-3 pl-10 pr-4 text-slate-100 outline-none focus:border-blue-500 placeholder-slate-500 text-sm"
               />
             </div>
-
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="rounded-lg bg-slate-950 border border-slate-700 px-4 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
             >
-              <option value="Todos" className="bg-slate-900 text-white">Todos os status</option>
+              <option value="Todos" className="bg-slate-900">Todos os status</option>
               {statusOptions.map((status) => (
-                <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>
+                <option key={status} value={status} className="bg-slate-900">{status}</option>
               ))}
             </select>
           </div>
         </div>
 
+        {/* TABELA */}
         <div className="overflow-hidden rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
           {loading ? (
             <div className="p-10 text-center text-slate-400">Carregando contratos...</div>
@@ -867,7 +756,6 @@ export default function ContratosPage() {
             <div className="p-10 text-center">
               <FileText size={45} className="mx-auto mb-3 text-slate-600" />
               <p className="font-semibold text-slate-300">Nenhum contrato encontrado</p>
-              <p className="mt-1 text-sm text-slate-500">Crie o primeiro contrato para começar.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -877,7 +765,7 @@ export default function ContratosPage() {
                     <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Contrato</th>
                     <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Cliente</th>
                     <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Plano</th>
-                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Qtd. Aparelhos</th>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Aparelhos</th>
                     <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Valor Mensal</th>
                     <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Status</th>
                     <th className="px-4 py-4 text-right text-sm font-semibold text-slate-300">Ações</th>
@@ -900,27 +788,24 @@ export default function ContratosPage() {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-slate-300">{contract.quantidade_equipamentos}</td>
-                      <td className="px-4 py-4 font-semibold text-white">
-                        {formatCurrency(Number(contract.valor_mensal || 0))}
-                      </td>
+                      <td className="px-4 py-4 font-semibold text-white">{formatCurrency(Number(contract.valor_mensal || 0))}</td>
                       <td className="px-4 py-4">
                         <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(contract.status)}`}>
-                          {statusIcon(contract.status)}
-                          {contract.status}
+                          {statusIcon(contract.status)} {contract.status}
                         </span>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex justify-end gap-2">
                           <button
-                            onClick={() => imprimirContrato(contract)}
-                            title="Imprimir Contrato PDF"
+                            onClick={() => imprimirContratoComAssinaturaSalva(contract)}
+                            title="Imprimir Contrato com Assinatura Automática"
                             className="rounded-lg border border-purple-900 bg-purple-950/30 p-2 text-purple-400 hover:bg-purple-900/50 transition-colors"
                           >
                             <Printer size={17} />
                           </button>
                           <button
                             onClick={() => abrirGeradorCarne(contract)}
-                            title="Gerar Carnê com Pix"
+                            title="Gerar Carnê Pix"
                             className="rounded-lg border border-emerald-900 bg-emerald-950/30 p-2 text-emerald-400 hover:bg-emerald-900/50 transition-colors"
                           >
                             <FileCode size={17} />
@@ -957,20 +842,90 @@ export default function ContratosPage() {
         </div>
       </div>
 
+      {/* MODAL DE CONFIGURAÇÃO DA ASSINATURA SALVA DO ADMIN */}
+      {configAssinaturaOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <PenTool size={20} className="text-amber-400" /> Assinatura Eletrônica do Administrador
+                </h3>
+                <p className="text-xs text-slate-400">Desenhe sua assinatura abaixo. Ela ficará salva para todos os contratos.</p>
+              </div>
+              <button onClick={() => setConfigAssinaturaOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
+            </div>
+
+            {assinaturaSalva && (
+              <div className="mb-4 rounded-lg bg-slate-950 p-3 border border-slate-800 text-center">
+                <p className="text-xs text-slate-400 mb-1 font-semibold">Assinatura Atual Salva no Sistema:</p>
+                <img src={assinaturaSalva} alt="Assinatura Salva" className="mx-auto max-h-16 bg-white p-1 rounded" />
+                <button
+                  onClick={removerAssinaturaAdmin}
+                  className="mt-2 text-xs text-red-400 hover:underline font-semibold"
+                >
+                  Excluir / Trocar Assinatura
+                </button>
+              </div>
+            )}
+
+            <div className="mb-4 flex flex-col items-center">
+              <label className="text-xs font-semibold text-slate-300 mb-1 self-start">Desenhe a nova assinatura:</label>
+              <div className="border-2 border-dashed border-slate-700 rounded-lg bg-white overflow-hidden w-full touch-none">
+                <canvas
+                  ref={canvasRef}
+                  width={450}
+                  height={160}
+                  onMouseDown={iniciarDesenho}
+                  onMouseMove={desenhar}
+                  onMouseUp={pararDesenho}
+                  onMouseLeave={pararDesenho}
+                  onTouchStart={iniciarDesenho}
+                  onTouchMove={desenhar}
+                  onTouchEnd={pararDesenho}
+                  className="w-full cursor-crosshair bg-white"
+                />
+              </div>
+              <div className="w-full flex justify-between mt-1">
+                <button
+                  type="button"
+                  onClick={limparCanvasAssinatura}
+                  className="text-xs text-amber-400 hover:underline font-semibold"
+                >
+                  Limpar Rascunho
+                </button>
+                <span className="text-xs text-slate-500">Nando's Ar Condicionado</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                onClick={() => setConfigAssinaturaOpen(false)}
+                className="rounded-lg border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800 text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={salvarAssinaturaAdmin}
+                className="rounded-lg bg-amber-600 px-5 py-2 font-semibold text-white hover:bg-amber-500 text-sm shadow-sm"
+              >
+                Salvar Assinatura
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE NOVO/EDITAR CONTRATO */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-slate-100">
             <div className="flex items-center justify-between border-b border-slate-800 p-5">
               <div>
-                <h2 className="text-xl font-bold text-white">
-                  {editingId ? "Editar contrato" : "Novo contrato"}
-                </h2>
-                <p className="text-sm text-slate-400">As cláusulas e regras de proteção já vêm pré-preenchidas.</p>
+                <h2 className="text-xl font-bold text-white">{editingId ? "Editar contrato" : "Novo contrato"}</h2>
+                <p className="text-sm text-slate-400">Preencha os dados do contrato.</p>
               </div>
-              <button onClick={closeModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 transition-colors">
-                <X size={21} />
-              </button>
+              <button onClick={closeModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800"><X size={21} /></button>
             </div>
 
             <form onSubmit={saveContract} className="space-y-5 p-5">
@@ -982,9 +937,9 @@ export default function ContratosPage() {
                   onChange={(e) => handleClientChange(e.target.value)}
                   className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
                 >
-                  <option value="" className="bg-slate-900 text-white">Selecione um cliente</option>
+                  <option value="" className="bg-slate-900">Selecione um cliente</option>
                   {clients.map((client) => (
-                    <option key={client.id} value={client.id} className="bg-slate-900 text-white">
+                    <option key={client.id} value={client.id} className="bg-slate-900">
                       {client.nome} {client.cidade ? `(${client.cidade})` : ""}
                     </option>
                   ))}
@@ -997,50 +952,42 @@ export default function ContratosPage() {
                   <input
                     value={form.cidade}
                     onChange={(e) => setForm({ ...form, cidade: e.target.value })}
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm placeholder-slate-500"
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none text-sm"
                   />
                 </div>
-
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-300">Plano</label>
                   <select
                     value={form.plano}
                     onChange={(e) => handlePlanChange(e.target.value as Plan)}
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none text-sm"
                   >
-                    <option value="Residencial" className="bg-slate-900 text-white">Residencial (R$ 149 base)</option>
-                    <option value="Comercial" className="bg-slate-900 text-white">Comercial (R$ 299 base)</option>
-                    <option value="Empresarial" className="bg-slate-900 text-white">Empresarial (R$ 599 base)</option>
+                    <option value="Residencial" className="bg-slate-900">Residencial</option>
+                    <option value="Comercial" className="bg-slate-900">Comercial</option>
+                    <option value="Empresarial" className="bg-slate-900">Empresarial</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-300">Qtd. de Equipamentos</label>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Qtd. Equipamentos</label>
                   <input
                     type="number"
                     min="1"
                     value={form.quantidade_equipamentos}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        quantidade_equipamentos: e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value) || 1),
-                      })
-                    }
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                    onChange={(e) => setForm({ ...form, quantidade_equipamentos: e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none text-sm"
                   />
                 </div>
-
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-300">Valor Mensal (Editável)</label>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Valor Mensal</label>
                   <input
                     type="number"
-                    min="0"
                     step="0.01"
                     value={form.valor_mensal}
                     onChange={(e) => setForm({ ...form, valor_mensal: parseFloat(e.target.value) || 0 })}
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 font-bold text-blue-400 text-sm"
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-blue-400 font-bold outline-none text-sm"
                   />
                 </div>
               </div>
@@ -1053,17 +1000,16 @@ export default function ContratosPage() {
                     required
                     value={form.data_inicio}
                     onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none text-sm"
                   />
                 </div>
-
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-300">Próxima Visita</label>
                   <input
                     type="date"
                     value={form.proxima_visita}
                     onChange={(e) => setForm({ ...form, proxima_visita: e.target.value })}
-                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none text-sm"
                   />
                 </div>
               </div>
@@ -1073,39 +1019,27 @@ export default function ContratosPage() {
                 <select
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value as ContractStatus })}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none text-sm"
                 >
-                  {statusOptions.map((status) => (
-                    <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>
+                  {statusOptions.map((st) => (
+                    <option key={st} value={st} className="bg-slate-900">{st}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-300">Cláusulas e Condições do Contrato</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-300">Cláusulas e Condições</label>
                 <textarea
-                  rows={6}
+                  rows={5}
                   value={form.observacoes}
                   onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-slate-200 outline-none focus:border-blue-500 text-xs font-mono"
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-slate-200 outline-none text-xs font-mono"
                 />
               </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-800 pt-5 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-lg border border-slate-700 px-5 py-3 font-semibold text-slate-300 hover:bg-slate-800 transition-colors text-sm"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-500 disabled:opacity-60 transition-colors text-sm shadow-sm"
-                >
-                  {saving ? "Salvando..." : editingId ? "Salvar alterações" : "Criar contrato"}
-                </button>
+              <div className="flex justify-end gap-3 border-t border-slate-800 pt-4">
+                <button type="button" onClick={closeModal} className="rounded-lg border border-slate-700 px-5 py-2.5 text-slate-300 text-sm">Cancelar</button>
+                <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2.5 text-white font-semibold text-sm">Salvar</button>
               </div>
             </form>
           </div>
@@ -1115,39 +1049,24 @@ export default function ContratosPage() {
       {/* MODAL DE GERAR CARNÊ */}
       {carneModalOpen && selectedForCarne && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-              <h3 className="text-lg font-bold text-white">Gerar Carnê com Pix</h3>
-              <button onClick={() => setCarneModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
-            </div>
-            <p className="text-sm text-slate-300 mb-4">
-              Contrato: <strong className="text-white">{selectedForCarne.numero}</strong> ({selectedForCarne.cliente_nome})
-            </p>
+          <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-800 p-6 text-slate-100 shadow-2xl">
+            <h3 className="text-lg font-bold text-white mb-2">Gerar Carnê Pix</h3>
+            <p className="text-sm text-slate-300 mb-4">Contrato: <strong>{selectedForCarne.numero}</strong></p>
             <div className="mb-4">
-              <label className="block text-sm font-semibold text-slate-300 mb-1">Quantidade de Parcelas</label>
+              <label className="block text-sm font-semibold text-slate-300 mb-1">Parcelas</label>
               <select
                 value={carneParcelas}
                 onChange={(e) => setCarneParcelas(Number(e.target.value))}
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-slate-100 outline-none text-sm"
               >
-                <option value={3} className="bg-slate-900 text-white">3 Meses (Trimestral)</option>
-                <option value={6} className="bg-slate-900 text-white">6 Meses (Semestral)</option>
-                <option value={12} className="bg-slate-900 text-white">12 Meses (Anual)</option>
+                <option value={3} className="bg-slate-900">3 Meses</option>
+                <option value={6} className="bg-slate-900">6 Meses</option>
+                <option value={12} className="bg-slate-900">12 Meses</option>
               </select>
             </div>
             <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setCarneModalOpen(false)}
-                className="rounded-lg border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800 text-sm"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={imprimirCarne}
-                className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 text-sm shadow-sm"
-              >
-                Imprimir Carnê Profissional
-              </button>
+              <button onClick={() => setCarneModalOpen(false)} className="border border-slate-700 px-4 py-2 rounded-lg text-sm">Cancelar</button>
+              <button onClick={imprimirCarne} className="bg-emerald-600 px-4 py-2 rounded-lg text-sm font-semibold">Imprimir Carnê</button>
             </div>
           </div>
         </div>
@@ -1156,80 +1075,24 @@ export default function ContratosPage() {
       {/* MODAL DE DETALHES */}
       {detailsOpen && selectedContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-xl w-full rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 p-5">
-              <div>
-                <h2 className="text-xl font-bold text-white">{selectedContract.numero}</h2>
-                <p className="text-sm text-slate-400">Detalhes do contrato</p>
-              </div>
-              <button onClick={() => setDetailsOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 transition-colors">
-                <X size={21} />
-              </button>
+          <div className="max-w-xl w-full rounded-xl bg-slate-900 border border-slate-800 p-6 text-slate-100 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+              <h2 className="text-lg font-bold text-white">{selectedContract.numero}</h2>
+              <button onClick={() => setDetailsOpen(false)}><X size={20} /></button>
             </div>
-
-            <div className="space-y-4 p-5">
-              <div>
-                <p className="text-xs font-semibold uppercase text-slate-400">Cliente</p>
-                <p className="font-semibold text-white">{selectedContract.cliente_nome}</p>
-                <p className="text-sm text-slate-400">{selectedContract.cidade}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase text-slate-400">Plano</p>
-                  <p className="font-semibold text-slate-200">{selectedContract.plano}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase text-slate-400">Equipamentos</p>
-                  <p className="font-semibold text-slate-200">{selectedContract.quantidade_equipamentos}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase text-slate-400">Valor mensal</p>
-                  <p className="font-semibold text-blue-400">{formatCurrency(Number(selectedContract.valor_mensal || 0))}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase text-slate-400">Status</p>
-                  <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(selectedContract.status)}`}>
-                    {statusIcon(selectedContract.status)}
-                    {selectedContract.status}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => imprimirContrato(selectedContract)}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2 font-semibold text-white hover:bg-purple-500 transition-colors text-sm shadow-sm"
-                >
-                  <Printer size={17} />
-                  Imprimir Contrato PDF
-                </button>
-                <button
-                  onClick={() => abrirGeradorCarne(selectedContract)}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 transition-colors text-sm shadow-sm"
-                >
-                  <FileCode size={17} />
-                  Gerar Carnê
-                </button>
-              </div>
-
-              <div className="flex justify-end gap-3 border-t border-slate-800 pt-4">
-                <button
-                  onClick={() => {
-                    setDetailsOpen(false);
-                    openEdit(selectedContract);
-                  }}
-                  className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 text-sm shadow-sm transition-colors"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => setDetailsOpen(false)}
-                  className="rounded-lg border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800 text-sm transition-colors"
-                >
-                  Fechar
-                </button>
-              </div>
+            <div className="space-y-3 mb-6 text-sm">
+              <p><strong>Cliente:</strong> {selectedContract.cliente_nome}</p>
+              <p><strong>Plano:</strong> {selectedContract.plano} ({selectedContract.quantidade_equipamentos} aparelhos)</p>
+              <p><strong>Valor:</strong> {formatCurrency(Number(selectedContract.valor_mensal))}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setDetailsOpen(false); imprimirContratoComAssinaturaSalva(selectedContract); }}
+                className="flex-1 bg-purple-600 hover:bg-purple-500 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+              >
+                <Printer size={16} /> Imprimir PDF com Assinatura Salva
+              </button>
+              <button onClick={() => setDetailsOpen(false)} className="border border-slate-700 px-4 py-2 rounded-lg text-sm">Fechar</button>
             </div>
           </div>
         </div>
