@@ -43,8 +43,7 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
-  const [mostrarBotoes, setMostrarBotoes] = useState(false);
+  const [ehAdmin, setEhAdmin] = useState(false);
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
@@ -53,20 +52,18 @@ export default function RootLayout({
 
   useEffect(() => {
     const rotaAtual = window.location.pathname;
-    // Esconde nas telas de login/auth
+    // Se estiver na tela de login ou auth, esconde tudo
     if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
-      setMostrarBotoes(false);
+      setEhAdmin(false);
       return;
     }
 
-    // Verifica estritamente o perfil salvo
-    const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
+    // VERIFICAÇÃO RIGOROSA: Só libera se o perfil salvo for explicitamente "admin"
+    const perfilSalvo = localStorage.getItem("nandos_user_perfil");
     if (perfilSalvo === "admin") {
-      setPerfilUsuario("admin");
-      setMostrarBotoes(true); // APARECE APENAS PARA O ADMIN
+      setEhAdmin(true);
     } else {
-      setPerfilUsuario("tecnico");
-      setMostrarBotoes(false); // BLOQUEADO TOTALMENTE PARA O TÉCNICO/FUNCIONÁRIO
+      setEhAdmin(false); // Para técnico/funcionário ou qualquer outro caso, fica FALSO (some tudo)
     }
   }, []);
 
@@ -140,7 +137,7 @@ export default function RootLayout({
 
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (perfilUsuario !== "admin") return alert("Acesso negado.");
+    if (!ehAdmin) return alert("Acesso negado.");
     if (!nomeCliente.trim()) return alert("Informe o nome.");
     
     setCarregandoCliente(true);
@@ -163,8 +160,8 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÕES FLUTUANTES EXCLUSIVOS PARA O ADMINISTRADOR */}
-        {mostrarBotoes && perfilUsuario === "admin" && (
+        {/* OS BOTÕES FLUTUANTES SÓ APARECEM SE FOR 100% ADMIN */}
+        {ehAdmin && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
               onClick={iniciarBuscaPorVoz}
@@ -187,8 +184,8 @@ export default function RootLayout({
           </div>
         )}
 
-        {/* MODAL DO CHAT (APENAS ADMIN) */}
-        {chatOpen && perfilUsuario === "admin" && (
+        {/* MODAL DO CHAT (EXCLUSIVO PARA ADMIN) */}
+        {chatOpen && ehAdmin && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-cyan-500/40 shadow-2xl flex flex-col max-h-[90vh] text-slate-100 overflow-hidden">
               
@@ -300,7 +297,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Painel Administrativo Seguro
+                Nando's Ar Condicionado — Painel Administrativo Exclusivo
               </div>
             </div>
           </div>
