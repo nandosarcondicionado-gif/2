@@ -91,7 +91,7 @@ const statusOptions: ContractStatus[] = [
 
 const emptyForm = {
   cliente_id: "",
-  cidade: "",
+  cidade: "Araraquara",
   plano: "Residencial" as Plan,
   quantidade_equipamentos: 1 as number | "",
   valor_mensal: 149,
@@ -146,7 +146,6 @@ export default function ContratosPage() {
 
   useEffect(() => {
     loadData();
-    // Carregar assinatura salva do navegador, se houver
     const assinaturaArmazenada = localStorage.getItem("nandos_assinatura_admin");
     if (assinaturaArmazenada) {
       setAssinaturaSalva(assinaturaArmazenada);
@@ -183,7 +182,7 @@ export default function ContratosPage() {
     setEditingId(contract.id);
     setForm({
       cliente_id: contract.cliente_id || "",
-      cidade: contract.cidade || "",
+      cidade: contract.cidade || "Araraquara",
       plano: contract.plano,
       quantidade_equipamentos: contract.quantidade_equipamentos || 1,
       valor_mensal: contract.valor_mensal || 0,
@@ -212,7 +211,7 @@ export default function ContratosPage() {
     setForm((previous) => ({
       ...previous,
       cliente_id: clientId,
-      cidade: client?.cidade || "",
+      cidade: client?.cidade || "Araraquara",
     }));
   }
 
@@ -255,7 +254,7 @@ export default function ContratosPage() {
       const baseData = {
         cliente_id: client.id,
         cliente_nome: client.nome,
-        cidade: form.cidade || client.cidade || "",
+        cidade: form.cidade || "Araraquara",
         plano: form.plano,
         quantidade_equipamentos: qtdFinal,
         valor_mensal: Number(form.valor_mensal) || 0,
@@ -300,7 +299,6 @@ export default function ContratosPage() {
     alert("Contrato excluído.");
   }
 
-  // Funções do Canvas de Assinatura do Administrador
   function limparCanvasAssinatura() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -353,7 +351,7 @@ export default function ContratosPage() {
     localStorage.setItem("nandos_assinatura_admin", dataUrl);
     setAssinaturaSalva(dataUrl);
     setConfigAssinaturaOpen(false);
-    alert("Assinatura do administrador salva com sucesso! Ela será aplicada automaticamente em todos os contratos.");
+    alert("Assinatura do administrador salva com sucesso!");
   }
 
   function removerAssinaturaAdmin() {
@@ -418,7 +416,7 @@ export default function ContratosPage() {
 
         <div class="topo-header">
           <div>
-            <div class="logo-area">❄️ Nando's Ar Condicionado</div>
+            <div class="logo-area">❄️️ Nando's Ar Condicionado</div>
             <div class="logo-sub">qualidade e confiança em todos os detalhes</div>
           </div>
           <div class="parceiros-topo">
@@ -435,7 +433,7 @@ export default function ContratosPage() {
           <div class="field"><span>CONTRATANTE:</span> ${contract.cliente_nome}</div>
           <div class="field"><span>CPF / CNPJ:</span> ${clientData?.documento || "Não informado"}</div>
           <div class="field"><span>Telefone / Contato:</span> ${clientData?.telefone || "Não informado"}</div>
-          <div class="field" style="grid-column: span 2;"><span>Endereço:</span> ${clientData?.endereco || "Não informado"} - ${contract.cidade}</div>
+          <div class="field" style="grid-column: span 2;"><span>Endereço:</span> Araraquara</div>
         </div>
 
         <div class="section-title">2. ESPECIFICAÇÕES DO PLANO E VALORES</div>
@@ -450,7 +448,7 @@ export default function ContratosPage() {
         <div class="clausulas">${contract.observacoes || "Nenhuma cláusula adicional informada."}</div>
 
         <div class="data-local">
-          ${contract.cidade || "Araraquara"}, ${dataAtual}.
+          Araraquara, ${dataAtual}.
         </div>
 
         <div class="signatures">
@@ -544,7 +542,7 @@ export default function ContratosPage() {
         <div class="bloco-carne">
           <div class="marca-dagua-carne">Nando's Ar Condicionado<br>qualidade e confiança em todos os detalhes</div>
           <div class="canhoto">
-            <div class="canhoto-topo-logo">❄️️ Nando's Ar</div>
+            <div class="canhoto-topo-logo">❄️ Nando's Ar</div>
             <div class="canhoto-sub">COMPROVANTE DO CLIENTE</div>
             <div class="canhoto-info"><strong>Contrato:</strong> ${selectedForCarne.numero}</div>
             <div class="canhoto-info"><strong>Parcela:</strong> ${i}/${carneParcelas}</div>
