@@ -54,21 +54,17 @@ export default function RootLayout({
     const verificarAcessoAdmin = () => {
       const rotaAtual = window.location.pathname;
       
-      // Se estiver nas telas de login ou auth, esconde os botões
+      // Se estiver nas telas de login ou auth, limpa qualquer vestígio e esconde tudo
       if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
         setEhAdmin(false);
         return;
       }
 
-      // Verifica se o usuário atual é o Administrador
+      // Verifica estritamente se o perfil salvo é admin
       const perfilSalvo = localStorage.getItem("nandos_user_perfil");
-      const emailSalvo = localStorage.getItem("nandos_user_email") || "";
-
-      // Condição estrita: Só libera se o perfil for admin ou se houver indicação clara de administrador
-      if (perfilSalvo === "admin" || emailSalvo.includes("admin") || rotaAtual.includes("admin")) {
+      if (perfilSalvo === "admin") {
         setEhAdmin(true);
       } else {
-        // Se for técnico, funcionário ou qualquer outro perfil, bloqueia totalmente
         setEhAdmin(false);
       }
     };
@@ -77,6 +73,18 @@ export default function RootLayout({
     window.addEventListener("focus", verificarAcessoAdmin);
     return () => window.removeEventListener("focus", verificarAcessoAdmin);
   }, []);
+
+  // ** FUNÇÃO DE LOGOUT / SAÍDA SEGURA POR COMPLETO **
+  const realizarLogoutCompleto = () => {
+    // Apaga absolutamente tudo do navegador para não ficar nada salvo
+    localStorage.clear();
+    sessionStorage.clear();
+    setEhAdmin(false);
+    setChatOpen(false);
+    
+    // Força o redirecionamento para a página de login
+    window.location.href = "/login";
+  };
 
   const falarTexto = (texto: string) => {
     if ("speechSynthesis" in window) {
@@ -171,7 +179,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* OS BOTÕES FLUTUANTES APARECEM APENAS E EXCLUSIVAMENTE PARA O ADMINISTRADOR */}
+        {/* OS BOTÕES FLUTUANTES APARECEM APENAS PARA O ADMINISTRADOR */}
         {ehAdmin && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
@@ -210,9 +218,20 @@ export default function RootLayout({
                     <p className="text-xs text-slate-400">Controle total, banco de dados Supabase e consulta</p>
                   </div>
                 </div>
-                <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
-                  <X size={20} />
-                </button>
+                
+                {/* Botão de Fechar e Botão de Sair Real integrados no topo */}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={realizarLogoutCompleto} 
+                    className="bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                    title="Encerra a sessão e limpa os dados do aparelho"
+                  >
+                    Sair / Desconectar
+                  </button>
+                  <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               {/* ABAS DO ADMINISTRADOR */}
@@ -307,8 +326,11 @@ export default function RootLayout({
                 </div>
               )}
 
-              <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Painel Exclusivo do Administrador
+              <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400 flex items-center justify-between px-4">
+                <span>Nando's Ar Condicionado — Painel Exclusivo do Administrador</span>
+                <button onClick={realizarLogoutCompleto} className="text-red-400 hover:underline text-xs font-semibold">
+                  Desconectar Sessão
+                </button>
               </div>
             </div>
           </div>
