@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2, Volume2 } from "lucide-react";
+import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2, Volume2, Shield, User } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
 // Inicialização do Supabase
@@ -43,7 +43,7 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("tecnico");
+  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
   const [mostrarBotoes, setMostrarBotoes] = useState(false);
 
   const [nomeCliente, setNomeCliente] = useState("");
@@ -60,32 +60,23 @@ export default function RootLayout({
 
     setMostrarBotoes(true);
 
-    // Identificação dinâmica e robusta do perfil
-    const verificarPerfil = () => {
-      // 1. Verifica se há indicador explícito na URL ou localStorage
-      const perfilSalvo = localStorage.getItem("nandos_user_perfil") || localStorage.getItem("userRole") || "";
-      const emailLogado = localStorage.getItem("nandos_user_email") || localStorage.getItem("userEmail") || "";
-
-      // Se o e-mail for do Nando/Admin ou o localStorage disser admin
-      if (perfilSalvo.toLowerCase().includes("admin") || emailLogado.includes("admin") || rotaAtual.includes("admin")) {
-        setPerfilUsuario("admin");
-      } else {
-        // Tenta checar se na página atual existe algum elemento que denota admin
-        const eAdminPagina = document.body.innerText.includes("Painel Admin") || localStorage.getItem("nandos_user_perfil") === "admin";
-        if (eAdminPagina) {
-          setPerfilUsuario("admin");
-        } else {
-          // Padrão inteligente: Se o email contiver termos de técnico ou não for admin, vira técnico
-          setPerfilUsuario("tecnico");
-        }
-      }
-    };
-
-    verificarPerfil();
-    // Reexecuta ao focar a janela caso tenha feito login em outra aba/momento
-    window.addEventListener("focus", verificarPerfil);
-    return () => window.removeEventListener("focus", verificarPerfil);
+    // Sincroniza o perfil salvo ou assume admin por padrão no dashboard principal
+    const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
+    if (perfilSalvo) {
+      setPerfilUsuario(perfilSalvo);
+    } else {
+      // Se não tiver nada salvo, define como admin para garantir que você veja o controle total
+      localStorage.setItem("nandos_user_perfil", "admin");
+      setPerfilUsuario("admin");
+    }
   }, []);
+
+  // Função para alternar o perfil direto no chat se precisar testar
+  const alternarPerfilManual = (novoPerfil: "admin" | "tecnico") => {
+    setPerfilUsuario(novoPerfil);
+    localStorage.setItem("nandos_user_perfil", novoPerfil);
+    if (novoPerfil === "tecnico") setAbaAtiva("erros");
+  };
 
   const falarTexto = (texto: string) => {
     if ("speechSynthesis" in window) {
@@ -180,7 +171,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÕES FLUTUANTES COM NOME DINÂMICO CONFORME O PERFIL */}
+        {/* BOTÕES FLUTUANTES COM NOME EXATO CONFORME O PERFIL */}
         {mostrarBotoes && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
@@ -196,10 +187,14 @@ export default function RootLayout({
 
             <button
               onClick={() => setChatOpen(true)}
-              className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
+              className={`flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 ${
+                perfilUsuario === "admin"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
+                  : "bg-cyan-700 border-cyan-400"
+              }`}
             >
               <Wrench size={20} />
-              <span>{perfilUsuario === "admin" ? "Nando's Chat (Admin)" : "Ajuda Técnica"}</span>
+              <span>{perfilUsuario === "admin" ? "Nando's Super Chat (Admin)" : "Ajuda Técnica"}</span>
             </button>
           </div>
         )}
@@ -215,11 +210,21 @@ export default function RootLayout({
                     <Wrench size={22} />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">
-                      {perfilUsuario === "admin" ? "Nando's Assistente Administrativo" : "Nando's Suporte de Campo (Técnico)"}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-white">
+                        {perfilUsuario === "admin" ? "Nando's Super Assistente Administrativo" : "Nando's Suporte de Campo"}
+                      </h3>
+                      {/* Botão de alternância rápida de teste visível no topo */}
+                      <button 
+                        onClick={() => alternarPerfilManual(perfilUsuario === "admin" ? "tecnico" : "admin")}
+                        className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-0.5 rounded text-cyan-300 font-mono"
+                        title="Alternar perfil de teste"
+                      >
+                        Perfil: {perfilUsuario.toUpperCase()} (Mudar)
+                      </button>
+                    </div>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total, cadastros e consulta de erros" : "Consulta exclusiva de erros e soluções"}
+                      {perfilUsuario === "admin" ? "Controle total, banco de dados Supabase e consulta" : "Consulta inteligente de erros"}
                     </p>
                   </div>
                 </div>
@@ -228,7 +233,7 @@ export default function RootLayout({
                 </button>
               </div>
 
-              {/* ABAS DINÂMICAS: ADMIN VÊ TUDO, TÉCNICO VÊ SÓ ERROS */}
+              {/* ABAS: Admin vê todas, Técnico vê apenas Erros */}
               <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                 <button onClick={() => setAbaAtiva("erros")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "erros" ? "bg-cyan-600 text-white" : "bg-slate-900 text-slate-400"}`}>
                   <HelpCircle size={15} className="inline mr-1" /> Consulta de Erros
@@ -237,7 +242,7 @@ export default function RootLayout({
                 {perfilUsuario === "admin" && (
                   <>
                     <button onClick={() => setAbaAtiva("acoes")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "acoes" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"}`}>
-                      <UserPlus size={15} className="inline mr-1" /> Cadastros
+                      <UserPlus size={15} className="inline mr-1" /> Cadastros (Supabase)
                     </button>
                     <button onClick={() => setAbaAtiva("financeiro")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "financeiro" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"}`}>
                       <DollarSign size={15} className="inline mr-1" /> Financeiro
@@ -326,7 +331,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Controle de Perfil Automático Ativo
+                Nando's Ar Condicionado — Sistema Integrado com Supabase & Voz
               </div>
             </div>
           </div>
