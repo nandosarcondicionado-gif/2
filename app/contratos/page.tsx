@@ -374,7 +374,7 @@ export default function ContratosPage() {
 
         <div class="section-title">1. IDENTIFICAÇÃO DAS PARTES</div>
         <div class="grid">
-          <div class="field"><span>CONTRATADA:</span> Prestador de Serviços de Climatização</div>
+          <div class="field"><span>CONTRATADA:</span> Nando's Ar Condicionado</div>
           <div class="field"><span>CONTRATANTE:</span> ${contract.cliente_nome}</div>
           <div class="field"><span>CPF / CNPJ:</span> ${clientData?.documento || "Não informado"}</div>
           <div class="field"><span>Endereço:</span> ${clientData?.endereco || "Não informado"} - ${contract.cidade}</div>
@@ -393,7 +393,7 @@ export default function ContratosPage() {
 
         <div class="signatures">
           <div class="sig-box">
-            <p>CONTRATADA</p>
+            <p>Nando's Ar Condicionado</p>
           </div>
           <div class="sig-box">
             <p>${contract.cliente_nome}</p>
@@ -417,6 +417,49 @@ export default function ContratosPage() {
     setCarneModalOpen(true);
   }
 
+  // Função auxiliar para calcular o CRC16 do Pix (Padrão EMV)
+  function calcularCRC16(payload: string): string {
+    let crc = 0xffff;
+    for (let c = 0; c < payload.length; c++) {
+      crc ^= payload.charCodeAt(c) << 8;
+      for (let i = 0; i < 8; i++) {
+        if (crc & 0x8000) {
+          crc = (crc << 1) ^ 0x1021;
+        } else {
+          crc = crc << 1;
+        }
+      }
+    }
+    let hex = (crc & 0xffff).toString(16).toUpperCase();
+    return hex.padStart(4, "0");
+  }
+
+  // Função para gerar o Pix Copia e Cola / Payload EMV
+  function gerarPayloadPix(valor: number): string {
+    const chave = "+5514991689815";
+    const nome = "Anderson F J Gomes";
+    const cidade = "Brotas";
+    const valorStr = valor.toFixed(2);
+
+    const tlv = (id: string, val: string) => id + String(val.length).padStart(2, "0") + val;
+
+    const gui = tlv("00", "br.gov.bcb.pix") + tlv("01", chave);
+    
+    let payload = "";
+    payload += tlv("00", "01"); // Indicador de versão do payload
+    payload += tlv("26", gui);   // Conta do recebedor (Chave Pix)
+    payload += tlv("52", "0000"); // MCC
+    payload += tlv("53", "986");  // Moeda (BRL)
+    payload += tlv("54", valorStr); // Valor
+    payload += tlv("58", "BR");   // País
+    payload += tlv("59", nome);   // Nome do recebedor
+    payload += tlv("60", cidade); // Cidade
+    payload += tlv("62", tlv("05", "***")); // TXID
+    payload += "6304"; // ID do CRC16
+
+    return payload + calcularCRC16(payload);
+  }
+
   function imprimirCarne() {
     if (!selectedForCarne) return;
     const win = window.open("", "_blank");
@@ -433,18 +476,46 @@ export default function ContratosPage() {
       let vencimento = new Date(dataBase);
       vencimento.setMonth(vencimento.getMonth() + (i - 1));
 
+      const pixPayload = gerarPayloadPix(valorParcela);
+      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixPayload)}`;
+
       parcelasHtml += `
-        <div class="parcela">
-          <div class="cabecalho-parcela">
-            <span>CARNÊ DE PAGAMENTO - ${selectedForCarne.numero}</span>
-            <span>Parcela ${i}/${carneParcelas}</span>
+        <div class="bloco-carne">
+          <div class="marca-dagua">Nando's Ar Condicionado</div>
+          
+          <!-- CANHOTO DE CONTROLE -->
+          <div class="canhoto">
+            <div class="canhoto-titulo">NANDO'S AR CONDICIONADO</div>
+            <div class="canhoto-info"><strong>Contrato:</strong> ${selectedForCarne.numero}</div>
+            <div class="canhoto-info"><strong>Parcela:</strong> ${i}/${carneParcelas}</div>
+            <div class="canhoto-info"><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
+            <div class="canhoto-info"><strong>Valor:</strong> ${formatCurrency(valorParcela)}</div>
+            <div class="canhoto-info"><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
+            <div class="canhoto-recibo">Data Pgto: ____/____/________<br>Visto / Carimbo: ________________</div>
           </div>
-          <div class="corpo-parcela">
-            <div><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
-            <div><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
-            <div><strong>Valor:</strong> ${formatCurrency(valorParcela)}</div>
+
+          <!-- FICHA PRINCIPAL DO CARNÊ -->
+          <div class="ficha">
+            <div class="ficha-topo">
+              <span class="empresa-nome">Nando's Ar Condicionado - Carnê de Pagamento</span>
+              <span class="parcela-tag">Parcela ${i}/${carneParcelas} (${selectedForCarne.numero})</span>
+            </div>
+            
+            <div class="ficha-corpo">
+              <div class="ficha-dados">
+                <div><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
+                <div><strong>Serviço:</strong> Plano ${selectedForCarne.plano}</div>
+                <div><strong>Equipamentos no local:</strong> ${selectedForEscalado(selectedForCarne.quantidade_equipamentos)} unidade(s)</div>
+                <div><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
+                <div class="ficha-valor"><strong>Valor da Parcela:</strong> ${formatCurrency(valorParcela)}</div>
+                <div class="pix-instrucao">Escaneie o QR Code abaixo com o app do Itaú ou qualquer banco para pagar via Pix instantâneo:</div>
+              </div>
+              <div class="ficha-qrcode">
+                <img src="${qrCodeUrl}" alt="QR Code Pix" width="110" height="110" />
+                <span class="pix-label">Pix Direto (Itaú)</span>
+              </div>
+            </div>
           </div>
-          <div class="rodape-parcela">Autenticação Bancária / Recibo do Pagador</div>
         </div>
       `;
     }
@@ -456,13 +527,63 @@ export default function ContratosPage() {
         <meta charset="UTF-8">
         <title>Carnê de Pagamento - ${selectedForCarne.numero}</title>
         <style>
-          body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 20px; font-size: 12px; }
-          .grid-carne { display: grid; grid-template-columns: 1fr; gap: 15px; max-width: 600px; margin: 0 auto; }
-          .parcela { border: 2px dashed #374151; border-radius: 8px; padding: 10px 15px; background: #fff; page-break-inside: avoid; }
-          .cabecalho-parcela { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 8px; color: #1e3a8a; }
-          .corpo-parcela { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
-          .rodape-parcela { font-size: 10px; color: #6b7280; text-align: right; border-top: 1px dotted #e5e7eb; padding-top: 3px; }
+          body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 15px; font-size: 11px; background: #fff; }
           .print-btn { text-align: center; margin-bottom: 20px; }
+          .bloco-carne { 
+            position: relative; 
+            display: flex; 
+            border: 2px solid #1e3a8a; 
+            border-radius: 6px; 
+            margin-bottom: 15px; 
+            background: #ffffff; 
+            overflow: hidden; 
+            page-break-inside: avoid;
+          }
+          /* MARCA D'ÁGUA */
+          .marca-dagua {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-15deg);
+            font-size: 28px;
+            font-weight: bold;
+            color: rgba(30, 58, 138, 0.05);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 1;
+            letter-spacing: 2px;
+          }
+          /* CANHOTO */
+          .canhoto {
+            width: 28%;
+            border-right: 2px dashed #94a3b8;
+            padding: 8px 10px;
+            background: #f8fafc;
+            position: relative;
+            z-index: 2;
+          }
+          .canhoto-titulo { font-size: 10px; font-weight: bold; color: #1e3a8a; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 5px; text-align: center; }
+          .canhoto-info { margin-bottom: 3px; font-size: 10px; }
+          .canhoto-recibo { margin-top: 8px; font-size: 9px; color: #475569; border-top: 1px dotted #cbd5e1; padding-top: 4px; }
+          
+          /* FICHA */
+          .ficha {
+            width: 72%;
+            padding: 8px 12px;
+            position: relative;
+            z-index: 2;
+          }
+          .ficha-topo { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px; }
+          .empresa-nome { color: #1e3a8a; font-size: 11px; }
+          .parcela-tag { color: #2563eb; font-size: 11px; }
+          .ficha-corpo { display: flex; justify-content: space-between; align-items: center; }
+          .ficha-dados { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+          .ficha-valor { font-size: 13px; color: #1e3a8a; margin-top: 2px; }
+          .pix-instrucao { font-size: 9px; color: #64748b; margin-top: 4px; max-width: 260px; line-height: 1.2; }
+          .ficha-qrcode { display: flex; flex-direction: column; align-items: center; margin-left: 10px; background: #f8fafc; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px; }
+          .ficha-qrcode img { display: block; }
+          .pix-label { font-size: 8px; font-weight: bold; color: #1e3a8a; margin-top: 2px; }
+
           @media print {
             .print-btn { display: none; }
             body { padding: 0; }
@@ -471,9 +592,9 @@ export default function ContratosPage() {
       </head>
       <body>
         <div class="print-btn">
-          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir Carnê Completo</button>
+          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir Carnê Profissional com Pix</button>
         </div>
-        <div class="grid-carne">
+        <div>
           ${parcelasHtml}
         </div>
       </body>
@@ -483,6 +604,10 @@ export default function ContratosPage() {
     win.document.write(htmlCarne);
     win.document.close();
     setCarneModalOpen(false);
+  }
+
+  function selectedForEscalado(qtd: number) {
+    return qtd || 1;
   }
 
   const filteredContracts = useMemo(() => {
@@ -543,7 +668,7 @@ export default function ContratosPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">Contratos</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Gerencie contratos, imprima documentos com cláusulas e gere carnês de pagamento.
+              Gerencie contratos, imprima documentos com cláusulas e gere carnês de pagamento com Pix.
             </p>
           </div>
 
@@ -691,7 +816,7 @@ export default function ContratosPage() {
                           </button>
                           <button
                             onClick={() => abrirGeradorCarne(contract)}
-                            title="Gerar Carnê"
+                            title="Gerar Carnê com Pix"
                             className="rounded-lg border border-emerald-900 bg-emerald-950/30 p-2 text-emerald-400 hover:bg-emerald-900/50 transition-colors"
                           >
                             <FileCode size={17} />
@@ -888,7 +1013,7 @@ export default function ContratosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-slate-100">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-              <h3 className="text-lg font-bold text-white">Gerar Carnê de Parcelas</h3>
+              <h3 className="text-lg font-bold text-white">Gerar Carnê com Pix</h3>
               <button onClick={() => setCarneModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
             </div>
             <p className="text-sm text-slate-300 mb-4">
@@ -917,7 +1042,7 @@ export default function ContratosPage() {
                 onClick={imprimirCarne}
                 className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 text-sm shadow-sm"
               >
-                Imprimir Carnê
+                Imprimir Carnê com Pix
               </button>
             </div>
           </div>
@@ -927,7 +1052,7 @@ export default function ContratosPage() {
       {/* MODAL DE DETALHES */}
       {detailsOpen && selectedContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xl rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-slate-100">
+          <div className="max-w-xl w-full rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-slate-100">
             <div className="flex items-center justify-between border-b border-slate-800 p-5">
               <div>
                 <h2 className="text-xl font-bold text-white">{selectedContract.numero}</h2>
