@@ -28,6 +28,7 @@ type Client = {
   endereco?: string | null;
   documento?: string | null;
   status?: string | null;
+  telefone?: string | null;
 };
 
 type Contract = {
@@ -132,7 +133,7 @@ export default function ContratosPage() {
 
       supabase
         .from("clientes")
-        .select("id, nome, cidade, endereco, documento, status")
+        .select("id, nome, cidade, endereco, documento, status, telefone")
         .order("nome"),
     ]);
 
@@ -155,7 +156,6 @@ export default function ContratosPage() {
     loadData();
   }, []);
 
-  // Cálculo progressivo automático por quantidade de aparelhos
   useEffect(() => {
     const config = plansConfig[form.plano];
     const base = config.basePrice;
@@ -342,42 +342,89 @@ export default function ContratosPage() {
       return;
     }
 
+    const dataAtual = new Date().toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="pt-BR">
       <head>
         <meta charset="UTF-8">
-        <title>Contrato de Prestação de Serviços - ${contract.numero}</title>
+        <title>Contrato - ${contract.numero} - Nando's Ar Condicionado</title>
         <style>
-          body { font-family: Arial, sans-serif; color: #111; line-height: 1.5; margin: 0; padding: 20px; font-size: 13px; }
-          .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 20px; }
-          .header h1 { color: #2563eb; margin: 0 0 5px 0; font-size: 20px; }
-          .header p { margin: 0; color: #555; font-size: 12px; }
-          .section-title { font-weight: bold; background: #f3f4f6; padding: 6px 10px; margin-top: 15px; margin-bottom: 10px; border-left: 4px solid #2563eb; font-size: 13px; }
-          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-          .field { margin-bottom: 6px; }
-          .field span { font-weight: bold; }
-          .clausulas { white-space: pre-wrap; text-align: justify; background: #fafafa; padding: 15px; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 10px; line-height: 1.6; }
-          .signatures { display: flex; justify-content: space-between; margin-top: 60px; text-align: center; }
-          .sig-box { width: 40%; border-top: 1px solid #000; padding-top: 5px; }
+          body { font-family: Arial, sans-serif; color: #111; line-height: 1.5; margin: 0; padding: 30px; font-size: 12px; position: relative; }
+          
+          /* MARCA D'ÁGUA DO CONTRATO */
+          .marca-dagua-contrato {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-20deg);
+            font-size: 45px;
+            font-weight: bold;
+            color: rgba(30, 58, 138, 0.04);
+            text-align: center;
+            width: 100%;
+            pointer-events: none;
+            z-index: -1;
+            line-height: 1.3;
+          }
+
+          .topo-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 20px; }
+          .logo-area { font-size: 20px; font-weight: bold; color: #1e3a8a; }
+          .logo-sub { font-size: 10px; color: #0284c7; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+          .parceiros-topo { font-size: 11px; font-weight: bold; color: #334155; text-align: right; }
+          .parceiros-topo span { color: #dc2626; font-weight: 900; }
+
+          .titulo-doc { text-align: center; font-size: 15px; font-weight: bold; color: #1e3a8a; margin: 15px 0 20px 0; background: #f1f5f9; padding: 8px; border-radius: 4px; }
+          
+          .section-title { font-weight: bold; background: #1e3a8a; color: #fff; padding: 6px 10px; margin-top: 15px; margin-bottom: 10px; font-size: 12px; border-radius: 3px; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+          .field { margin-bottom: 5px; font-size: 12px; }
+          .field span { font-weight: bold; color: #1e3a8a; }
+          
+          .clausulas { white-space: pre-wrap; text-align: justify; background: #fafafa; padding: 15px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 10px; line-height: 1.6; font-size: 11px; }
+          
+          .data-local { margin-top: 30px; text-align: right; font-size: 12px; font-weight: bold; color: #334155; }
+
+          .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; page-break-inside: avoid; }
+          .sig-box { width: 42%; border-top: 2px solid #1e3a8a; padding-top: 8px; }
+          .sig-box p { margin: 2px 0; font-size: 11px; }
+
+          .rodape-contrato { margin-top: 40px; background: #1e3a8a; color: #fff; padding: 8px; text-align: center; font-size: 10px; border-radius: 4px; font-weight: bold; }
+
           @media print {
             button { display: none; }
-            body { padding: 0; }
+            body { padding: 10px; }
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS TÉCNICOS</h1>
-          <p>Plano de Manutenção Preventiva em Sistemas de Climatização | ${contract.numero}</p>
+        <div class="marca-dagua-contrato">Nando's Ar Condicionado<br>qualidade e confiança em todos os detalhes</div>
+
+        <div class="topo-header">
+          <div>
+            <div class="logo-area">❄️ Nando's Ar Condicionado</div>
+            <div class="logo-sub">qualidade e confiança em todos os detalhes</div>
+          </div>
+          <div class="parceiros-topo">
+            <span>FUJITSU</span> &nbsp;|&nbsp; <span>SAMSUNG</span><br>
+            <small>Instalação • Manutenção • Higienização • Jaú e região</small>
+          </div>
         </div>
+
+        <div class="titulo-doc">CONTRATO DE PRESTAÇÃO DE SERVIÇOS TÉCNICOS - ${contract.numero}</div>
 
         <div class="section-title">1. IDENTIFICAÇÃO DAS PARTES</div>
         <div class="grid">
-          <div class="field"><span>CONTRATADA:</span> Nando's Ar Condicionado</div>
+          <div class="field"><span>CONTRATADA:</span> Nando's Ar Condicionado (Anderson F. J. Gomes)</div>
           <div class="field"><span>CONTRATANTE:</span> ${contract.cliente_nome}</div>
           <div class="field"><span>CPF / CNPJ:</span> ${clientData?.documento || "Não informado"}</div>
-          <div class="field"><span>Endereço:</span> ${clientData?.endereco || "Não informado"} - ${contract.cidade}</div>
+          <div class="field"><span>Telefone / Contato:</span> ${clientData?.telefone || "Não informado"}</div>
+          <div class="field" style="grid-column: span 2;"><span>Endereço:</span> ${clientData?.endereco || "Não informado"} - ${contract.cidade}</div>
         </div>
 
         <div class="section-title">2. ESPECIFICAÇÕES DO PLANO E VALORES</div>
@@ -391,17 +438,29 @@ export default function ContratosPage() {
         <div class="section-title">3. TERMOS E CLÁUSULAS CONTRATUAIS</div>
         <div class="clausulas">${contract.observacoes || "Nenhuma cláusula adicional informada."}</div>
 
+        <div class="data-local">
+          ${contract.cidade || "Jaú"}, ${dataAtual}.
+        </div>
+
         <div class="signatures">
           <div class="sig-box">
-            <p>Nando's Ar Condicionado</p>
+            <p><strong>NANDO'S AR CONDICIONADO</strong></p>
+            <p>Anderson Fernando de Jesus Gomes</p>
+            <p>Representante Legal / Contratada</p>
           </div>
           <div class="sig-box">
-            <p>${contract.cliente_nome}</p>
+            <p><strong>${contract.cliente_nome}</strong></p>
+            <p>CPF/CNPJ: ${clientData?.documento || "____________________"}</p>
+            <p>Contratante</p>
           </div>
         </div>
 
-        <div style="text-align: center; margin-top: 40px;">
-          <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir / Salvar PDF</button>
+        <div class="rodape-contrato">
+          WhatsApp: (14) 99712-1234 &nbsp;|&nbsp; Instagram: @nando.climatizacao &nbsp;|&nbsp; E-mail: nandosarcondicionado@gmail.com — Capricho, garantia e preço justo!
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 12px 25px; font-weight: bold; border-radius: 5px; cursor: pointer; font-size: 13px;">Imprimir / Salvar Contrato PDF</button>
         </div>
       </body>
       </html>
@@ -417,7 +476,6 @@ export default function ContratosPage() {
     setCarneModalOpen(true);
   }
 
-  // Função auxiliar para calcular o CRC16 do Pix (Padrão EMV)
   function calcularCRC16(payload: string): string {
     let crc = 0xffff;
     for (let c = 0; c < payload.length; c++) {
@@ -434,7 +492,6 @@ export default function ContratosPage() {
     return hex.padStart(4, "0");
   }
 
-  // Função para gerar o Pix Copia e Cola / Payload EMV
   function gerarPayloadPix(valor: number): string {
     const chave = "+5514991689815";
     const nome = "Anderson F J Gomes";
@@ -442,20 +499,19 @@ export default function ContratosPage() {
     const valorStr = valor.toFixed(2);
 
     const tlv = (id: string, val: string) => id + String(val.length).padStart(2, "0") + val;
-
     const gui = tlv("00", "br.gov.bcb.pix") + tlv("01", chave);
     
     let payload = "";
-    payload += tlv("00", "01"); // Indicador de versão do payload
-    payload += tlv("26", gui);   // Conta do recebedor (Chave Pix)
-    payload += tlv("52", "0000"); // MCC
-    payload += tlv("53", "986");  // Moeda (BRL)
-    payload += tlv("54", valorStr); // Valor
-    payload += tlv("58", "BR");   // País
-    payload += tlv("59", nome);   // Nome do recebedor
-    payload += tlv("60", cidade); // Cidade
-    payload += tlv("62", tlv("05", "***")); // TXID
-    payload += "6304"; // ID do CRC16
+    payload += tlv("00", "01");
+    payload += tlv("26", gui);
+    payload += tlv("52", "0000");
+    payload += tlv("53", "986");
+    payload += tlv("54", valorStr);
+    payload += tlv("58", "BR");
+    payload += tlv("59", nome);
+    payload += tlv("60", cidade);
+    payload += tlv("62", tlv("05", "***"));
+    payload += "6304";
 
     return payload + calcularCRC16(payload);
   }
@@ -477,43 +533,75 @@ export default function ContratosPage() {
       vencimento.setMonth(vencimento.getMonth() + (i - 1));
 
       const pixPayload = gerarPayloadPix(valorParcela);
-      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixPayload)}`;
+      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(pixPayload)}`;
 
       parcelasHtml += `
         <div class="bloco-carne">
-          <div class="marca-dagua">Nando's Ar Condicionado</div>
-          
-          <!-- CANHOTO DE CONTROLE -->
+          <div class="marca-dagua-carne">Nando's Ar Condicionado<br>qualidade e confiança em todos os detalhes</div>
+
+          <!-- CANHOTO DO CLIENTE -->
           <div class="canhoto">
-            <div class="canhoto-titulo">NANDO'S AR CONDICIONADO</div>
+            <div class="canhoto-topo-logo">❄️ Nando's Ar</div>
+            <div class="canhoto-sub">COMPROVANTE DO CLIENTE</div>
             <div class="canhoto-info"><strong>Contrato:</strong> ${selectedForCarne.numero}</div>
             <div class="canhoto-info"><strong>Parcela:</strong> ${i}/${carneParcelas}</div>
             <div class="canhoto-info"><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
-            <div class="canhoto-info"><strong>Valor:</strong> ${formatCurrency(valorParcela)}</div>
-            <div class="canhoto-info"><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
-            <div class="canhoto-recibo">Data Pgto: ____/____/________<br>Visto / Carimbo: ________________</div>
+            <div class="canhoto-info" style="font-size: 11px; font-weight: bold; color: #1e3a8a;"><strong>Valor:</strong> ${formatCurrency(valorParcela)}</div>
+            <div style="font-size: 9px; margin-top: 4px;">
+              [ &nbsp; ] Pago &nbsp;&nbsp;&nbsp; [ &nbsp; ] Não pago<br>
+              Forma: [ ] Dinheiro [ ] Cartão<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[ ] Pix [ ] Outro: ____
+            </div>
+            <div class="canhoto-assinatura">
+              Assinatura / Data<br>_______________________
+            </div>
+            <div style="font-size: 8px; text-align: center; color: #1e3a8a; font-style: italic; margin-top: 3px;">Obrigado pela confiança!</div>
           </div>
 
-          <!-- FICHA PRINCIPAL DO CARNÊ -->
+          <!-- FICHA PRINCIPAL DO CARNÊ COM QR CODE -->
           <div class="ficha">
             <div class="ficha-topo">
-              <span class="empresa-nome">Nando's Ar Condicionado - Carnê de Pagamento</span>
-              <span class="parcela-tag">Parcela ${i}/${carneParcelas} (${selectedForCarne.numero})</span>
+              <div>
+                <div class="ficha-empresa">❄️ Nando's Ar Condicionado</div>
+                <div class="ficha-empresa-sub">qualidade e confiança em todos os detalhes</div>
+              </div>
+              <div class="ficha-parceiros">
+                <span>FUJITSU</span> | <span>SAMSUNG</span><br>
+                <small>Jaú e região</small>
+              </div>
             </div>
-            
-            <div class="ficha-corpo">
-              <div class="ficha-dados">
-                <div><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
-                <div><strong>Serviço:</strong> Plano ${selectedForCarne.plano}</div>
-                <div><strong>Equipamentos no local:</strong> ${selectedForEscalado(selectedForCarne.quantidade_equipamentos)} unidade(s)</div>
-                <div><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
-                <div class="ficha-valor"><strong>Valor da Parcela:</strong> ${formatCurrency(valorParcela)}</div>
-                <div class="pix-instrucao">Escaneie o QR Code abaixo com o app do Itaú ou qualquer banco para pagar via Pix instantâneo:</div>
+
+            <div class="titulo-carne-barra">CARNÊ DE PAGAMENTO</div>
+
+            <div class="ficha-campos-sup">
+              <div><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
+              <div style="display: flex; justify-content: space-between; margin-top: 2px;">
+                <span><strong>Plano:</strong> ${selectedForCarne.plano} (${selectedForCarne.quantidade_equipamentos} maq.)</span>
+                <span><strong>Nº do Carnê:</strong> ${selectedForCarne.numero}</span>
+              </div>
+            </div>
+
+            <div class="ficha-corpo-baixo">
+              <div class="ficha-detalhes-parcela">
+                <div style="font-size: 13px; font-weight: bold; color: #1e3a8a; background: #e0f2fe; padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                  Parcela ${i}/${carneParcelas} — Vencimento: ${vencimento.toLocaleDateString("pt-BR")}
+                </div>
+                <div style="font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px;">
+                  Valor: ${formatCurrency(valorParcela)}
+                </div>
+                <div class="pix-instrucao">
+                  📲 <strong>Pix Direto (Itaú):</strong> Escaneie o QR Code ao lado com o app do seu banco para pagar instantaneamente. Chave Celular: (14) 99168-9815.
+                </div>
               </div>
               <div class="ficha-qrcode">
-                <img src="${qrCodeUrl}" alt="QR Code Pix" width="110" height="110" />
-                <span class="pix-label">Pix Direto (Itaú)</span>
+                <img src="${qrCodeUrl}" alt="QR Code Pix" width="95" height="95" />
+                <span class="pix-label">Pix (Itaú)</span>
               </div>
+            </div>
+
+            <div class="ficha-rodape">
+              <span>Mantenha seu pagamento em dia! Isso garante a continuidade dos serviços.</span>
+              <span style="font-style: italic; color: #1e3a8a; font-weight: bold;">Capricho, garantia e preço justo!</span>
             </div>
           </div>
         </div>
@@ -527,62 +615,82 @@ export default function ContratosPage() {
         <meta charset="UTF-8">
         <title>Carnê de Pagamento - ${selectedForCarne.numero}</title>
         <style>
-          body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 15px; font-size: 11px; background: #fff; }
-          .print-btn { text-align: center; margin-bottom: 20px; }
+          body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 10px; font-size: 10px; background: #fff; }
+          .print-btn { text-align: center; margin-bottom: 15px; }
+          
           .bloco-carne { 
             position: relative; 
             display: flex; 
             border: 2px solid #1e3a8a; 
             border-radius: 6px; 
-            margin-bottom: 15px; 
+            margin-bottom: 10px; 
             background: #ffffff; 
             overflow: hidden; 
             page-break-inside: avoid;
+            height: 165px;
           }
-          /* MARCA D'ÁGUA */
-          .marca-dagua {
+
+          /* MARCA D'ÁGUA NO CARNÊ */
+          .marca-dagua-carne {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) rotate(-15deg);
-            font-size: 28px;
+            font-size: 22px;
             font-weight: bold;
-            color: rgba(30, 58, 138, 0.05);
+            color: rgba(30, 58, 138, 0.04);
             white-space: nowrap;
             pointer-events: none;
             z-index: 1;
-            letter-spacing: 2px;
+            text-align: center;
+            line-height: 1.2;
           }
+
           /* CANHOTO */
           .canhoto {
-            width: 28%;
-            border-right: 2px dashed #94a3b8;
-            padding: 8px 10px;
+            width: 27%;
+            border-right: 2px dashed #64748b;
+            padding: 6px 8px;
             background: #f8fafc;
             position: relative;
             z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
           }
-          .canhoto-titulo { font-size: 10px; font-weight: bold; color: #1e3a8a; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; margin-bottom: 5px; text-align: center; }
-          .canhoto-info { margin-bottom: 3px; font-size: 10px; }
-          .canhoto-recibo { margin-top: 8px; font-size: 9px; color: #475569; border-top: 1px dotted #cbd5e1; padding-top: 4px; }
-          
+          .canhoto-topo-logo { font-size: 11px; font-weight: bold; color: #1e3a8a; }
+          .canhoto-sub { font-size: 9px; font-weight: bold; color: #0284c7; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; margin-bottom: 3px; }
+          .canhoto-info { font-size: 9px; margin-bottom: 2px; }
+          .canhoto-assinatura { border-top: 1px dotted #94a3b8; padding-top: 2px; font-size: 8px; text-align: center; color: #334155; }
+
           /* FICHA */
           .ficha {
-            width: 72%;
-            padding: 8px 12px;
+            width: 73%;
+            padding: 6px 10px;
             position: relative;
             z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
           }
-          .ficha-topo { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px; }
-          .empresa-nome { color: #1e3a8a; font-size: 11px; }
-          .parcela-tag { color: #2563eb; font-size: 11px; }
-          .ficha-corpo { display: flex; justify-content: space-between; align-items: center; }
-          .ficha-dados { flex: 1; display: flex; flex-direction: column; gap: 3px; }
-          .ficha-valor { font-size: 13px; color: #1e3a8a; margin-top: 2px; }
-          .pix-instrucao { font-size: 9px; color: #64748b; margin-top: 4px; max-width: 260px; line-height: 1.2; }
-          .ficha-qrcode { display: flex; flex-direction: column; align-items: center; margin-left: 10px; background: #f8fafc; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px; }
-          .ficha-qrcode img { display: block; }
-          .pix-label { font-size: 8px; font-weight: bold; color: #1e3a8a; margin-top: 2px; }
+          .ficha-topo { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }
+          .ficha-empresa { font-size: 12px; font-weight: bold; color: #1e3a8a; }
+          .ficha-empresa-sub { font-size: 8px; color: #0284c7; font-weight: bold; text-transform: uppercase; }
+          .ficha-parceiros { font-size: 9px; font-weight: bold; text-align: right; color: #334155; }
+          .ficha-parceiros span { color: #dc2626; font-weight: 900; }
+
+          .titulo-carne-barra { background: #1e3a8a; color: #fff; text-align: center; font-size: 10px; font-weight: bold; padding: 2px; margin: 4px 0; border-radius: 2px; letter-spacing: 1px; }
+
+          .ficha-campos-sup { font-size: 10px; background: #f8fafc; padding: 3px 6px; border: 1px solid #e2e8f0; border-radius: 3px; }
+
+          .ficha-corpo-baixo { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; }
+          .ficha-detalhes-parcela { flex: 1; padding-right: 8px; }
+          .pix-instrucao { font-size: 8.5px; color: #475569; margin-top: 3px; line-height: 1.2; }
+          
+          .ficha-qrcode { display: flex; flex-direction: column; align-items: center; background: #fff; padding: 3px; border: 1px solid #cbd5e1; border-radius: 4px; }
+          .pix-label { font-size: 8px; font-weight: bold; color: #1e3a8a; margin-top: 1px; }
+
+          .ficha-rodape { display: flex; justify-content: space-between; font-size: 8px; border-top: 1px solid #e2e8f0; padding-top: 3px; color: #475569; }
 
           @media print {
             .print-btn { display: none; }
@@ -592,7 +700,7 @@ export default function ContratosPage() {
       </head>
       <body>
         <div class="print-btn">
-          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir Carnê Profissional com Pix</button>
+          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer; font-size: 12px;">Imprimir Carnê Profissional</button>
         </div>
         <div>
           ${parcelasHtml}
@@ -604,10 +712,6 @@ export default function ContratosPage() {
     win.document.write(htmlCarne);
     win.document.close();
     setCarneModalOpen(false);
-  }
-
-  function selectedForEscalado(qtd: number) {
-    return qtd || 1;
   }
 
   const filteredContracts = useMemo(() => {
@@ -668,7 +772,7 @@ export default function ContratosPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">Contratos</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Gerencie contratos, imprima documentos com cláusulas e gere carnês de pagamento com Pix.
+              Gerencie contratos, imprima documentos com assinaturas e gere carnês com Pix.
             </p>
           </div>
 
@@ -1042,7 +1146,7 @@ export default function ContratosPage() {
                 onClick={imprimirCarne}
                 className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 text-sm shadow-sm"
               >
-                Imprimir Carnê com Pix
+                Imprimir Carnê Profissional
               </button>
             </div>
           </div>
