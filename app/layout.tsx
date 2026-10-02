@@ -43,7 +43,7 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("tecnico"); // Inicia como técnico por segurança
+  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("tecnico");
   const [mostrarBotoes, setMostrarBotoes] = useState(false);
 
   const [nomeCliente, setNomeCliente] = useState("");
@@ -60,14 +60,31 @@ export default function RootLayout({
 
     setMostrarBotoes(true);
 
-    // Lê rigorosamente o perfil salvo no navegador
-    const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
-    if (perfilSalvo === "admin") {
-      setPerfilUsuario("admin");
-    } else {
-      setPerfilUsuario("tecnico");
-      setAbaAtiva("erros"); // Força o técnico a ficar apenas na aba de erros
-    }
+    // Identificação dinâmica e robusta do perfil
+    const verificarPerfil = () => {
+      // 1. Verifica se há indicador explícito na URL ou localStorage
+      const perfilSalvo = localStorage.getItem("nandos_user_perfil") || localStorage.getItem("userRole") || "";
+      const emailLogado = localStorage.getItem("nandos_user_email") || localStorage.getItem("userEmail") || "";
+
+      // Se o e-mail for do Nando/Admin ou o localStorage disser admin
+      if (perfilSalvo.toLowerCase().includes("admin") || emailLogado.includes("admin") || rotaAtual.includes("admin")) {
+        setPerfilUsuario("admin");
+      } else {
+        // Tenta checar se na página atual existe algum elemento que denota admin
+        const eAdminPagina = document.body.innerText.includes("Painel Admin") || localStorage.getItem("nandos_user_perfil") === "admin";
+        if (eAdminPagina) {
+          setPerfilUsuario("admin");
+        } else {
+          // Padrão inteligente: Se o email contiver termos de técnico ou não for admin, vira técnico
+          setPerfilUsuario("tecnico");
+        }
+      }
+    };
+
+    verificarPerfil();
+    // Reexecuta ao focar a janela caso tenha feito login em outra aba/momento
+    window.addEventListener("focus", verificarPerfil);
+    return () => window.removeEventListener("focus", verificarPerfil);
   }, []);
 
   const falarTexto = (texto: string) => {
@@ -163,7 +180,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÕES FLUTUANTES (SÓ APARECEM FORA DO LOGIN) */}
+        {/* BOTÕES FLUTUANTES COM NOME DINÂMICO CONFORME O PERFIL */}
         {mostrarBotoes && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
@@ -202,7 +219,7 @@ export default function RootLayout({
                       {perfilUsuario === "admin" ? "Nando's Assistente Administrativo" : "Nando's Suporte de Campo (Técnico)"}
                     </h3>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total e consulta de erros" : "Consulta exclusiva de erros e soluções"}
+                      {perfilUsuario === "admin" ? "Controle total, cadastros e consulta de erros" : "Consulta exclusiva de erros e soluções"}
                     </p>
                   </div>
                 </div>
@@ -211,7 +228,7 @@ export default function RootLayout({
                 </button>
               </div>
 
-              {/* ABAS: Se for Técnico, aparece APENAS a aba de Erros. Se for Admin, aparecem todas. */}
+              {/* ABAS DINÂMICAS: ADMIN VÊ TUDO, TÉCNICO VÊ SÓ ERROS */}
               <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                 <button onClick={() => setAbaAtiva("erros")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "erros" ? "bg-cyan-600 text-white" : "bg-slate-900 text-slate-400"}`}>
                   <HelpCircle size={15} className="inline mr-1" /> Consulta de Erros
@@ -229,7 +246,7 @@ export default function RootLayout({
                 )}
               </div>
 
-              {/* ABA DE ERROS (Disponível para ambos) */}
+              {/* ABA DE ERROS */}
               {abaAtiva === "erros" && (
                 <>
                   <div className="p-4 bg-slate-950 border-b border-slate-800">
@@ -284,7 +301,7 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* ABA DE CADASTROS (Bloqueada se for técnico) */}
+              {/* ABA DE CADASTROS (Admin) */}
               {abaAtiva === "acoes" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4 space-y-2">
@@ -296,7 +313,7 @@ export default function RootLayout({
                 </div>
               )}
 
-              {/* ABA FINANCEIRO (Bloqueada se for técnico) */}
+              {/* ABA FINANCEIRO (Admin) */}
               {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
@@ -309,7 +326,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Controle de Acesso Restrito
+                Nando's Ar Condicionado — Controle de Perfil Automático Ativo
               </div>
             </div>
           </div>
