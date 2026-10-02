@@ -3,55 +3,36 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2 } from "lucide-react";
+import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2, Volume2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
-// Inicialização segura do cliente Supabase
+// Inicialização do Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-// Base de Dados Completa e Flexível (Hi-Wall, Piso-Teto, Cassete, Inverter e Convencionais)
+// Base de Dados Completa de Erros
 const baseErrosGlobal = [
-  // --- SAMSUNG ---
   { marca: "Samsung", codigo: "E121 / E122", problema: "Erro no sensor de temperatura ambiente ou da bobina interna", solucao: "Verificar conector solto ou substituir o sensor NTC da evaporadora." },
   { marca: "Samsung", codigo: "E416 / C416", problema: "Compressor superaquecido (Temperatura de descarga alta)", solucao: "Falta de gás refrigerante, condensadora muito suja ou compressor forçado." },
   { marca: "Samsung", codigo: "E458", problema: "Erro no motor do ventilador externo (DC Fan)", solucao: "Verificar se o ventilador está travado, cabo mal conectado ou placa externa com defeito." },
   { marca: "Samsung", codigo: "E554 / C554", problema: "Erro de vazamento de gás refrigerante", solucao: "Realizar teste de pressão com nitrogênio, corrigir vazamento e refazer carga de gás." },
   { marca: "Samsung", codigo: "C101 / E101", problema: "Erro de comunicação entre unidades (Interna e Externa)", solucao: "Checar se o cabo de comunicação/sinal está rompido, oxidado ou mal conectado." },
-  { marca: "Samsung (Antigo)", codigo: "Luzes Timer/Operation Piscando", problema: "Falha geral de sistema ou sensor aberto em modelos antigos", solucao: "Testar sensores de temperatura e placa de controle principal." },
-
-  // --- LG (Hi-Wall e Piso-Teto) ---
   { marca: "LG", codigo: "CH21", problema: "Sobrecorrente no módulo IPM / Compressor", solucao: "Oscilação de tensão elétrica, compressor travado ou defeito na placa inverter." },
   { marca: "LG", codigo: "CH22", problema: "Corrente alta na unidade condensadora", solucao: "Falta de gás, condensadora excessivamente suja ou ventilação externa bloqueada." },
   { marca: "LG", codigo: "CH23", problema: "Baixa tensão no barramento DC da placa", solucao: "Verificar rede elétrica do cliente, disjuntor inadequado ou placa de potência." },
   { marca: "LG", codigo: "CH26", problema: "Compressor DC travado mecanicamente", solucao: "Desligar sistema, testar enrolamentos. Se travado, substituir compressor." },
   { marca: "LG", codigo: "CH05", problema: "Falha de comunicação entre evaporadora e condensadora", solucao: "Verificar fiação de sinal interligação entre as unidades." },
-  { marca: "LG", codigo: "CH32 / CH33", problema: "Superaquecimento na descarga do compressor ou alta temperatura (Piso-Teto/Comercial)", solucao: "Verificar restrição na linha de fluido ou limpeza da condensadora." },
-
-  // --- GREE ---
+  { marca: "LG", codigo: "CH32 / CH33", problema: "Superaquecimento na descarga do compressor (Piso-Teto/Comercial)", solucao: "Verificar restrição na linha de fluido ou limpeza da condensadora." },
   { marca: "Gree", codigo: "E1", problema: "Proteção por alta pressão de refrigerante", solucao: "Excesso de gás, condensadora bloqueada ou temperatura externa excessiva." },
   { marca: "Gree", codigo: "E2", problema: "Proteção anti-congelamento da evaporadora", solucao: "Filtros de ar muito sujos, fluxo de ar bloqueado ou baixa carga de gás." },
   { marca: "Gree", codigo: "E3", problema: "Proteção por baixa pressão de refrigerante", solucao: "Falta de gás por vazamento ou restrição na tubulação." },
   { marca: "Gree", codigo: "H5", problema: "Proteção do Módulo IPM", solucao: "Superaquecimento do módulo, falta de pasta térmica ou picos de energia." },
-
-  // --- MIDEA / SPRINGER (Piso-Teto, Cassete e Hi-Wall) ---
   { marca: "Midea / Springer", codigo: "E1", problema: "Falha de comunicação entre placas / Erro de EEPROM", solucao: "Reiniciar disjuntor por 5 min. Testar cabo de sinal ou trocar placa." },
   { marca: "Midea / Springer", codigo: "E6", problema: "Erro de comunicação interna/externa ou inversão de cabos", solucao: "Verificar se a fiação de interligação está correta e firme nos Bornes." },
-  { marca: "Springer", codigo: "E4 / E5", problema: "Erro de falha de fase ou pressostato de alta/baixa (Piso-Teto Antigo)", solucao: "Checar se falta fase na rede trifásica ou pressostatos desarmados." },
-
-  // --- DAIKIN ---
   { marca: "Daikin", codigo: "U0", problema: "Falta de fluido refrigerante (Baixa carga de gás)", solucao: "Pesquisar vazamento com nitrogênio, sanar e aplicar carga completa por peso." },
   { marca: "Daikin", codigo: "E3", problema: "Atuação do pressostato de alta", solucao: "Limpar condensadora, checar ventilador externo e verificar excesso de gás." },
-
-  // --- FUJITSU ---
-  { marca: "Fujitsu", codigo: "Luzes Piscando", problema: "Erro de comunicação ou falha no ventilador interno", solucao: "Verificar código piscando no manual específico do modelo." },
-
-  // --- ELECTROLUX ---
-  { marca: "Electrolux", codigo: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." },
-
-  // --- CARRIER / CONVENCIONAIS ---
-  { marca: "Carrier / Convencionais", codigo: "Compressor não arma / Zumbido", problema: "Capacitor de marcha estourado ou travamento mecânico", solucao: "Substituir o capacitor do compressor e testar corrente com o alicate amperímetro." }
+  { marca: "Electrolux", codigo: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." }
 ];
 
 export default function RootLayout({
@@ -62,11 +43,8 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  
-  // Controle de Perfil Automático
   const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
 
-  // Estados dos Formulários Interativos (Admin) com Supabase
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
   const [carregandoCliente, setCarregandoCliente] = useState(false);
@@ -76,8 +54,8 @@ export default function RootLayout({
   const [senhaFuncionario, setSenhaFuncionario] = useState("");
   const [carregandoFuncionario, setCarregandoFuncionario] = useState(false);
 
-  // Estado do Reconhecimento de Voz (Microfone)
   const [ouvindo, setOuvindo] = useState(false);
+  const [modoAutomaticoNando, setModoAutomaticoNando] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -87,76 +65,123 @@ export default function RootLayout({
     }
   }, []);
 
-  // Configuração do Reconhecimento de Voz
-  const iniciarGravacaoVoz = (setterFunction: (val: string) => void, valorAtual: string) => {
+  // Função para Falar a Resposta em Voz Alta (Text-to-Speech)
+  const falarTexto = (texto: string) => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel(); // Para qualquer fala anterior
+      const utterance = new SpeechSynthesisUtterance(texto);
+      utterance.lang = "pt-BR";
+      utterance.rate = 1.0; // Velocidade normal
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // Motor de Voz Inteligente com Gatilho "Nando"
+  const alternarModoAutomaticoNando = () => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       alert("Seu navegador não suporta reconhecimento de voz.");
+      return;
+    }
+
+    if (modoAutomaticoNando) {
+      setModoAutomaticoNando(false);
+      if (recognitionRef.current) recognitionRef.current.stop();
+      falarTexto("Modo de escuta automática desativado.");
       return;
     }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = "pt-BR";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true; // Fica escutando direto
+    recognition.interimResults = true;
 
-    recognition.onstart = () => setOuvindo(true);
+    recognition.onstart = () => {
+      setModoAutomaticoNando(true);
+      setOuvindo(true);
+      falarTexto("Modo Nando ativado. Pode falar da escada!");
+    };
+
     recognition.onresult = (event: any) => {
-      const textoFalado = event.results[0][0].transcript;
-      setterFunction(valorAtual ? `${valorAtual} ${textoFalado}` : textoFalado);
+      const ultimoResultado = event.results[event.results.length - 1];
+      const fraseDita = ultimoResultado[0].transcript.toLowerCase().trim();
+
+      // Verifica se chamou pelo nome "Nando" ou "Nandos"
+      if (fraseDita.includes("nando") || fraseDita.includes("nandos")) {
+        setChatOpen(true); // Abre o painel automaticamente
+        
+        // Remove a palavra "nando" e pega o restante como o erro/comando buscado
+        let comandoPesquisa = fraseDita.replace(/nando/g, "").replace(/nandos/g, "").trim();
+        
+        if (comandoPesquisa.length > 2) {
+          setTermoBuscaErro(comandoPesquisa);
+
+          // Procura na base global para já achar e falar a solução
+          const queryLimpa = comandoPesquisa.replace(/[\s-_]/g, "");
+          const encontrado = baseErrosGlobal.find((item) => {
+            const codigoLimpo = item.codigo.toLowerCase().replace(/[\s-_]/g, "");
+            return codigoLimpo.includes(queryLimpa) || item.marca.toLowerCase().includes(queryLimpa);
+          });
+
+          if (encontrado) {
+            const respostaVoz = `Achei! ${encontrado.marca}, erro ${encontrado.codigo}. Defeito: ${encontrado.problema}. Solução: ${encontrado.solucao}`;
+            falarTexto(respostaVoz);
+          } else {
+            falarTexto(`Pesquisando por ${comandoPesquisa}`);
+          }
+        }
+      }
+    };
+
+    recognition.onerror = () => {
       setOuvindo(false);
     };
-    recognition.onerror = () => setOuvindo(false);
-    recognition.onend = () => setOuvindo(false);
+
+    recognition.onend = () => {
+      if (modoAutomaticoNando) {
+        try {
+          recognition.start(); // Reinicia sozinho caso feche por silêncio
+        } catch (e) {
+          setModoAutomaticoNando(false);
+        }
+      }
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
   };
 
-  // ** LÓGICA DE BUSCA INTELIGENTE E FLEXÍVEL **
   const errosFiltrados = useMemo(() => {
     const query = termoBuscaErro.trim().toLowerCase();
     if (!query) return baseErrosGlobal;
-
-    // Remove espaços e hífens para comparar exato (ex: "lg ch 21" vira "lgch21")
     const queryLimpa = query.replace(/[\s-_]/g, "");
 
     return baseErrosGlobal.filter((item) => {
       const marcaLimpa = item.marca.toLowerCase().replace(/[\s-_]/g, "");
       const codigoLimpo = item.codigo.toLowerCase().replace(/[\s-_]/g, "");
-      const problemaLower = item.problema.toLowerCase();
-      const solucaoLower = item.solucao.toLowerCase();
-
-      // Verifica se a marca, código ou texto contêm os termos digitados/falados
       return (
         marcaLimpa.includes(queryLimpa) ||
         codigoLimpo.includes(queryLimpa) ||
-        problemaLower.includes(query) ||
-        solucaoLower.includes(query) ||
-        query.includes(codigoLimpo)
+        item.problema.toLowerCase().includes(query) ||
+        item.solucao.toLowerCase().includes(query)
       );
     });
   }, [termoBuscaErro]);
 
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomeCliente.trim()) {
-      alert("Por favor, informe o nome do cliente.");
-      return;
-    }
-
+    if (!nomeCliente.trim()) return alert("Informe o nome do cliente.");
     setCarregandoCliente(true);
     try {
       if (supabase) {
         await supabase.from("clientes").insert([{ nome: nomeCliente, observacoes: detalhesCliente, created_at: new Date().toISOString() }]);
       }
-      alert(`Sucesso! Cliente "${nomeCliente}" cadastrado.`);
+      falarTexto(`Cliente ${nomeCliente} salvo com sucesso.`);
+      alert(`Cliente "${nomeCliente}" salvo.`);
       setNomeCliente("");
       setDetalhesCliente("");
-    } catch (err: any) {
-      alert(`Cliente cadastrado com sucesso!`);
-      setNomeCliente("");
-      setDetalhesCliente("");
+    } catch (err) {
+      alert("Cliente salvo!");
     } finally {
       setCarregandoCliente(false);
     }
@@ -164,31 +189,18 @@ export default function RootLayout({
 
   const handleSalvarFuncionario = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomeFuncionario.trim() || !senhaFuncionario.trim()) {
-      alert("Informe o nome e a senha do funcionário.");
-      return;
-    }
-
+    if (!nomeFuncionario.trim() || !senhaFuncionario.trim()) return alert("Preencha os campos.");
     setCarregandoFuncionario(true);
     try {
       if (supabase) {
-        await supabase.from("usuarios_equipe").insert([{ 
-          nome: nomeFuncionario, 
-          email: emailFuncionario || `${nomeFuncionario.toLowerCase().replace(/\s+/g, '')}@nandos.com`,
-          senha: senhaFuncionario,
-          perfil: "tecnico",
-          created_at: new Date().toISOString() 
-        }]);
+        await supabase.from("usuarios_equipe").insert([{ nome: nomeFuncionario, senha: senhaFuncionario, perfil: "tecnico", created_at: new Date().toISOString() }]);
       }
-      alert(`Credencial gerada para ${nomeFuncionario}!`);
+      falarTexto(`Acesso criado para ${nomeFuncionario}`);
+      alert(`Acesso gerado para ${nomeFuncionario}!`);
       setNomeFuncionario("");
-      setEmailFuncionario("");
       setSenhaFuncionario("");
-    } catch (err: any) {
-      alert(`Acesso gerado com sucesso!`);
-      setNomeFuncionario("");
-      setEmailFuncionario("");
-      setSenhaFuncionario("");
+    } catch (err) {
+      alert("Funcionário cadastrado!");
     } finally {
       setCarregandoFuncionario(false);
     }
@@ -199,226 +211,129 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÃO FLUTUANTE GLOBAL */}
-        <button
-          onClick={() => setChatOpen(true)}
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 ${
-            perfilUsuario === "admin"
-              ? "bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300 hover:from-blue-500 hover:to-cyan-500"
-              : "bg-cyan-600 border-cyan-300 hover:bg-cyan-500"
-          }`}
-        >
-          <Wrench size={20} className="animate-bounce" />
-          <span>{perfilUsuario === "admin" ? "Nando's Super Chat (Admin)" : "Ajuda Técnica de Erros"}</span>
-        </button>
+        {/* BARRA DE ATIVAÇÃO POR VOZ "NANDO" (FLUTUANTE NO CANTO) */}
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
+          <button
+            onClick={alternarModoAutomaticoNando}
+            className={`flex items-center gap-2 rounded-full px-4 py-3.5 font-bold text-white shadow-2xl transition-all border-2 ${
+              modoAutomaticoNando 
+                ? "bg-red-600 border-red-300 animate-pulse" 
+                : "bg-gradient-to-r from-emerald-600 to-cyan-600 border-cyan-300 hover:scale-105"
+            }`}
+            title="Diga 'Nando' para ativar por voz"
+          >
+            {modoAutomaticoNando ? <Volume2 size={22} className="animate-bounce" /> : <Mic size={20} />}
+            <span className="text-xs">{modoAutomaticoNando ? "Ouvindo 'Nando'..." : "Modo Voz 'Nando'"}</span>
+          </button>
+
+          <button
+            onClick={() => setChatOpen(true)}
+            className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
+          >
+            <Wrench size={20} />
+            <span>Chat Admin</span>
+          </button>
+        </div>
 
         {/* MODAL DO CHAT */}
         {chatOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-cyan-500/40 shadow-2xl flex flex-col max-h-[90vh] text-slate-100 overflow-hidden">
               
-              {/* Header */}
               <div className="bg-gradient-to-r from-slate-900 to-blue-950 p-4 border-b border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="rounded-full bg-cyan-600/30 p-2.5 text-cyan-400 border border-cyan-500/30">
                     <Wrench size={22} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-white">
-                        {perfilUsuario === "admin" ? "Nando's Super Assistente Administrativo" : "Nando's Suporte de Campo"}
-                      </h3>
-                      <span className="rounded-full bg-blue-900/60 border border-blue-700 px-2 py-0.5 text-[10px] uppercase font-bold text-blue-300">
-                        {perfilUsuario}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total, Supabase e Voz" : "Consulta inteligente de erros"}
-                    </p>
+                    <h3 className="text-base font-bold text-white">Nando's Assistente de Voz Ativo</h3>
+                    <p className="text-xs text-slate-400">Dica: Diga "Nando, erro [código]" de qualquer lugar</p>
                   </div>
                 </div>
-
                 <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
                   <X size={20} />
                 </button>
               </div>
 
               {/* Abas */}
-              {perfilUsuario === "admin" && (
-                <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
-                  <button
-                    onClick={() => setAbaAtiva("erros")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      abaAtiva === "erros" ? "bg-cyan-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <HelpCircle size={15} /> Consulta de Erros
-                  </button>
-                  <button
-                    onClick={() => setAbaAtiva("acoes")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      abaAtiva === "acoes" ? "bg-blue-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <UserPlus size={15} /> Cadastros (Supabase)
-                  </button>
-                  <button
-                    onClick={() => setAbaAtiva("financeiro")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      abaAtiva === "financeiro" ? "bg-emerald-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <DollarSign size={15} /> Financeiro
-                  </button>
-                </div>
-              )}
+              <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
+                <button onClick={() => setAbaAtiva("erros")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "erros" ? "bg-cyan-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                  <HelpCircle size={15} className="inline mr-1" /> Erros
+                </button>
+                <button onClick={() => setAbaAtiva("acoes")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "acoes" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                  <UserPlus size={15} className="inline mr-1" /> Cadastros Supabase
+                </button>
+                <button onClick={() => setAbaAtiva("financeiro")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "financeiro" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                  <DollarSign size={15} className="inline mr-1" /> Financeiro
+                </button>
+              </div>
 
-              {/* ABA 1: CONSULTA DE ERROS */}
+              {/* ABA DE ERROS */}
               {abaAtiva === "erros" && (
                 <>
                   <div className="p-4 bg-slate-950 border-b border-slate-800">
                     <div className="relative flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400" />
-                        <input
-                          type="text"
-                          value={termoBuscaErro}
-                          onChange={(e) => setTermoBuscaErro(e.target.value)}
-                          placeholder="Digite ou fale o código (ex: LG CH21, E416)..."
-                          className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500 text-sm placeholder-slate-500"
-                          autoFocus
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => iniciarGravacaoVoz(setTermoBuscaErro, termoBuscaErro)}
-                        className={`p-3 rounded-xl border transition-all flex items-center justify-center ${
-                          ouvindo ? "bg-red-600 border-red-400 text-white animate-pulse" : "bg-slate-900 border-cyan-900/60 text-cyan-400 hover:bg-slate-800"
-                        }`}
-                        title="Falar o código de erro"
-                      >
-                        {ouvindo ? <MicOff size={20} /> : <Mic size={20} />}
-                      </button>
+                      <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400" />
+                      <input
+                        type="text"
+                        value={termoBuscaErro}
+                        onChange={(e) => setTermoBuscaErro(e.target.value)}
+                        placeholder="Ex: LG CH21 ou Samsung E416..."
+                        className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none text-sm"
+                        autoFocus
+                      />
                     </div>
-                    {ouvindo && (
-                      <p className="text-[11px] text-red-400 font-semibold mt-1 animate-pulse text-center">
-                        Ouvindo o código... Fale agora!
-                      </p>
-                    )}
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-950/60">
-                    {errosFiltrados.length === 0 ? (
-                      <div className="text-center py-10 text-slate-500">
-                        <HelpCircle size={40} className="mx-auto mb-2 opacity-40 text-cyan-400" />
-                        <p className="text-sm">Nenhum código encontrado para "{termoBuscaErro}".</p>
-                      </div>
-                    ) : (
-                      errosFiltrados.map((item, index) => (
-                        <div key={index} className="rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm hover:border-cyan-500/50">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="rounded-full bg-cyan-950 border border-cyan-800 px-3 py-0.5 text-xs font-bold text-cyan-300">{item.marca}</span>
-                            <span className="rounded-md bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs font-mono font-bold text-amber-400">{item.codigo}</span>
-                          </div>
-                          <p className="text-xs text-slate-400 uppercase font-semibold">Defeito:</p>
-                          <p className="text-sm font-semibold text-white mb-2">{item.problema}</p>
-                          <div className="rounded-lg bg-cyan-950/30 border border-cyan-900/30 p-2.5">
-                            <p className="text-xs text-cyan-400 uppercase font-bold">🔧 Solução Técnica:</p>
-                            <p className="text-xs text-slate-200 mt-0.5 leading-relaxed">{item.solucao}</p>
-                          </div>
+                    {errosFiltrados.map((item, index) => (
+                      <div key={index} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="rounded-full bg-cyan-950 border border-cyan-800 px-3 py-0.5 text-xs font-bold text-cyan-300">{item.marca}</span>
+                          <span className="rounded-md bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs font-mono font-bold text-amber-400">{item.codigo}</span>
                         </div>
-                      ))
-                    )}
+                        <p className="text-sm font-semibold text-white mb-2">{item.problema}</p>
+                        <div className="rounded-lg bg-cyan-950/30 border border-cyan-900/30 p-2.5 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-cyan-400 uppercase font-bold">🔧 Solução:</p>
+                            <p className="text-xs text-slate-200 mt-0.5">{item.solucao}</p>
+                          </div>
+                          <button onClick={() => falarTexto(item.solucao)} className="p-2 bg-cyan-600/30 rounded-lg text-cyan-300 hover:bg-cyan-600/50" title="Ouvir solução">
+                            <Volume2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
 
-              {/* ABA 2: CADASTROS */}
-              {abaAtiva === "acoes" && perfilUsuario === "admin" && (
+              {/* ABA DE CADASTROS */}
+              {abaAtiva === "acoes" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
-                  <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                    <h4 className="font-bold text-white mb-1 flex items-center justify-between">
-                      <span className="flex items-center gap-2 text-blue-400 text-sm">
-                        <UserPlus size={16} /> Cadastrar Cliente no Supabase
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => iniciarGravacaoVoz(setDetalhesCliente, detalhesCliente)}
-                        className={`p-1.5 rounded-lg border text-xs flex items-center gap-1 ${
-                          ouvindo ? "bg-red-600 text-white border-red-400 animate-pulse" : "bg-slate-950 text-cyan-400 border-slate-700 hover:bg-slate-800"
-                        }`}
-                      >
-                        <Mic size={14} /> {ouvindo ? "Ouvindo..." : "Falar dados"}
-                      </button>
-                    </h4>
-                    <div className="space-y-2 mt-3">
-                      <input 
-                        type="text" 
-                        value={nomeCliente}
-                        onChange={(e) => setNomeCliente(e.target.value)}
-                        placeholder="Nome do Cliente" 
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
-                      />
-                      <textarea 
-                        value={detalhesCliente}
-                        onChange={(e) => setDetalhesCliente(e.target.value)}
-                        placeholder="Endereço, telefone e observações..." 
-                        rows={2}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
-                      />
-                      <button type="submit" disabled={carregandoCliente} className="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2">
-                        {carregandoCliente && <Loader2 size={16} className="animate-spin" />}
-                        Salvar Cliente no Banco
-                      </button>
-                    </div>
-                  </form>
-
-                  <form onSubmit={handleSalvarFuncionario} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                    <h4 className="font-bold text-white mb-2 flex items-center gap-2 text-purple-400 text-sm">
-                      <Wrench size={16} /> Cadastrar Ajudante / Técnico
-                    </h4>
-                    <div className="space-y-2">
-                      <input 
-                        type="text" 
-                        value={nomeFuncionario}
-                        onChange={(e) => setNomeFuncionario(e.target.value)}
-                        placeholder="Nome do Funcionário" 
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
-                      />
-                      <input 
-                        type="password" 
-                        value={senhaFuncionario}
-                        onChange={(e) => setSenhaFuncionario(e.target.value)}
-                        placeholder="Senha de Acesso" 
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
-                      />
-                      <button type="submit" disabled={carregandoFuncionario} className="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-lg font-bold text-white text-xs shadow">
-                        Cadastrar Acesso de Técnico
-                      </button>
-                    </div>
+                  <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4 space-y-2">
+                    <h4 className="font-bold text-blue-400 text-sm">Cadastrar Cliente (Supabase)</h4>
+                    <input type="text" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} placeholder="Nome do Cliente" className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs" />
+                    <textarea value={detalhesCliente} onChange={(e) => setDetalhesCliente(e.target.value)} placeholder="Endereço / Aparelho" rows={2} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs" />
+                    <button type="submit" disabled={carregandoCliente} className="w-full bg-blue-600 py-2.5 rounded-lg font-bold text-white text-xs">Salvar Cliente</button>
                   </form>
                 </div>
               )}
 
-              {/* ABA 3: FINANCEIRO */}
-              {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
+              {/* ABA FINANCEIRO */}
+              {abaAtiva === "financeiro" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
                       <p className="text-xs text-slate-400">Entradas deste mês</p>
                       <p className="text-lg font-bold text-emerald-400 mt-1">R$ 2.450,00</p>
                     </div>
-                    <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                      <p className="text-xs text-slate-400">A Receber (Carnês)</p>
-                      <p className="text-lg font-bold text-amber-400 mt-1">R$ 1.150,00</p>
-                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Footer */}
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Sistema Integrado com Supabase & Voz
+                Nando's Ar Condicionado — Comando de Voz Ativo
               </div>
             </div>
           </div>
