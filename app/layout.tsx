@@ -43,25 +43,14 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  
-  // Validação síncrona imediata no carregamento do estado para evitar atrasos visuais
-  const [ehAdmin, setEhAdmin] = useState(() => {
-    if (typeof window !== "undefined") {
-      const rotaAtual = window.location.pathname;
-      if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
-        return false;
-      }
-      return localStorage.getItem("nandos_user_perfil") === "admin";
-    }
-    return false;
-  });
+  const [ehAdmin, setEhAdmin] = useState(false);
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
   const [carregandoCliente, setCarregandoCliente] = useState(false);
   const [ouvindo, setOuvindo] = useState(false);
 
-  // Validação contínua do perfil administrativo
+  // Validação segura do perfil executada no navegador
   useEffect(() => {
     const verificarAcessoAdmin = () => {
       const rotaAtual = window.location.pathname;
@@ -72,9 +61,13 @@ export default function RootLayout({
         return;
       }
 
-      // Verifica se o perfil salvo no navegador é estritamente admin
+      // Verifica estritamente se o perfil salvo no navegador é 'admin'
       const perfilSalvo = localStorage.getItem("nandos_user_perfil");
-      setEhAdmin(perfilSalvo === "admin");
+      if (perfilSalvo === "admin") {
+        setEhAdmin(true);
+      } else {
+        setEhAdmin(false);
+      }
     };
 
     verificarAcessoAdmin();
@@ -84,13 +77,10 @@ export default function RootLayout({
 
   // FUNÇÃO DE LOGOUT / LIMPEZA COMPLETA DO SISTEMA
   const realizarLogoutCompleto = () => {
-    // Apaga absolutamente tudo da memória do navegador para garantir segurança total
     localStorage.clear();
     sessionStorage.clear();
     setEhAdmin(false);
     setChatOpen(false);
-    
-    // Redireciona para a página de login
     window.location.href = "/login";
   };
 
