@@ -50,7 +50,6 @@ export default function RootLayout({
   const [carregandoCliente, setCarregandoCliente] = useState(false);
 
   const [nomeFuncionario, setNomeFuncionario] = useState("");
-  const [emailFuncionario, setEmailFuncionario] = useState("");
   const [senhaFuncionario, setSenhaFuncionario] = useState("");
   const [carregandoFuncionario, setCarregandoFuncionario] = useState(false);
 
@@ -65,13 +64,12 @@ export default function RootLayout({
     }
   }, []);
 
-  // Função para Falar a Resposta em Voz Alta (Text-to-Speech)
   const falarTexto = (texto: string) => {
     if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel(); // Para qualquer fala anterior
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(texto);
       utterance.lang = "pt-BR";
-      utterance.rate = 1.0; // Velocidade normal
+      utterance.rate = 1.0;
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -86,61 +84,59 @@ export default function RootLayout({
     if (modoAutomaticoNando) {
       setModoAutomaticoNando(false);
       if (recognitionRef.current) recognitionRef.current.stop();
-      falarTexto("Modo de escuta automática desativado.");
+      falarTexto("Modo de escuta desativado.");
       return;
     }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = "pt-BR";
-    recognition.continuous = true; // Fica escutando direto
+    recognition.continuous = true;
     recognition.interimResults = true;
 
     recognition.onstart = () => {
       setModoAutomaticoNando(true);
       setOuvindo(true);
-      falarTexto("Modo Nando ativado. Pode falar da escada!");
+      falarTexto("Modo Nando ativado.");
     };
 
     recognition.onresult = (event: any) => {
       const ultimoResultado = event.results[event.results.length - 1];
       const fraseDita = ultimoResultado[0].transcript.toLowerCase().trim();
 
-      // Verifica se chamou pelo nome "Nando" ou "Nandos"
       if (fraseDita.includes("nando") || fraseDita.includes("nandos")) {
-        setChatOpen(true); // Abre o painel automaticamente
+        setChatOpen(true);
         
-        // Remove a palavra "nando" e pega o restante como o erro/comando buscado
-        let comandoPesquisa = fraseDita.replace(/nando/g, "").replace(/nandos/g, "").trim();
+        let comandoPesquisa = fraseDita
+          .replace(/nando/g, "")
+          .replace(/nandos/g, "")
+          .replace(/erro/g, "")
+          .replace(/de/g, "")
+          .replace(/da/g, "")
+          .trim();
         
-        if (comandoPesquisa.length > 2) {
+        if (comandoPesquisa.length > 1) {
           setTermoBuscaErro(comandoPesquisa);
 
-          // Procura na base global para já achar e falar a solução
-          const queryLimpa = comandoPesquisa.replace(/[\s-_]/g, "");
+          const limpoQuery = comandoPesquisa.replace(/[\s-_]/g, "");
           const encontrado = baseErrosGlobal.find((item) => {
             const codigoLimpo = item.codigo.toLowerCase().replace(/[\s-_]/g, "");
-            return codigoLimpo.includes(queryLimpa) || item.marca.toLowerCase().includes(queryLimpa);
+            const marcaLimpa = item.marca.toLowerCase().replace(/[\s-_]/g, "");
+            return codigoLimpo.includes(limpoQuery) || marcaLimpa.includes(limpoQuery);
           });
 
           if (encontrado) {
-            const respostaVoz = `Achei! ${encontrado.marca}, erro ${encontrado.codigo}. Defeito: ${encontrado.problema}. Solução: ${encontrado.solucao}`;
-            falarTexto(respostaVoz);
-          } else {
-            falarTexto(`Pesquisando por ${comandoPesquisa}`);
+            falarTexto(`Achou! ${encontrado.marca}, erro ${encontrado.codigo}. ${encontrado.problema}`);
           }
         }
       }
     };
 
-    recognition.onerror = () => {
-      setOuvindo(false);
-    };
-
+    recognition.onerror = () => setOuvindo(false);
     recognition.onend = () => {
       if (modoAutomaticoNando) {
         try {
-          recognition.start(); // Reinicia sozinho caso feche por silêncio
+          recognition.start();
         } catch (e) {
           setModoAutomaticoNando(false);
         }
@@ -151,37 +147,44 @@ export default function RootLayout({
     recognition.start();
   };
 
+  // ** BUSCA DIRETA E SUPER SIMPLIFICADA (NUNCA MAIS FICA EM BRANCO) **
   const errosFiltrados = useMemo(() => {
     const query = termoBuscaErro.trim().toLowerCase();
     if (!query) return baseErrosGlobal;
+
+    // Remove espaços para facilitar a correspondência (ex: "lgch21" bate com "ch21")
     const queryLimpa = query.replace(/[\s-_]/g, "");
 
     return baseErrosGlobal.filter((item) => {
-      const marcaLimpa = item.marca.toLowerCase().replace(/[\s-_]/g, "");
-      const codigoLimpo = item.codigo.toLowerCase().replace(/[\s-_]/g, "");
+      const marca = item.marca.toLowerCase();
+      const codigo = item.codigo.toLowerCase().replace(/[\s-_]/g, "");
+      const problema = item.problema.toLowerCase();
+      const solucao = item.solucao.toLowerCase();
+
+      // Retorna verdadeiro se qualquer parte da busca bater com o erro
       return (
-        marcaLimpa.includes(queryLimpa) ||
-        codigoLimpo.includes(queryLimpa) ||
-        item.problema.toLowerCase().includes(query) ||
-        item.solucao.toLowerCase().includes(query)
+        marca.includes(query) ||
+        codigo.includes(queryLimpa) ||
+        problema.includes(query) ||
+        solucao.includes(query) ||
+        queryLimpa.includes(codigo)
       );
     });
   }, [termoBuscaErro]);
 
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomeCliente.trim()) return alert("Informe o nome do cliente.");
+    if (!nomeCliente.trim()) return alert("Informe o nome.");
     setCarregandoCliente(true);
     try {
       if (supabase) {
         await supabase.from("clientes").insert([{ nome: nomeCliente, observacoes: detalhesCliente, created_at: new Date().toISOString() }]);
       }
-      falarTexto(`Cliente ${nomeCliente} salvo com sucesso.`);
-      alert(`Cliente "${nomeCliente}" salvo.`);
+      alert(`Cliente salvo!`);
       setNomeCliente("");
       setDetalhesCliente("");
     } catch (err) {
-      alert("Cliente salvo!");
+      alert("Salvo com sucesso!");
     } finally {
       setCarregandoCliente(false);
     }
@@ -195,8 +198,7 @@ export default function RootLayout({
       if (supabase) {
         await supabase.from("usuarios_equipe").insert([{ nome: nomeFuncionario, senha: senhaFuncionario, perfil: "tecnico", created_at: new Date().toISOString() }]);
       }
-      falarTexto(`Acesso criado para ${nomeFuncionario}`);
-      alert(`Acesso gerado para ${nomeFuncionario}!`);
+      alert(`Acesso criado!`);
       setNomeFuncionario("");
       setSenhaFuncionario("");
     } catch (err) {
@@ -211,16 +213,13 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BARRA DE ATIVAÇÃO POR VOZ "NANDO" (FLUTUANTE NO CANTO) */}
+        {/* BOTÕES FLUTUANTES */}
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
           <button
             onClick={alternarModoAutomaticoNando}
             className={`flex items-center gap-2 rounded-full px-4 py-3.5 font-bold text-white shadow-2xl transition-all border-2 ${
-              modoAutomaticoNando 
-                ? "bg-red-600 border-red-300 animate-pulse" 
-                : "bg-gradient-to-r from-emerald-600 to-cyan-600 border-cyan-300 hover:scale-105"
+              modoAutomaticoNando ? "bg-red-600 border-red-300 animate-pulse" : "bg-gradient-to-r from-emerald-600 to-cyan-600 border-cyan-300 hover:scale-105"
             }`}
-            title="Diga 'Nando' para ativar por voz"
           >
             {modoAutomaticoNando ? <Volume2 size={22} className="animate-bounce" /> : <Mic size={20} />}
             <span className="text-xs">{modoAutomaticoNando ? "Ouvindo 'Nando'..." : "Modo Voz 'Nando'"}</span>
@@ -247,7 +246,7 @@ export default function RootLayout({
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white">Nando's Assistente de Voz Ativo</h3>
-                    <p className="text-xs text-slate-400">Dica: Diga "Nando, erro [código]" de qualquer lugar</p>
+                    <p className="text-xs text-slate-400">Dica: Diga "Nando, erro LG CH21"</p>
                   </div>
                 </div>
                 <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
@@ -278,7 +277,7 @@ export default function RootLayout({
                         type="text"
                         value={termoBuscaErro}
                         onChange={(e) => setTermoBuscaErro(e.target.value)}
-                        placeholder="Ex: LG CH21 ou Samsung E416..."
+                        placeholder="Ex: LG CH21..."
                         className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none text-sm"
                         autoFocus
                       />
@@ -286,24 +285,31 @@ export default function RootLayout({
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-950/60">
-                    {errosFiltrados.map((item, index) => (
-                      <div key={index} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="rounded-full bg-cyan-950 border border-cyan-800 px-3 py-0.5 text-xs font-bold text-cyan-300">{item.marca}</span>
-                          <span className="rounded-md bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs font-mono font-bold text-amber-400">{item.codigo}</span>
-                        </div>
-                        <p className="text-sm font-semibold text-white mb-2">{item.problema}</p>
-                        <div className="rounded-lg bg-cyan-950/30 border border-cyan-900/30 p-2.5 flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-cyan-400 uppercase font-bold">🔧 Solução:</p>
-                            <p className="text-xs text-slate-200 mt-0.5">{item.solucao}</p>
-                          </div>
-                          <button onClick={() => falarTexto(item.solucao)} className="p-2 bg-cyan-600/30 rounded-lg text-cyan-300 hover:bg-cyan-600/50" title="Ouvir solução">
-                            <Volume2 size={18} />
-                          </button>
-                        </div>
+                    {errosFiltrados.length === 0 ? (
+                      <div className="text-center py-10 text-slate-500">
+                        <HelpCircle size={40} className="mx-auto mb-2 opacity-40 text-cyan-400" />
+                        <p className="text-sm">Nenhum código encontrado para "{termoBuscaErro}".</p>
                       </div>
-                    ))}
+                    ) : (
+                      errosFiltrados.map((item, index) => (
+                        <div key={index} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="rounded-full bg-cyan-950 border border-cyan-800 px-3 py-0.5 text-xs font-bold text-cyan-300">{item.marca}</span>
+                            <span className="rounded-md bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs font-mono font-bold text-amber-400">{item.codigo}</span>
+                          </div>
+                          <p className="text-sm font-semibold text-white mb-2">{item.problema}</p>
+                          <div className="rounded-lg bg-cyan-950/30 border border-cyan-900/30 p-2.5 flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-cyan-400 uppercase font-bold">🔧 Solução:</p>
+                              <p className="text-xs text-slate-200 mt-0.5">{item.solucao}</p>
+                            </div>
+                            <button onClick={() => falarTexto(item.solucao)} className="p-2 bg-cyan-600/30 rounded-lg text-cyan-300 hover:bg-cyan-600/50" title="Ouvir solução">
+                              <Volume2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </>
               )}
@@ -333,7 +339,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Comando de Voz Ativo
+                Nando's Ar Condicionado — Busca Flexível Pronta
               </div>
             </div>
           </div>
