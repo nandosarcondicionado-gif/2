@@ -74,7 +74,7 @@ export default function FuncionariosPage() {
       email: emp.email || "",
       cargo: emp.cargo || "TECNICO",
       telefone: emp.telefone || "",
-      senha: "", // Senha fica em branco na edição por segurança
+      senha: "",
     });
     setShowForm(true);
   }
@@ -168,7 +168,7 @@ export default function FuncionariosPage() {
           
           {loading ? (
             <div className="p-8 text-center text-slate-400 text-sm">Carregando equipe...</div>
-          ​) : employees.length === 0 ? (
+          ) : employees.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-sm">Nenhum funcionário cadastrado.</div>
           ) : (
             <div className="divide-y divide-slate-800">
