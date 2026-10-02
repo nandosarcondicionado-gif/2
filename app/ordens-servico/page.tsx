@@ -8,8 +8,10 @@ import {
   PenTool,
   Eye,
   Trash2,
+  ArrowLeft,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
@@ -143,7 +145,6 @@ function parseMoney(value: string | number | null | undefined) {
   let text = String(value ?? "").trim();
   if (!text) return 0;
   
-  // Remove R$, espaços e ajusta formato brasileiro para ponto decimal padrão
   text = text.replace(/\s/g, "").replace(/R\$/gi, "");
   if (text.includes(",") && text.includes(".")) {
     text = text.replace(/\./g, "").replace(",", ".");
@@ -329,6 +330,7 @@ function printServiceOrder(order: ServiceOrder) {
 }
 
 export default function OrdensServicoPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
@@ -537,9 +539,18 @@ export default function OrdensServicoPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
+        {/* BOTÃO VOLTAR E TÍTULO */}
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Ordens de Serviço</h1>
-          <button onClick={openNewOrder} className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 font-semibold text-slate-950">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </button>
+            <h1 className="text-xl sm:text-2xl font-bold">Ordens de Serviço</h1>
+          </div>
+          <button onClick={openNewOrder} className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-400">
             <Plus className="h-5 w-5" /> Nova OS
           </button>
         </div>
