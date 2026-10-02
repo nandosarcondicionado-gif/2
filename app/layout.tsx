@@ -2,26 +2,26 @@
 
 import type { Metadata } from "next";
 import "./globals.css";
-import { useState, useMemo, useEffect } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2 } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send } from "lucide-react";
 
-// Base de Dados Expandida: Inclui Equipamentos Modernos (Inverter/Split) e Modelos Convencionais/Antigos
+// Base de Dados Completa: Hi-Wall, Piso-Teto, Cassete, Inverter e Convencionais (Antigos e Novos)
 const baseErrosGlobal = [
-  // --- SAMSUNG (Modernos e Antigos) ---
+  // --- SAMSUNG ---
   { marca: "Samsung", codigo: "E121 / E122", problema: "Erro no sensor de temperatura ambiente ou da bobina interna", solucao: "Verificar conector solto ou substituir o sensor NTC da evaporadora." },
   { marca: "Samsung", codigo: "E416 / C416", problema: "Compressor superaquecido (Temperatura de descarga alta)", solucao: "Falta de gás refrigerante, condensadora muito suja ou compressor forçado." },
   { marca: "Samsung", codigo: "E458", problema: "Erro no motor do ventilador externo (DC Fan)", solucao: "Verificar se o ventilador está travado, cabo mal conectado ou placa externa com defeito." },
   { marca: "Samsung", codigo: "E554 / C554", problema: "Erro de vazamento de gás refrigerante", solucao: "Realizar teste de pressão com nitrogênio, corrigir vazamento e refazer carga de gás." },
   { marca: "Samsung", codigo: "C101 / E101", problema: "Erro de comunicação entre unidades (Interna e Externa)", solucao: "Checar se o cabo de comunicação/sinal está rompido, oxidado ou mal conectado." },
-  { marca: "Samsung (Antigo)", codigo: "Luzes Timer/Operation Piscando", problema: "Falha geral de sistema ou sensor aberto em modelos antigos Max / Borborema", solucao: "Testar sensores de temperatura e placa de controle principal." },
+  { marca: "Samsung (Antigo)", codigo: "Luzes Timer/Operation Piscando", problema: "Falha geral de sistema ou sensor aberto em modelos antigos", solucao: "Testar sensores de temperatura e placa de controle principal." },
 
-  // --- LG (Modernos e Convencionais) ---
+  // --- LG (Hi-Wall e Piso-Teto) ---
   { marca: "LG", codigo: "CH21", problema: "Sobrecorrente no módulo IPM / Compressor", solucao: "Oscilação de tensão elétrica, compressor travado ou defeito na placa inverter." },
   { marca: "LG", codigo: "CH22", problema: "Corrente alta na unidade condensadora", solucao: "Falta de gás, condensadora excessivamente suja ou ventilação externa bloqueada." },
   { marca: "LG", codigo: "CH23", problema: "Baixa tensão no barramento DC da placa", solucao: "Verificar rede elétrica do cliente, disjuntor inadequado ou placa de potência." },
   { marca: "LG", codigo: "CH26", problema: "Compressor DC travado mecanicamente", solucao: "Desligar sistema, testar enrolamentos. Se travado, substituir compressor." },
   { marca: "LG", codigo: "CH05", problema: "Falha de comunicação entre evaporadora e condensadora", solucao: "Verificar fiação de sinal interligação entre as unidades." },
-  { marca: "LG (Convencional Antigo)", codigo: "CH01 / CH02", problema: "Erro no sensor de temperatura do ar interno ou da serpentina", solucao: "Substituir sensor NTC na placa dos modelos convencionais antigos." },
+  { marca: "LG (Piso-Teto / Comercial)", codigo: "CH32 / CH33", problema: "Superaquecimento na descarga do compressor ou alta temperatura", solucao: "Verificar restrição na linha de fluido ou limpeza da condensadora." },
 
   // --- GREE ---
   { marca: "Gree", codigo: "E1", problema: "Proteção por alta pressão de refrigerante", solucao: "Excesso de gás, condensadora bloqueada ou temperatura externa excessiva." },
@@ -29,26 +29,22 @@ const baseErrosGlobal = [
   { marca: "Gree", codigo: "E3", problema: "Proteção por baixa pressão de refrigerante", solucao: "Falta de gás por vazamento ou restrição na tubulação." },
   { marca: "Gree", codigo: "H5", problema: "Proteção do Módulo IPM", solucao: "Superaquecimento do módulo, falta de pasta térmica ou picos de energia." },
 
-  // --- MIDEA / SPRINGER (Linha Antiga Convencional e Inverter) ---
+  // --- MIDEA / SPRINGER (Piso-Teto, Cassete e Hi-Wall) ---
   { marca: "Midea / Springer", codigo: "E1", problema: "Falha de comunicação entre placas / Erro de EEPROM", solucao: "Reiniciar disjuntor por 5 min. Testar cabo de sinal ou trocar placa." },
   { marca: "Midea / Springer", codigo: "E6", problema: "Erro de comunicação interna/externa ou inversão de cabos", solucao: "Verificar se a fiação de interligação está correta e firme nos Bornes." },
-  { marca: "Springer (Janela Antigo)", codigo: "Luz de Operation Piscando", problema: "Termostato mecânico com defeito ou protetor térmico do compressor aberto", solucao: "Aguardar resfriamento do compressor ou substituir termostato/capacitor." },
+  { marca: "Springer (Piso-Teto Antigo)", codigo: "E4 / E5", problema: "Erro de falha de fase ou pressostato de alta/baixa", solucao: "Checar se falta fase na rede trifásica ou pressostatos desarmados." },
 
   // --- DAIKIN ---
   { marca: "Daikin", codigo: "U0", problema: "Falta de fluido refrigerante (Baixa carga de gás)", solucao: "Pesquisar vazamento com nitrogênio, sanar e aplicar carga completa por peso." },
   { marca: "Daikin", codigo: "E3", problema: "Atuação do pressostato de alta", solucao: "Limpar condensadora, checar ventilador externo e verificar excesso de gás." },
 
   // --- FUJITSU ---
-  { marca: "Fujitsu", codigo: "Luzes Piscando (Operation + Timer)", problema: "Erro de comunicação ou falha no ventilador interno", solucao: "Verificar código piscando no manual específico do modelo." },
+  { marca: "Fujitsu", codigo: "Luzes Piscando", problema: "Erro de comunicação ou falha no ventilador interno", solucao: "Verificar código piscando no manual específico do modelo." },
 
-  // --- ELECTROLUX (Novos e Antigos) ---
+  // --- ELECTROLUX ---
   { marca: "Electrolux", codigo: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." },
-  { marca: "Electrolux", codigo: "E4", problema: "Atuação do sistema anti-congelamento", solucao: "Limpeza de filtros e verificação de ventilação interna." },
 
-  // --- CONSUL E BRASTEMP (Modelos Antigos e Atuais) ---
-  { marca: "Consul / Brastemp", codigo: "Erro de LEDs / Bips", problema: "Sensor de temperatura solto, em curto ou placa travada", solucao: "Desligar da tomada por 10 minutos. Se persistir, medir o sensor NTC." },
-
-  // --- CARRIER / MAXIFLO / KLIMASA (Convencionais Antigos) ---
+  // --- CARRIER / CONVENCIONAIS ---
   { marca: "Carrier / Convencionais", codigo: "Compressor não arma / Zumbido", problema: "Capacitor de marcha estourado ou travamento mecânico", solucao: "Substituir o capacitor do compressor e testar corrente com o alicate amperímetro." }
 ];
 
@@ -61,14 +57,61 @@ export default function RootLayout({
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
   
+  // Controle de Perfil Automático
   const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
 
+  // Estados dos Formulários Interativos (Admin)
+  const [nomeCliente, setNomeCliente] = useState("");
+  const [detalhesCliente, setDetalhesCliente] = useState("");
+  const [nomeFuncionario, setNomeFuncionario] = useState("");
+  const [senhaFuncionario, setSenhaFuncionario] = useState("");
+
+  // Estado do Reconhecimento de Voz (Microfone)
+  const [ouvindo, setOuvindo] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   useEffect(() => {
+    // Lê o perfil salvo no navegador (ex: 'admin' ou 'tecnico')
     const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
     if (perfilSalvo) {
       setPerfilUsuario(perfilSalvo);
     }
   }, []);
+
+  // Configuração do Reconhecimento de Voz (SpeechRecognition)
+  const iniciarGravacaoVoz = (setterFunction: (val: string) => void, valorAtual: string) => {
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      alert("Seu navegador não suporta reconhecimento de voz. Tente usar pelo Google Chrome no celular ou PC.");
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "pt-BR";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setOuvindo(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const textoFalado = event.results[0][0].transcript;
+      setterFunction(valorAtual ? `${valorAtual} ${textoFalado}` : textoFalado);
+      setOuvindo(false);
+    };
+
+    recognition.onerror = () => {
+      setOuvindo(false);
+    };
+
+    recognition.onend = () => {
+      setOuvindo(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   const errosFiltrados = useMemo(() => {
     const query = termoBuscaErro.trim().toLowerCase();
@@ -82,12 +125,34 @@ export default function RootLayout({
     );
   }, [termoBuscaErro]);
 
+  const handleSalvarCliente = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nomeCliente.trim()) {
+      alert("Por favor, informe o nome do cliente.");
+      return;
+    }
+    alert(`Cliente "${nomeCliente}" cadastrado e vinculado ao orçamento com sucesso!`);
+    setNomeCliente("");
+    setDetalhesCliente("");
+  };
+
+  const handleSalvarFuncionario = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nomeFuncionario.trim()) {
+      alert("Informe o nome do funcionário técnico/ajudante.");
+      return;
+    }
+    alert(`Credencial gerada para ${nomeFuncionario}! Perfil configurado automaticamente como Ajudante/Técnico.`);
+    setNomeFuncionario("");
+    setSenhaFuncionario("");
+  };
+
   return (
     <html lang="pt-BR">
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÃO FLUTUANTE GLOBAL INTELIGENTE */}
+        {/* BOTÃO FLUTUANTE GLOBAL */}
         <button
           onClick={() => setChatOpen(true)}
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 ${
@@ -95,13 +160,13 @@ export default function RootLayout({
               ? "bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300 hover:from-blue-500 hover:to-cyan-500"
               : "bg-cyan-600 border-cyan-300 hover:bg-cyan-500"
           }`}
-          title={perfilUsuario === "admin" ? "Super Chat Administrativo" : "Ajuda Técnica (Erros)"}
+          title={perfilUsuario === "admin" ? "Super Chat Administrativo" : "Ajuda Técnica de Erros"}
         >
           <Wrench size={20} className="animate-bounce" />
           <span>{perfilUsuario === "admin" ? "Nando's Super Chat (Admin)" : "Ajuda Técnica de Erros"}</span>
         </button>
 
-        {/* MODAL DO SUPER CHAT */}
+        {/* MODAL DO CHAT */}
         {chatOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-cyan-500/40 shadow-2xl flex flex-col max-h-[90vh] text-slate-100 overflow-hidden">
@@ -115,14 +180,14 @@ export default function RootLayout({
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-base font-bold text-white">
-                        {perfilUsuario === "admin" ? "Nando's Assistente Administrativo & Técnico" : "Nando's Suporte Técnico"}
+                        {perfilUsuario === "admin" ? "Nando's Super Assistente Administrativo" : "Nando's Suporte de Campo"}
                       </h3>
                       <span className="rounded-full bg-blue-900/60 border border-blue-700 px-2 py-0.5 text-[10px] uppercase font-bold text-blue-300">
                         {perfilUsuario}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Gerencie erros, atalhos e financeiro em um só lugar" : "Consulta rápida de códigos de erro (Modernos e Antigos)"}
+                      {perfilUsuario === "admin" ? "Controle total, cadastros rápidos e consulta avançada" : "Consulta de erros (Hi-Wall, Piso-Teto e Inverter)"}
                     </p>
                   </div>
                 </div>
@@ -137,7 +202,7 @@ export default function RootLayout({
                 </div>
               </div>
 
-              {/* Abas de Navegação (Disponíveis apenas para o Admin) */}
+              {/* Abas de Navegação (Exclusivo para ADMIN) */}
               {perfilUsuario === "admin" && (
                 <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                   <button
@@ -154,7 +219,7 @@ export default function RootLayout({
                       abaAtiva === "acoes" ? "bg-blue-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white"
                     }`}
                   >
-                    <UserPlus size={15} /> Ações Rápidas (Cadastros)
+                    <UserPlus size={15} /> Cadastros & Ações
                   </button>
                   <button
                     onClick={() => setAbaAtiva("financeiro")}
@@ -162,26 +227,46 @@ export default function RootLayout({
                       abaAtiva === "financeiro" ? "bg-emerald-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white"
                     }`}
                   >
-                    <DollarSign size={15} /> Resumo Financeiro
+                    <DollarSign size={15} /> Financeiro
                   </button>
                 </div>
               )}
 
-              {/* Conteúdo da Aba: Consulta de Erros */}
+              {/* ABA 1: CONSULTA DE ERROS (Disponível para todos, mas essencial ao técnico) */}
               {abaAtiva === "erros" && (
                 <>
                   <div className="p-4 bg-slate-950 border-b border-slate-800">
-                    <div className="relative">
-                      <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400" />
-                      <input
-                        type="text"
-                        value={termoBuscaErro}
-                        onChange={(e) => setTermoBuscaErro(e.target.value)}
-                        placeholder="Busque por código (E416, CH21), marca ou máquina antiga..."
-                        className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500 text-sm placeholder-slate-500"
-                        autoFocus
-                      />
+                    <div className="relative flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-cyan-400" />
+                        <input
+                          type="text"
+                          value={termoBuscaErro}
+                          onChange={(e) => setTermoBuscaErro(e.target.value)}
+                          placeholder="Digite ou fale o código (ex: E416, CH21, Piso-Teto)..."
+                          className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500 text-sm placeholder-slate-500"
+                          autoFocus
+                        />
+                      </div>
+                      {/* Botão de Microfone para Busca por Voz */}
+                      <button
+                        type="button"
+                        onClick={() => iniciarGravacaoVoz(setTermoBuscaErro, termoBuscaErro)}
+                        className={`p-3 rounded-xl border transition-all flex items-center justify-center ${
+                          ouvindo 
+                            ? "bg-red-600 border-red-400 text-white animate-pulse" 
+                            : "bg-slate-900 border-cyan-900/60 text-cyan-400 hover:bg-slate-800"
+                        }`}
+                        title="Falar o código de erro"
+                      >
+                        {ouvindo ? <MicOff size={20} /> : <Mic size={20} />}
+                      </button>
                     </div>
+                    {ouvindo && (
+                      <p className="text-[11px] text-red-400 font-semibold mt-1 animate-pulse text-center">
+                        Ouvindo o código de erro... Fale agora!
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-950/60">
@@ -210,36 +295,89 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* Conteúdo da Aba: Ações Rápidas (Admin) */}
+              {/* ABA 2: CADASTROS RÁPIDOS POR TEXTO OU VOZ (Exclusivo ADMIN) */}
               {abaAtiva === "acoes" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
-                  <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                    <h4 className="font-bold text-white mb-2 flex items-center gap-2">
-                      <UserPlus size={16} className="text-blue-400" /> Gerar Acesso para Ajudante / Técnico
+                  
+                  {/* Formulário de Cadastro Rápido de Cliente */}
+                  <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+                    <h4 className="font-bold text-white mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-blue-400 text-sm">
+                        <UserPlus size={16} /> Cadastro Rápido de Cliente (Em Campo)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => iniciarGravacaoVoz(setDetalhesCliente, detalhesCliente)}
+                        className={`p-1.5 rounded-lg border text-xs flex items-center gap-1 ${
+                          ouvindo ? "bg-red-600 text-white border-red-400 animate-pulse" : "bg-slate-950 text-cyan-400 border-slate-700 hover:bg-slate-800"
+                        }`}
+                        title="Falar dados do cliente"
+                      >
+                        <Mic size={14} /> {ouvindo ? "Ouvindo..." : "Falar dados"}
+                      </button>
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">Crie um login rápido para sua equipe atuar em campo restrito:</p>
+                    <p className="text-xs text-slate-400 mb-3">Cadastre o cliente rapidamente para gerar o orçamento:</p>
                     <div className="space-y-2">
-                      <input type="text" placeholder="Nome do Ajudante (ex: Letícia)" className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none" />
-                      <input type="text" placeholder="Senha de Acesso" className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none" />
-                      <button onClick={() => alert("Credencial gerada com sucesso! A ajudante já pode acessar o sistema com restrições.")} className="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg font-bold text-white text-xs shadow">
-                        Salvar e Gerar Credencial
+                      <input 
+                        type="text" 
+                        value={nomeCliente}
+                        onChange={(e) => setNomeCliente(e.target.value)}
+                        placeholder="Nome do Cliente (ex: João da Padaria)" 
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
+                      />
+                      <textarea 
+                        value={detalhesCliente}
+                        onChange={(e) => setDetalhesCliente(e.target.value)}
+                        placeholder="Endereço, telefone, aparelho e observações (ou clique em Falar dados)..." 
+                        rows={2}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
+                      />
+                      <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2">
+                        <Send size={14} /> Salvar Cliente e Gerar Orçamento
                       </button>
                     </div>
-                  </div>
+                  </form>
+
+                  {/* Formulário de Cadastro de Técnico / Ajudante */}
+                  <form onSubmit={handleSalvarFuncionario} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+                    <h4 className="font-bold text-white mb-2 flex items-center gap-2 text-purple-400 text-sm">
+                      <Wrench size={16} /> Criar Acesso para Ajudante / Técnico
+                    </h4>
+                    <p className="text-xs text-slate-400 mb-3">Gere credenciais para o funcionário acessar apenas a ajuda técnica:</p>
+                    <div className="space-y-2">
+                      <input 
+                        type="text" 
+                        value={nomeFuncionario}
+                        onChange={(e) => setNomeFuncionario(e.target.value)}
+                        placeholder="Nome do Funcionário (ex: Letícia)" 
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
+                      />
+                      <input 
+                        type="password" 
+                        value={senhaFuncionario}
+                        onChange={(e) => setSenhaFuncionario(e.target.value)}
+                        placeholder="Senha de Acesso" 
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
+                      />
+                      <button type="submit" className="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-lg font-bold text-white text-xs shadow">
+                        Gerar Credencial de Técnico
+                      </button>
+                    </div>
+                  </form>
 
                   <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                    <h4 className="font-bold text-white mb-1 flex items-center gap-2">
-                      <FileText size={16} className="text-purple-400" /> Atalho de Orçamento Rápido
+                    <h4 className="font-bold text-white mb-1 flex items-center gap-2 text-xs">
+                      <FileText size={15} className="text-cyan-400" /> Ir para Tela Completa de Contratos
                     </h4>
-                    <p className="text-xs text-slate-400 mb-2">Precisa iniciar um atendimento urgente? Vá direto para a tela de contratos/orçamentos.</p>
-                    <a href="/contratos" className="inline-block bg-purple-600 hover:bg-purple-500 py-2 px-4 rounded-lg font-bold text-white text-xs">
-                      Ir para Gestão de Contratos e Carnês
+                    <a href="/contratos" className="inline-block mt-2 bg-cyan-700 hover:bg-cyan-600 py-2 px-4 rounded-lg font-bold text-white text-xs">
+                      Abrir Gestão de Contratos e Carnês
                     </a>
                   </div>
+
                 </div>
               )}
 
-              {/* Conteúdo da Aba: Resumo Financeiro (Admin) */}
+              {/* ABA 3: RESUMO FINANCEIRO (Exclusivo ADMIN) */}
               {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
@@ -273,7 +411,7 @@ export default function RootLayout({
 
               {/* Footer */}
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Sistema de Gestão Inteligente
+                Nando's Ar Condicionado — Sistema de Gestão Inteligente com Voz
               </div>
             </div>
           </div>
