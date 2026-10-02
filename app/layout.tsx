@@ -32,7 +32,7 @@ const baseErrosGlobal = [
   { marca: "midea", marcaExibicao: "Midea / Springer", codigo: "e6", codigoExibicao: "E6", problema: "Erro de comunicação interna/externa ou inversão de cabos", solucao: "Verificar se a fiação de interligação está correta e firme nos Bornes." },
   { marca: "daikin", marcaExibicao: "Daikin", codigo: "u0", codigoExibicao: "U0", problema: "Falta de fluido refrigerante (Baixa carga de gás)", solucao: "Pesquisar vazamento com nitrogênio, sanar e aplicar carga completa por peso." },
   { marca: "daikin", marcaExibicao: "Daikin", codigo: "e3", codigoExibicao: "E3", problema: "Atuação do pressostato de alta", solucao: "Limpar condensadora, checar ventilador externo e verificar excesso de gás." },
-  { marca: "electrolux", marcaExibicao: "Electrolux", codigo: "e1", codigoExibicao: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testار resistência dos sensores NTC e substituir se necessário." }
+  { marca: "electrolux", marcaExibicao: "Electrolux", codigo: "e1", codigoExibicao: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." }
 ];
 
 export default function RootLayout({
@@ -43,33 +43,30 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
+  const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("tecnico"); // Inicia como técnico por segurança
   const [mostrarBotoes, setMostrarBotoes] = useState(false);
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
   const [carregandoCliente, setCarregandoCliente] = useState(false);
-
-  const [nomeFuncionario, setNomeFuncionario] = useState("");
-  const [senhaFuncionario, setSenhaFuncionario] = useState("");
-  const [carregandoFuncionario, setCarregandoFuncionario] = useState(false);
-
   const [ouvindo, setOuvindo] = useState(false);
 
   useEffect(() => {
-    // Verifica a rota atual. Se for /login ou /auth, NÃO mostra os botões de forma alguma!
     const rotaAtual = window.location.pathname;
     if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
       setMostrarBotoes(false);
       return;
     }
 
-    // Se estiver em qualquer outra página logado, exibe os botões
     setMostrarBotoes(true);
 
+    // Lê rigorosamente o perfil salvo no navegador
     const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
-    if (perfilSalvo) {
-      setPerfilUsuario(perfilSalvo);
+    if (perfilSalvo === "admin") {
+      setPerfilUsuario("admin");
+    } else {
+      setPerfilUsuario("tecnico");
+      setAbaAtiva("erros"); // Força o técnico a ficar apenas na aba de erros
     }
   }, []);
 
@@ -106,7 +103,6 @@ export default function RootLayout({
       setOuvindo(false);
 
       const queryLimpa = textoFalado.replace(/[\s-_]/g, "");
-
       const encontrado = baseErrosGlobal.find((item) => {
         return queryLimpa.includes(item.codigo) || queryLimpa.includes(item.marca) || item.codigo.includes(queryLimpa);
       });
@@ -144,7 +140,9 @@ export default function RootLayout({
 
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (perfilUsuario !== "admin") return alert("Acesso negado.");
     if (!nomeCliente.trim()) return alert("Informe o nome.");
+    
     setCarregandoCliente(true);
     try {
       if (supabase) {
@@ -160,30 +158,12 @@ export default function RootLayout({
     }
   };
 
-  const handleSalvarFuncionario = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nomeFuncionario.trim() || !senhaFuncionario.trim()) return alert("Preencha os campos.");
-    setCarregandoFuncionario(true);
-    try {
-      if (supabase) {
-        await supabase.from("usuarios_equipe").insert([{ nome: nomeFuncionario, senha: senhaFuncionario, perfil: "tecnico", created_at: new Date().toISOString() }]);
-      }
-      alert(`Acesso criado!`);
-      setNomeFuncionario("");
-      setSenhaFuncionario("");
-    } catch (err) {
-      alert("Funcionário cadastrado!");
-    } finally {
-      setCarregandoFuncionario(false);
-    }
-  };
-
   return (
     <html lang="pt-BR">
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* OS BOTÕES SÓ APARECEM SE NÃO ESTIVER NA TELA DE LOGIN */}
+        {/* BOTÕES FLUTUANTES (SÓ APARECEM FORA DO LOGIN) */}
         {mostrarBotoes && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
@@ -202,7 +182,7 @@ export default function RootLayout({
               className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
             >
               <Wrench size={20} />
-              <span>Nando's Chat</span>
+              <span>{perfilUsuario === "admin" ? "Nando's Chat (Admin)" : "Ajuda Técnica"}</span>
             </button>
           </div>
         )}
@@ -219,10 +199,10 @@ export default function RootLayout({
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white">
-                      {perfilUsuario === "admin" ? "Nando's Assistente Administrativo" : "Nando's Suporte Técnico"}
+                      {perfilUsuario === "admin" ? "Nando's Assistente Administrativo" : "Nando's Suporte de Campo (Técnico)"}
                     </h3>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total e consulta de erros" : "Consulta técnica de campo"}
+                      {perfilUsuario === "admin" ? "Controle total e consulta de erros" : "Consulta exclusiva de erros e soluções"}
                     </p>
                   </div>
                 </div>
@@ -231,10 +211,10 @@ export default function RootLayout({
                 </button>
               </div>
 
-              {/* Abas de Navegação (Exibe Cadastros e Financeiro APENAS se for Admin) */}
+              {/* ABAS: Se for Técnico, aparece APENAS a aba de Erros. Se for Admin, aparecem todas. */}
               <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                 <button onClick={() => setAbaAtiva("erros")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "erros" ? "bg-cyan-600 text-white" : "bg-slate-900 text-slate-400"}`}>
-                  <HelpCircle size={15} className="inline mr-1" /> Erros
+                  <HelpCircle size={15} className="inline mr-1" /> Consulta de Erros
                 </button>
 
                 {perfilUsuario === "admin" && (
@@ -249,7 +229,7 @@ export default function RootLayout({
                 )}
               </div>
 
-              {/* ABA DE ERROS */}
+              {/* ABA DE ERROS (Disponível para ambos) */}
               {abaAtiva === "erros" && (
                 <>
                   <div className="p-4 bg-slate-950 border-b border-slate-800">
@@ -304,7 +284,7 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* ABA DE CADASTROS (APENAS ADMIN) */}
+              {/* ABA DE CADASTROS (Bloqueada se for técnico) */}
               {abaAtiva === "acoes" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4 space-y-2">
@@ -316,7 +296,7 @@ export default function RootLayout({
                 </div>
               )}
 
-              {/* ABA FINANCEIRO (APENAS ADMIN) */}
+              {/* ABA FINANCEIRO (Bloqueada se for técnico) */}
               {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
@@ -329,7 +309,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Segurança e Controle por Perfil
+                Nando's Ar Condicionado — Controle de Acesso Restrito
               </div>
             </div>
           </div>
