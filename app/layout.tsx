@@ -43,14 +43,25 @@ export default function RootLayout({
   const [chatOpen, setChatOpen] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
-  const [ehAdmin, setEhAdmin] = useState(false);
+  
+  // Validação síncrona imediata no carregamento do estado para evitar atrasos visuais
+  const [ehAdmin, setEhAdmin] = useState(() => {
+    if (typeof window !== "undefined") {
+      const rotaAtual = window.location.pathname;
+      if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
+        return false;
+      }
+      return localStorage.getItem("nandos_user_perfil") === "admin";
+    }
+    return false;
+  });
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
   const [carregandoCliente, setCarregandoCliente] = useState(false);
   const [ouvindo, setOuvindo] = useState(false);
 
-  // Validação estrita do perfil administrativo
+  // Validação contínua do perfil administrativo
   useEffect(() => {
     const verificarAcessoAdmin = () => {
       const rotaAtual = window.location.pathname;
@@ -63,11 +74,7 @@ export default function RootLayout({
 
       // Verifica se o perfil salvo no navegador é estritamente admin
       const perfilSalvo = localStorage.getItem("nandos_user_perfil");
-      if (perfilSalvo === "admin") {
-        setEhAdmin(true);
-      } else {
-        setEhAdmin(false);
-      }
+      setEhAdmin(perfilSalvo === "admin");
     };
 
     verificarAcessoAdmin();
