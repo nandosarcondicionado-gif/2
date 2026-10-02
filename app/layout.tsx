@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2, Volume2, Shield, User } from "lucide-react";
+import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2, Volume2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
 // Inicialização do Supabase
@@ -53,30 +53,22 @@ export default function RootLayout({
 
   useEffect(() => {
     const rotaAtual = window.location.pathname;
+    // Esconde nas telas de login/auth
     if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
       setMostrarBotoes(false);
       return;
     }
 
-    setMostrarBotoes(true);
-
-    // Sincroniza o perfil salvo ou assume admin por padrão no dashboard principal
+    // Verifica estritamente o perfil salvo
     const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
-    if (perfilSalvo) {
-      setPerfilUsuario(perfilSalvo);
-    } else {
-      // Se não tiver nada salvo, define como admin para garantir que você veja o controle total
-      localStorage.setItem("nandos_user_perfil", "admin");
+    if (perfilSalvo === "admin") {
       setPerfilUsuario("admin");
+      setMostrarBotoes(true); // APARECE APENAS PARA O ADMIN
+    } else {
+      setPerfilUsuario("tecnico");
+      setMostrarBotoes(false); // BLOQUEADO TOTALMENTE PARA O TÉCNICO/FUNCIONÁRIO
     }
   }, []);
-
-  // Função para alternar o perfil direto no chat se precisar testar
-  const alternarPerfilManual = (novoPerfil: "admin" | "tecnico") => {
-    setPerfilUsuario(novoPerfil);
-    localStorage.setItem("nandos_user_perfil", novoPerfil);
-    if (novoPerfil === "tecnico") setAbaAtiva("erros");
-  };
 
   const falarTexto = (texto: string) => {
     if ("speechSynthesis" in window) {
@@ -171,8 +163,8 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÕES FLUTUANTES COM NOME EXATO CONFORME O PERFIL */}
-        {mostrarBotoes && (
+        {/* BOTÕES FLUTUANTES EXCLUSIVOS PARA O ADMINISTRADOR */}
+        {mostrarBotoes && perfilUsuario === "admin" && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
               onClick={iniciarBuscaPorVoz}
@@ -187,20 +179,16 @@ export default function RootLayout({
 
             <button
               onClick={() => setChatOpen(true)}
-              className={`flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 ${
-                perfilUsuario === "admin"
-                  ? "bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
-                  : "bg-cyan-700 border-cyan-400"
-              }`}
+              className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
             >
               <Wrench size={20} />
-              <span>{perfilUsuario === "admin" ? "Nando's Super Chat (Admin)" : "Ajuda Técnica"}</span>
+              <span>Nando's Super Chat (Admin)</span>
             </button>
           </div>
         )}
 
-        {/* MODAL DO CHAT */}
-        {chatOpen && (
+        {/* MODAL DO CHAT (APENAS ADMIN) */}
+        {chatOpen && perfilUsuario === "admin" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-cyan-500/40 shadow-2xl flex flex-col max-h-[90vh] text-slate-100 overflow-hidden">
               
@@ -210,22 +198,8 @@ export default function RootLayout({
                     <Wrench size={22} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-white">
-                        {perfilUsuario === "admin" ? "Nando's Super Assistente Administrativo" : "Nando's Suporte de Campo"}
-                      </h3>
-                      {/* Botão de alternância rápida de teste visível no topo */}
-                      <button 
-                        onClick={() => alternarPerfilManual(perfilUsuario === "admin" ? "tecnico" : "admin")}
-                        className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-0.5 rounded text-cyan-300 font-mono"
-                        title="Alternar perfil de teste"
-                      >
-                        Perfil: {perfilUsuario.toUpperCase()} (Mudar)
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total, banco de dados Supabase e consulta" : "Consulta inteligente de erros"}
-                    </p>
+                    <h3 className="text-base font-bold text-white">Nando's Super Assistente Administrativo</h3>
+                    <p className="text-xs text-slate-400">Controle total, banco de dados Supabase e consulta</p>
                   </div>
                 </div>
                 <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
@@ -233,22 +207,17 @@ export default function RootLayout({
                 </button>
               </div>
 
-              {/* ABAS: Admin vê todas, Técnico vê apenas Erros */}
+              {/* ABAS DO ADMINISTRADOR */}
               <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                 <button onClick={() => setAbaAtiva("erros")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "erros" ? "bg-cyan-600 text-white" : "bg-slate-900 text-slate-400"}`}>
                   <HelpCircle size={15} className="inline mr-1" /> Consulta de Erros
                 </button>
-
-                {perfilUsuario === "admin" && (
-                  <>
-                    <button onClick={() => setAbaAtiva("acoes")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "acoes" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"}`}>
-                      <UserPlus size={15} className="inline mr-1" /> Cadastros (Supabase)
-                    </button>
-                    <button onClick={() => setAbaAtiva("financeiro")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "financeiro" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"}`}>
-                      <DollarSign size={15} className="inline mr-1" /> Financeiro
-                    </button>
-                  </>
-                )}
+                <button onClick={() => setAbaAtiva("acoes")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "acoes" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                  <UserPlus size={15} className="inline mr-1" /> Cadastros (Supabase)
+                </button>
+                <button onClick={() => setAbaAtiva("financeiro")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "financeiro" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                  <DollarSign size={15} className="inline mr-1" /> Financeiro
+                </button>
               </div>
 
               {/* ABA DE ERROS */}
@@ -306,8 +275,8 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* ABA DE CADASTROS (Admin) */}
-              {abaAtiva === "acoes" && perfilUsuario === "admin" && (
+              {/* ABA DE CADASTROS */}
+              {abaAtiva === "acoes" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4 space-y-2">
                     <h4 className="font-bold text-blue-400 text-sm">Cadastrar Cliente (Supabase)</h4>
@@ -318,8 +287,8 @@ export default function RootLayout({
                 </div>
               )}
 
-              {/* ABA FINANCEIRO (Admin) */}
-              {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
+              {/* ABA FINANCEIRO */}
+              {abaAtiva === "financeiro" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
@@ -331,7 +300,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Sistema Integrado com Supabase & Voz
+                Nando's Ar Condicionado — Painel Administrativo Seguro
               </div>
             </div>
           </div>
