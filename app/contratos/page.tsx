@@ -27,7 +27,7 @@ type Client = {
   cidade: string | null;
   endereco?: string | null;
   documento?: string | null;
-  ativo?: boolean;
+  status?: string | null;
 };
 
 type Contract = {
@@ -90,7 +90,7 @@ const emptyForm = {
   cliente_id: "",
   cidade: "",
   plano: "Residencial" as Plan,
-  equipamentos: 1,
+  equipamentos: 1 as number | "",
   valor_mensal: 149,
   data_inicio: new Date().toISOString().slice(0, 10),
   proxima_visita: "",
@@ -132,7 +132,7 @@ export default function ContratosPage() {
 
       supabase
         .from("clientes")
-        .select("id,nome,cidade,endereco,documento,ativo")
+        .select("id, nome, cidade, endereco, documento, status")
         .order("nome"),
     ]);
 
@@ -160,7 +160,7 @@ export default function ContratosPage() {
     const config = plansConfig[form.plano];
     const base = config.basePrice;
     let calculado = base;
-    const qtd = Number(form.equipamentos) || 1;
+    const qtd = typeof form.equipamentos === "number" ? form.equipamentos : 1;
 
     if (qtd === 1) {
       calculado = base;
@@ -275,12 +275,13 @@ export default function ContratosPage() {
     setSaving(true);
 
     try {
+      const qtdFinal = typeof form.equipamentos === "number" && form.equipamentos > 0 ? form.equipamentos : 1;
       const baseData = {
         cliente_id: client.id,
         cliente_nome: client.nome,
         cidade: form.cidade || client.cidade || "",
         plano: form.plano,
-        equipamentos: Number(form.equipamentos) || 1,
+        equipamentos: qtdFinal,
         valor_mensal: Number(form.valor_mensal) || 0,
         data_inicio: form.data_inicio,
         proxima_visita: form.proxima_visita || null,
@@ -792,7 +793,12 @@ export default function ContratosPage() {
                     type="number"
                     min="1"
                     value={form.equipamentos}
-                    onChange={(e) => setForm({ ...form, equipamentos: Math.max(1, parseInt(e.target.value) || 1) })}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        equipamentos: e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value) || 1),
+                      })
+                    }
                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
                   />
                 </div>
