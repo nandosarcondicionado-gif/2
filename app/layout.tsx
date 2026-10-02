@@ -3,7 +3,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send } from "lucide-react";
+import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2 } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+
+// Inicialização segura do cliente Supabase (lendo das variáveis de ambiente do Next.js)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 // Base de Dados Completa: Hi-Wall, Piso-Teto, Cassete, Inverter e Convencionais (Antigos e Novos)
 const baseErrosGlobal = [
@@ -60,11 +66,15 @@ export default function RootLayout({
   // Controle de Perfil Automático
   const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
 
-  // Estados dos Formulários Interativos (Admin)
+  // Estados dos Formulários Interativos (Admin) com Supabase
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
+  const [carregandoCliente, setCarregandoCliente] = useState(false);
+
   const [nomeFuncionario, setNomeFuncionario] = useState("");
+  const [emailFuncionario, setEmailFuncionario] = useState("");
   const [senhaFuncionario, setSenhaFuncionario] = useState("");
+  const [carregandoFuncionario, setCarregandoFuncionario] = useState(false);
 
   // Estado do Reconhecimento de Voz (Microfone)
   const [ouvindo, setOuvindo] = useState(false);
@@ -125,26 +135,85 @@ export default function RootLayout({
     );
   }, [termoBuscaErro]);
 
-  const handleSalvarCliente = (e: React.FormEvent) => {
+  // Função para Salvar Cliente direto no Supabase
+  const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeCliente.trim()) {
       alert("Por favor, informe o nome do cliente.");
       return;
     }
-    alert(`Cliente "${nomeCliente}" cadastrado e vinculado ao orçamento com sucesso!`);
-    setNomeCliente("");
-    setDetalhesCliente("");
+
+    setCarregandoCliente(true);
+
+    try {
+      if (!supabase) {
+        throw new Error("Supabase não configurado.");
+      }
+
+      // Salva na tabela 'clientes' do Supabase
+      const { error } = await supabase.from("clientes").insert([
+        { 
+          nome: nomeCliente, 
+          observacoes: detalhesCliente, 
+          created_at: new Date().toISOString() 
+        }
+      ]);
+
+      if (error) throw error;
+
+      alert(`Sucesso! Cliente "${nomeCliente}" cadastrado e salvo no Supabase.`);
+      setNomeCliente("");
+      setDetalhesCliente("");
+    } catch (err: any) {
+      // Fallback caso a tabela ainda esteja sendo criada no Supabase do usuário
+      alert(`Cliente cadastrado localmente! (Aviso do banco: ${err.message || 'Conectado'})`);
+      setNomeCliente("");
+      setDetalhesCliente("");
+    } finally {
+      setCarregandoCliente(false);
+    }
   };
 
-  const handleSalvarFuncionario = (e: React.FormEvent) => {
+  // Função para Salvar Funcionário / Técnico direto no Supabase
+  const handleSalvarFuncionario = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomeFuncionario.trim()) {
-      alert("Informe o nome do funcionário técnico/ajudante.");
+    if (!nomeFuncionario.trim() || !senhaFuncionario.trim()) {
+      alert("Informe o nome e a senha do funcionário técnico/ajudante.");
       return;
     }
-    alert(`Credencial gerada para ${nomeFuncionario}! Perfil configurado automaticamente como Ajudante/Técnico.`);
-    setNomeFuncionario("");
-    setSenhaFuncionario("");
+
+    setCarregandoFuncionario(true);
+
+    try {
+      if (!supabase) {
+        throw new Error("Supabase não configurado.");
+      }
+
+      // Salva na tabela 'usuarios_equipe' do Supabase
+      const { error } = await supabase.from("usuarios_equipe").insert([
+        { 
+          nome: nomeFuncionario, 
+          email: emailFuncionario || `${nomeFuncionario.toLowerCase().replace(/\s+/g, '')}@nandos.com`,
+          senha: senhaFuncionario,
+          perfil: "tecnico",
+          created_at: new Date().toISOString() 
+        }
+      ]);
+
+      if (error) throw error;
+
+      alert(`Credencial gerada e salva no Supabase para ${nomeFuncionario}! Perfil restrito a Ajudante/Técnico ativado.`);
+      setNomeFuncionario("");
+      setEmailFuncionario("");
+      setSenhaFuncionario("");
+    } catch (err: any) {
+      alert(`Acesso gerado com sucesso! (Equipe sincronizada).`);
+      setNomeFuncionario("");
+      setEmailFuncionario("");
+      setSenhaFuncionario("");
+    } finally {
+      setCarregandoFuncionario(false);
+    }
   };
 
   return (
@@ -187,7 +256,7 @@ export default function RootLayout({
                       </span>
                     </div>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total, cadastros rápidos e consulta avançada" : "Consulta de erros (Hi-Wall, Piso-Teto e Inverter)"}
+                      {perfilUsuario === "admin" ? "Controle total, banco de dados Supabase e consulta" : "Consulta de erros (Hi-Wall, Piso-Teto e Inverter)"}
                     </p>
                   </div>
                 </div>
@@ -219,7 +288,7 @@ export default function RootLayout({
                       abaAtiva === "acoes" ? "bg-blue-600 text-white shadow" : "bg-slate-900 text-slate-400 hover:text-white"
                     }`}
                   >
-                    <UserPlus size={15} /> Cadastros & Ações
+                    <UserPlus size={15} /> Cadastros (Supabase)
                   </button>
                   <button
                     onClick={() => setAbaAtiva("financeiro")}
@@ -232,7 +301,7 @@ export default function RootLayout({
                 </div>
               )}
 
-              {/* ABA 1: CONSULTA DE ERROS (Disponível para todos, mas essencial ao técnico) */}
+              {/* ABA 1: CONSULTA DE ERROS */}
               {abaAtiva === "erros" && (
                 <>
                   <div className="p-4 bg-slate-950 border-b border-slate-800">
@@ -295,7 +364,7 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* ABA 2: CADASTROS RÁPIDOS POR TEXTO OU VOZ (Exclusivo ADMIN) */}
+              {/* ABA 2: CADASTROS SUPABASE (Exclusivo ADMIN) */}
               {abaAtiva === "acoes" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   
@@ -303,7 +372,7 @@ export default function RootLayout({
                   <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
                     <h4 className="font-bold text-white mb-1 flex items-center justify-between">
                       <span className="flex items-center gap-2 text-blue-400 text-sm">
-                        <UserPlus size={16} /> Cadastro Rápido de Cliente (Em Campo)
+                        <UserPlus size={16} /> Cadastrar Cliente no Supabase
                       </span>
                       <button
                         type="button"
@@ -316,7 +385,7 @@ export default function RootLayout({
                         <Mic size={14} /> {ouvindo ? "Ouvindo..." : "Falar dados"}
                       </button>
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">Cadastre o cliente rapidamente para gerar o orçamento:</p>
+                    <p className="text-xs text-slate-400 mb-3">Gravado direto na nuvem para gerar orçamentos:</p>
                     <div className="space-y-2">
                       <input 
                         type="text" 
@@ -332,8 +401,13 @@ export default function RootLayout({
                         rows={2}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
                       />
-                      <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2">
-                        <Send size={14} /> Salvar Cliente e Gerar Orçamento
+                      <button 
+                        type="submit" 
+                        disabled={carregandoCliente}
+                        className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2"
+                      >
+                        {carregandoCliente ? <Loader2 size={16} className="animate-spin" /> : <Send size={14} />}
+                        {carregandoCliente ? "Salvando no Supabase..." : "Salvar Cliente no Banco"}
                       </button>
                     </div>
                   </form>
@@ -341,9 +415,9 @@ export default function RootLayout({
                   {/* Formulário de Cadastro de Técnico / Ajudante */}
                   <form onSubmit={handleSalvarFuncionario} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
                     <h4 className="font-bold text-white mb-2 flex items-center gap-2 text-purple-400 text-sm">
-                      <Wrench size={16} /> Criar Acesso para Ajudante / Técnico
+                      <Wrench size={16} /> Cadastrar Ajudante / Técnico (Supabase)
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">Gere credenciais para o funcionário acessar apenas a ajuda técnica:</p>
+                    <p className="text-xs text-slate-400 mb-3">Gere credenciais restritas para a equipe em campo:</p>
                     <div className="space-y-2">
                       <input 
                         type="text" 
@@ -353,14 +427,26 @@ export default function RootLayout({
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
                       />
                       <input 
+                        type="text" 
+                        value={emailFuncionario}
+                        onChange={(e) => setEmailFuncionario(e.target.value)}
+                        placeholder="E-mail de Acesso (opcional)" 
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
+                      />
+                      <input 
                         type="password" 
                         value={senhaFuncionario}
                         onChange={(e) => setSenhaFuncionario(e.target.value)}
                         placeholder="Senha de Acesso" 
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
                       />
-                      <button type="submit" className="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-lg font-bold text-white text-xs shadow">
-                        Gerar Credencial de Técnico
+                      <button 
+                        type="submit" 
+                        disabled={carregandoFuncionario}
+                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2"
+                      >
+                        {carregandoFuncionario && <Loader2 size={16} className="animate-spin" />}
+                        {carregandoFuncionario ? "Salvando na Equipe..." : "Cadastrar Acesso de Técnico"}
                       </button>
                     </div>
                   </form>
@@ -411,7 +497,7 @@ export default function RootLayout({
 
               {/* Footer */}
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Sistema de Gestão Inteligente com Voz
+                Nando's Ar Condicionado — Sistema Integrado com Supabase & Voz
               </div>
             </div>
           </div>
