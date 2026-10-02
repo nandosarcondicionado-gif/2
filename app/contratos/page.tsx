@@ -37,7 +37,7 @@ type Contract = {
   cliente_nome: string;
   cidade: string;
   plano: Plan;
-  equipamentos: number;
+  quantidade_equipamentos: number;
   valor_mensal: number;
   data_inicio: string;
   proxima_visita: string | null;
@@ -90,7 +90,7 @@ const emptyForm = {
   cliente_id: "",
   cidade: "",
   plano: "Residencial" as Plan,
-  equipamentos: 1 as number | "",
+  quantidade_equipamentos: 1 as number | "",
   valor_mensal: 149,
   data_inicio: new Date().toISOString().slice(0, 10),
   proxima_visita: "",
@@ -160,7 +160,7 @@ export default function ContratosPage() {
     const config = plansConfig[form.plano];
     const base = config.basePrice;
     let calculado = base;
-    const qtd = typeof form.equipamentos === "number" ? form.equipamentos : 1;
+    const qtd = typeof form.quantidade_equipamentos === "number" ? form.quantidade_equipamentos : 1;
 
     if (qtd === 1) {
       calculado = base;
@@ -175,7 +175,7 @@ export default function ContratosPage() {
       valor_mensal: Math.round(calculado),
       observacoes: previous.observacoes || config.clausulasCompletas
     }));
-  }, [form.plano, form.equipamentos]);
+  }, [form.plano, form.quantidade_equipamentos]);
 
   function openNew() {
     setEditingId(null);
@@ -194,7 +194,7 @@ export default function ContratosPage() {
       cliente_id: contract.cliente_id || "",
       cidade: contract.cidade || "",
       plano: contract.plano,
-      equipamentos: contract.equipamentos || 1,
+      quantidade_equipamentos: contract.quantidade_equipamentos || 1,
       valor_mensal: contract.valor_mensal || 0,
       data_inicio: contract.data_inicio || "",
       proxima_visita: contract.proxima_visita || "",
@@ -275,13 +275,13 @@ export default function ContratosPage() {
     setSaving(true);
 
     try {
-      const qtdFinal = typeof form.equipamentos === "number" && form.equipamentos > 0 ? form.equipamentos : 1;
+      const qtdFinal = typeof form.quantidade_equipamentos === "number" && form.quantidade_equipamentos > 0 ? form.quantidade_equipamentos : 1;
       const baseData = {
         cliente_id: client.id,
         cliente_nome: client.nome,
         cidade: form.cidade || client.cidade || "",
         plano: form.plano,
-        equipamentos: qtdFinal,
+        quantidade_equipamentos: qtdFinal,
         valor_mensal: Number(form.valor_mensal) || 0,
         data_inicio: form.data_inicio,
         proxima_visita: form.proxima_visita || null,
@@ -383,7 +383,7 @@ export default function ContratosPage() {
         <div class="section-title">2. ESPECIFICAÇÕES DO PLANO E VALORES</div>
         <div class="grid">
           <div class="field"><span>Plano Contratado:</span> ${contract.plano}</div>
-          <div class="field"><span>Qtd. Equipamentos:</span> ${contract.equipamentos} unidade(s)</div>
+          <div class="field"><span>Qtd. Equipamentos:</span> ${contract.quantidade_equipamentos} unidade(s)</div>
           <div class="field"><span>Valor Mensal:</span> ${formatCurrency(Number(contract.valor_mensal))}</div>
           <div class="field"><span>Data de Início:</span> ${formatDate(contract.data_inicio)}</div>
         </div>
@@ -670,7 +670,7 @@ export default function ContratosPage() {
                           {contract.plano}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-slate-300">{contract.equipamentos}</td>
+                      <td className="px-4 py-4 text-slate-300">{contract.quantidade_equipamentos}</td>
                       <td className="px-4 py-4 font-semibold text-white">
                         {formatCurrency(Number(contract.valor_mensal || 0))}
                       </td>
@@ -792,11 +792,11 @@ export default function ContratosPage() {
                   <input
                     type="number"
                     min="1"
-                    value={form.equipamentos}
+                    value={form.quantidade_equipamentos}
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        equipamentos: e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value) || 1),
+                        quantidade_equipamentos: e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value) || 1),
                       })
                     }
                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
@@ -952,7 +952,7 @@ export default function ContratosPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-slate-400">Equipamentos</p>
-                  <p className="font-semibold text-slate-200">{selectedContract.equipamentos}</p>
+                  <p className="font-semibold text-slate-200">{selectedContract.quantidade_equipamentos}</p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-slate-400">Valor mensal</p>
