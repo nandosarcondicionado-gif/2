@@ -1,386 +1,916 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import { useEffect, useMemo, useState } from "react";
+import {
+  Plus,
+  Search,
+  FileText,
+  Edit,
+  Trash2,
+  X,
+  Eye,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Ban,
+  Printer,
+  FileCode,
+} from "lucide-react";
+import { createClient } from "../../lib/supabase/client";
 
-interface Contrato {
+type Plan = "Residencial" | "Comercial" | "Empresarial";
+type ContractStatus = "Ativo" | "Pendente" | "Vencido" | "Cancelado";
+
+type Client = {
   id: string;
-  cliente: string;
-  cpfCnpj: string;
-  endereco: string;
-  telefone: string;
-  quantidadeAparelhos: number | '';
-  valorTotalCalculado: number;
-  dataInicio: string;
-  observacoes: string;
-}
+  nome: string;
+  cidade: string | null;
+  endereco?: string | null;
+  documento?: string | null;
+  ativo?: boolean;
+};
+
+type Contract = {
+  id: string;
+  numero: string;
+  cliente_id: string | null;
+  cliente_nome: string;
+  cidade: string;
+  plano: Plan;
+  equipamentos: number;
+  valor_mensal: number;
+  data_inicio: string;
+  proxima_visita: string | null;
+  status: ContractStatus;
+  observacoes: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type PlanConfig = {
+  basePrice: number;
+  description: string;
+  beneficios: string;
+  exclusoes: string;
+  clausulasCompletas: string;
+};
+
+const plansConfig: Record<Plan, PlanConfig> = {
+  Residencial: {
+    basePrice: 149,
+    description: "Ideal para residências e pequenos ambientes.",
+    beneficios: "Manutenções preventivas programadas e isenção de taxa de visita técnica corretiva.",
+    exclusoes: "Peças de reposição e recargas de gás corretivas cobradas à parte.",
+    clausulasCompletas: `CLÁUSULA PRIMEIRA - DO OBJETO: O presente contrato tem por objeto a prestação de serviços de manutenção preventiva em sistemas de ar condicionado instalados no endereço do CONTRATANTE.\n\nCLÁUSULA SEGUNDA - DOS SERVIÇOS INCLUSOS: O plano Residencial contempla limpezas periódicas programadas dos filtros, verificação de pressões do fluido refrigerante, testes elétricos básicos e isenção de taxa de visita técnica em horários comerciais para chamados corretivos.\n\nCLÁUSULA TERCEIRA - DAS EXCLUSÕES: Estão expressamente excluídos deste contrato o fornecimento de peças de reposição, componentes elétricos/mecânicos e recargas de gás provenientes de vazamentos decorrentes de desgaste ou uso, que serão orçados e cobrados separadamente mediante prévia aprovação.\n\nCLÁUSULA QUARTA - DO VALOR E VENCIMENTO: O CONTRATANTE pagará à CONTRATADA o valor mensal ajustado, até o vencimento estipulado, sob pena de suspensão dos benefícios e incidência de multas legais por atraso.`
+  },
+  Comercial: {
+    basePrice: 299,
+    description: "Para lojas, escritórios e pequenos comércios.",
+    beneficios: "Limpezas preventivas frequentes, atendimento prioritário e isenção de taxa de visita.",
+    exclusoes: "Peças de reposição e cargas de gás corretivas cobradas separadamente.",
+    clausulasCompletas: `CLÁUSULA PRIMEIRA - DO OBJETO: Prestação de serviços especializados de manutenção preventiva e corretiva programada para ambientes comerciais.\n\nCLÁUSULA SEGUNDA - DOS SERVIÇOS INCLUSOS: Limpeza detalhada de serpentinas e carenagens, verificação de drenos, checagem de componentes eletro-eletrônicos, prioridade de atendimento e isenção de taxas de deslocamento técnico.\n\nCLÁUSULA TERCEIRA - DAS EXCLUSÕES: Não cobrem este pacote materiais de desgaste físico, substituição de compressores, placas eletrônicas e recargas completas de gás por vazamento.\n\nCLÁUSULA QUARTA - DO VALOR E VENCIMENTO: O pagamento mensal assegura a vigência dos serviços e visitas programadas em conformidade com as normas técnicas.`
+  },
+  Empresarial: {
+    basePrice: 599,
+    description: "Para empresas e instalações com vários equipamentos.",
+    beneficios: "Manutenção preventiva regular, emissão de laudo técnico/PMOC e atendimento emergencial.",
+    exclusoes: "Componentes, peças de reposição e recargas pesadas de gás refrigerante.",
+    clausulasCompletas: `CLÁUSULA PRIMEIRA - DO OBJETO: Prestação contínua de serviços de conservação preventiva e suporte técnico em climatização para o setor empresarial, com emissão de documentação de conformidade (PMOC quando aplicável).\n\nCLÁUSULA SEGUNDA - DOS SERVIÇOS INCLUSOS: Visitas técnicas periódicas programadas, testes de isolamento, limpeza profunda de sistemas, atendimento emergencial prioritário e suporte operacional contínuo.\n\nCLÁUSULA TERCEIRA - DAS EXCLUSÕES: Custos com peças de reposição de grande porte, isolamentos térmicos extensivos e recargas pesadas de fluido refrigerante ficam a cargo do CONTRATANTE.\n\nCLÁUSULA QUARTA - DO VALOR E VENCIMENTO: Mensalidade fixa devida todo dia escolhido, reajustada anualmente pelo índice oficial aplicável.`
+  },
+};
+
+const statusOptions: ContractStatus[] = [
+  "Ativo",
+  "Pendente",
+  "Vencido",
+  "Cancelado",
+];
+
+const emptyForm = {
+  cliente_id: "",
+  cidade: "",
+  plano: "Residencial" as Plan,
+  equipamentos: 1,
+  valor_mensal: 149,
+  data_inicio: new Date().toISOString().slice(0, 10),
+  proxima_visita: "",
+  status: "Ativo" as ContractStatus,
+  observacoes: "",
+};
 
 export default function ContratosPage() {
-  const [contratos, setContratos] = useState<Contrato[]>([]);
-  const [cliente, setCliente] = useState('');
-  const [cpfCnpj, setCpfCnpj] = useState('');
-  const [endereco, setEndereco] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [quantidadeAparelhos, setQuantidadeAparelhos] = useState<number | ''>(1);
-  const [dataInicio, setDataInicio] = useState('');
-  const [observacoes, setObservacoes] = useState('');
+  const supabase = createClient();
 
-  const [contratoSelecionado, setContratoSelecionado] = useState<Contrato | null>(null);
-  const [modalCarneAberto, setModalCarneAberto] = useState(false);
-  const [quantidadeParcelas, setQuantidadeParcelas] = useState<number>(12);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Lógica de cálculo progressivo para os aparelhos
-  // Exemplo estruturado: 1 aparelho = R$ 150, a partir do 2º ou 3º há diferenciação ou adicional.
-  // Vamos ajustar conforme a regra planejada: 
-  // 1 aparelho: 150 | 2 aparelhos: 250 | 3 aparelhos: 350 (ou ajuste proporcional por bloco/adicional)
-  const calcularValorTotal = (qtd: number | '') => {
-    if (qtd === '' || qtd <= 0) return 0;
-    
-    // Regra planejada: 1º aparelho R$ 150, e os aparelhos adicionais com valor diferenciado (ex: R$ 100 cada adicional)
-    const valorBasePrimeiro = 150;
-    const valorAdicionalDemais = 100;
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Todos");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [carneModalOpen, setCarneModalOpen] = useState(false);
+  const [selectedForCarne, setSelectedForCarne] = useState<Contract | null>(null);
+  const [carneParcelas, setCarneParcelas] = useState(12);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedContract, setSelectedContract] =
+    useState<Contract | null>(null);
+
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+
+  async function loadData() {
+    setLoading(true);
+
+    const [contractsResult, clientsResult] = await Promise.all([
+      supabase
+        .from("contratos")
+        .select("*")
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("clientes")
+        .select("id,nome,cidade,endereco,documento,ativo")
+        .eq("ativo", true)
+        .order("nome"),
+    ]);
+
+    if (contractsResult.error) {
+      console.error("Erro ao carregar contratos:", contractsResult.error);
+    } else {
+      setContracts((contractsResult.data || []) as Contract[]);
+    }
+
+    if (clientsResult.error) {
+      console.error("Erro ao carregar clientes:", clientsResult.error);
+    } else {
+      setClients((clientsResult.data || []) as Client[]);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Cálculo progressivo automático por quantidade de aparelhos
+  useEffect(() => {
+    const config = plansConfig[form.plano];
+    const base = config.basePrice;
+    let calculado = base;
+    const qtd = Number(form.equipamentos) || 1;
 
     if (qtd === 1) {
-      return valorBasePrimeiro;
-    } else {
-      return valorBasePrimeiro + (qtd - 1) * valorAdicionalDemais;
+      calculado = base;
+    } else if (qtd === 2 || qtd === 3) {
+      calculado = qtd * (base * 0.90);
+    } else if (qtd >= 4) {
+      calculado = qtd * (base * 0.82);
     }
-  };
 
-  const qtdNum = typeof quantidadeAparelhos === 'number' ? quantidadeAparelhos : 0;
-  const valorTotal = calcularValorTotal(quantidadeAparelhos);
+    setForm((previous) => ({
+      ...previous,
+      valor_mensal: Math.round(calculado),
+      observacoes: previous.observacoes || config.clausulasCompletas
+    }));
+  }, [form.plano, form.equipamentos]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cliente) return;
+  function openNew() {
+    setEditingId(null);
+    const config = plansConfig["Residencial"];
+    setForm({
+      ...emptyForm,
+      observacoes: config.clausulasCompletas
+    });
+    setModalOpen(true);
+  }
 
-    const novoContrato: Contrato = {
-      id: Date.now().toString(),
-      cliente,
-      cpfCnpj,
-      endereco,
-      telefone,
-      quantidadeAparelhos: qtdNum === 0 ? 1 : qtdNum,
-      valorTotalCalculado: valorTotal,
-      dataInicio: dataInicio || new Date().toISOString().split('T')[0],
-      observacoes,
-    };
+  function openEdit(contract: Contract) {
+    setEditingId(contract.id);
 
-    setContratos([novoContrato, ...contratos]);
-    // Limpar campos
-    setCliente('');
-    setCpfCnpj('');
-    setEndereco('');
-    setTelefone('');
-    setQuantidadeAparelhos(1);
-    setDataInicio('');
-    setObservacoes('');
-  };
+    setForm({
+      cliente_id: contract.cliente_id || "",
+      cidade: contract.cidade || "",
+      plano: contract.plano,
+      equipamentos: contract.equipamentos || 1,
+      valor_mensal: contract.valor_mensal || 0,
+      data_inicio: contract.data_inicio || "",
+      proxima_visita: contract.proxima_visita || "",
+      status: contract.status,
+      observacoes: contract.observacoes || "",
+    });
 
-  const excluirContrato = (id: string) => {
-    setContratos(contratos.filter((c) => c.id !== id));
-  };
+    setModalOpen(true);
+  }
 
-  // Função para imprimir o Contrato em PDF
-  const imprimirContrato = (c: Contrato) => {
-    const janela = window.open('', '_blank');
-    if (!janela) return;
+  function openDetails(contract: Contract) {
+    setSelectedContract(contract);
+    setDetailsOpen(true);
+  }
 
-    janela.document.write(`
-      <html>
-        <head>
-          <title>Contrato de Prestação de Serviços - ${c.cliente}</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; color: #333; }
-            h1 { text-align: center; font-size: 18px; text-transform: uppercase; margin-bottom: 30px; }
-            h2 { font-size: 14px; margin-top: 20px; text-transform: uppercase; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-            p { text-align: justify; margin-bottom: 15px; }
-            .assinaturas { margin-top: 60px; display: flex; justify-content: space-between; }
-            .assinatura-box { width: 45%; text-align: center; border-top: 1px solid #000; padding-top: 5px; }
-          </style>
-        </head>
-        <body>
-          <h1>Contrato de Prestação de Serviços e Manutenção</h1>
-          <p><strong>CONTRATANTE:</strong> ${c.cliente}, inscrito(a) no CPF/CNPJ sob o nº ${c.cpfCnpj || '___________________'}, residente e domiciliado(a) em ${c.endereco || '___________________'}, tel: ${c.telefone || '___________'}.</p>
-          <p><strong>CONTRATADA:</strong> Empresa Prestadora de Serviços Técnicos.</p>
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  }
 
-          <h2>Cláusula Primeira - Do Objeto</h2>
-          <p>O presente contrato tem por objeto a prestação de serviços técnicos especializados e manutenção em <strong>${c.quantidadeAparelhos} aparelho(s)</strong>, conforme especificado e acordado entre as partes.</p>
+  function handleClientChange(clientId: string) {
+    const client = clients.find((item) => item.id === clientId);
 
-          <h2>Cláusula Segunda - Dos Valores e Forma de Pagamento</h2>
-          <p>Pelos serviços ora contratados, o(a) CONTRATANTE pagará à CONTRATADA o valor total acordado de <strong>R$ ${Number(c.valorTotalCalculado).toFixed(2)}</strong>.</p>
-          <p>Data de início da vigência: ${c.dataInicio ? c.dataInicio.split('-').reverse().join('/') : 'Data atual'}.</p>
-          <p><strong>Observações:</strong> ${c.observacoes || 'Nenhuma observação registrada.'}</p>
+    setForm((previous) => ({
+      ...previous,
+      cliente_id: clientId,
+      cidade: client?.cidade || "",
+    }));
+  }
 
-          <h2>Cláusula Terceira - Das Condições Gerais</h2>
-          <p>Este instrumento rege-se pelas normas civis vigentes. O descumprimento de qualquer cláusula poderá acarretar a rescisão contratual imediata.</p>
+  function handlePlanChange(plan: Plan) {
+    const config = plansConfig[plan];
+    setForm((previous) => ({
+      ...previous,
+      plano: plan,
+      observacoes: config.clausulasCompletas
+    }));
+  }
 
-          <br><br>
-          <p>Local e Data: _________________________, ____/____/________</p>
+  async function generateNumber() {
+    const { data, error } = await supabase
+      .from("contratos")
+      .select("numero")
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-          <div class="assinaturas">
-            <div class="assinatura-box">Assinatura do(a) Contratante</div>
-            <div class="assinatura-box">Assinatura da Contratada</div>
+    if (error || !data || data.length === 0) {
+      return "CTR-0001";
+    }
+
+    const lastNumber = String(data[0].numero || "CTR-0000");
+    const match = lastNumber.match(/(\d+)$/);
+
+    if (!match) {
+      return "CTR-0001";
+    }
+
+    const next = Number(match[1]) + 1;
+    return `CTR-${String(next).padStart(4, "0")}`;
+  }
+
+  async function saveContract(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!form.cliente_id) {
+      alert("Selecione um cliente.");
+      return;
+    }
+
+    const client = clients.find((item) => item.id === form.cliente_id);
+    if (!client) {
+      alert("Cliente não encontrado.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const baseData = {
+        cliente_id: client.id,
+        cliente_nome: client.nome,
+        cidade: form.cidade || client.cidade || "",
+        plano: form.plano,
+        equipamentos: Number(form.equipamentos) || 1,
+        valor_mensal: Number(form.valor_mensal) || 0,
+        data_inicio: form.data_inicio,
+        proxima_visita: form.proxima_visita || null,
+        status: form.status,
+        observacoes: form.observacoes.trim() || null,
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from("contratos")
+          .update(baseData)
+          .eq("id", editingId);
+
+        if (error) throw error;
+        alert("Contrato atualizado com sucesso.");
+      } else {
+        const numero = await generateNumber();
+        const { error } = await supabase
+          .from("contratos")
+          .insert({ numero, ...baseData });
+
+        if (error) throw error;
+        alert("Contrato criado com sucesso.");
+      }
+
+      closeModal();
+      await loadData();
+    } catch (error: any) {
+      console.error(error);
+      alert(`Erro ao salvar contrato: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteContract(id: string) {
+    if (!window.confirm("Tem certeza que deseja excluir este contrato?")) return;
+
+    const { error } = await supabase.from("contratos").delete().eq("id", id);
+    if (error) {
+      alert(`Erro ao excluir: ${error.message}`);
+      return;
+    }
+
+    setContracts((prev) => prev.filter((c) => c.id !== id));
+    if (selectedContract?.id === id) {
+      setSelectedContract(null);
+      setDetailsOpen(false);
+    }
+    alert("Contrato excluído.");
+  }
+
+  // Função para Imprimir / Gerar PDF do Contrato Formatado
+  function imprimirContrato(contract: Contract) {
+    const clientData = clients.find((c) => c.id === contract.cliente_id);
+    const win = window.open("", "_blank");
+    if (!win) {
+      alert("Permita pop-ups no navegador para gerar a impressão do contrato.");
+      return;
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Contrato de Prestação de Serviços - ${contract.numero}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #111; line-height: 1.5; margin: 0; padding: 20px; font-size: 13px; }
+          .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 20px; }
+          .header h1 { color: #2563eb; margin: 0 0 5px 0; font-size: 20px; }
+          .header p { margin: 0; color: #555; font-size: 12px; }
+          .section-title { font-weight: bold; background: #f3f4f6; padding: 6px 10px; margin-top: 15px; margin-bottom: 10px; border-left: 4px solid #2563eb; font-size: 13px; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+          .field { margin-bottom: 6px; }
+          .field span { font-weight: bold; }
+          .clausulas { white-space: pre-wrap; text-align: justify; background: #fafafa; padding: 15px; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 10px; line-height: 1.6; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 60px; text-align: center; }
+          .sig-box { width: 40%; border-top: 1px solid #000; padding-top: 5px; }
+          @media print {
+            button { display: none; }
+            body { padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS TÉCNICOS</h1>
+          <p>Plano de Manutenção Preventiva em Sistemas de Climatização | ${contract.numero}</p>
+        </div>
+
+        <div class="section-title">1. IDENTIFICAÇÃO DAS PARTES</div>
+        <div class="grid">
+          <div class="field"><span>CONTRATADA:</span> Prestador de Serviços de Climatização</div>
+          <div class="field"><span>CONTRATANTE:</span> ${contract.cliente_nome}</div>
+          <div class="field"><span>CPF / CNPJ:</span> ${clientData?.documento || "Não informado"}</div>
+          <div class="field"><span>Endereço:</span> ${clientData?.endereco || "Não informado"} - ${contract.cidade}</div>
+        </div>
+
+        <div class="section-title">2. ESPECIFICAÇÕES DO PLANO E VALORES</div>
+        <div class="grid">
+          <div class="field"><span>Plano Contratado:</span> ${contract.plano}</div>
+          <div class="field"><span>Qtd. Equipamentos:</span> ${contract.equipamentos} unidade(s)</div>
+          <div class="field"><span>Valor Mensal:</span> ${formatCurrency(Number(contract.valor_mensal))}</div>
+          <div class="field"><span>Data de Início:</span> ${formatDate(contract.data_inicio)}</div>
+        </div>
+
+        <div class="section-title">3. TERMOS E CLÁUSULAS CONTRATUAIS</div>
+        <div class="clausulas">${contract.observacoes || "Nenhuma cláusula adicional informada."}</div>
+
+        <div class="signatures">
+          <div class="sig-box">
+            <p>CONTRATADA</p>
           </div>
+          <div class="sig-box">
+            <p>${contract.cliente_nome}</p>
+          </div>
+        </div>
 
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
+        <div style="text-align: center; margin-top: 40px;">
+          <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir / Salvar PDF</button>
+        </div>
+      </body>
       </html>
-    `);
-    janela.document.close();
-  };
-
-  const abrirCarne = (c: Contrato) => {
-    setContratoSelecionado(c);
-    setModalCarneAberto(true);
-  };
-
-  const imprimirCarneParcelas = () => {
-    if (!contratoSelecionado) return;
-    const total = Number(contratoSelecionado.valorTotalCalculado);
-    const valorParcela = total / quantidadeParcelas;
-    const dataBase = contratoSelecionado.dataInicio ? new Date(contratoSelecionado.dataInicio + 'T00:00:00') : new Date();
-
-    let carnêHtml = `
-      <html>
-        <head>
-          <title>Carnê de Pagamento - ${contratoSelecionado.cliente}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
-            .parcela-card { border: 2px dashed #3b82f6; padding: 15px; margin-bottom: 20px; border-radius: 8px; page-break-inside: avoid; background: #fff; }
-            .header { display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; padding-bottom: 8px; margin-bottom: 10px; font-weight: bold; }
-            .grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; font-size: 13px; }
-            .valor { font-size: 16px; color: #1d4ed8; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <h2 style="text-align: center; margin-bottom: 20px;">Carnê de Pagamento - ${contratoSelecionado.cliente}</h2>
     `;
 
-    for (let i = 1; i <= quantidadeParcelas; i++) {
+    win.document.write(htmlContent);
+    win.document.close();
+  }
+
+  // Função para Gerar Carnê de Pagamento
+  function abrirGeradorCarne(contract: Contract) {
+    setSelectedForCarne(contract);
+    setCarneParcelas(12);
+    setCarneModalOpen(true);
+  }
+
+  function imprimirCarne() {
+    if (!selectedForCarne) return;
+    const win = window.open("", "_blank");
+    if (!win) {
+      alert("Permita pop-ups para gerar o carnê.");
+      return;
+    }
+
+    const valorParcela = Number(selectedForCarne.valor_mensal);
+    const dataBase = new Date(`${selectedForCarne.data_inicio}T00:00:00`);
+
+    let parcelasHtml = "";
+    for (let i = 1; i <= carneParcelas; i++) {
       let vencimento = new Date(dataBase);
       vencimento.setMonth(vencimento.getMonth() + (i - 1));
-      const dataFormatada = vencimento.toLocaleDateString('pt-BR');
 
-      carnêHtml += `
-        <div class="parcela-card">
-          <div class="header">
-            <span>CARNÊ DE PAGAMENTO - PARCELA ${i}/${quantidadeParcelas}</span>
-            <span>Vencimento: ${dataFormatada}</span>
+      parcelasHtml += `
+        <div class="parcela">
+          <div class="cabecalho-parcela">
+            <span>CARNÊ DE PAGAMENTO - ${selectedForCarne.numero}</span>
+            <span>Parcela ${i}/${carneParcelas}</span>
           </div>
-          <div class="grid">
-            <div>
-              <p><strong>Cliente:</strong> ${contratoSelecionado.cliente}</p>
-              <p><strong>Ref. Contrato:</strong> Aparelhos: ${contratoSelecionado.quantidadeAparelhos}</p>
-            </div>
-            <div>
-              <p><strong>Nº Parcela:</strong> ${i} de ${quantidadeParcelas}</p>
-            </div>
-            <div>
-              <p>Valor da Parcela:</p>
-              <p class="valor">R$ ${valorParcela.toFixed(2)}</p>
-            </div>
+          <div class="corpo-parcela">
+            <div><strong>Cliente:</strong> ${selectedForCarne.cliente_nome}</div>
+            <div><strong>Vencimento:</strong> ${vencimento.toLocaleDateString("pt-BR")}</div>
+            <div><strong>Valor:</strong> ${formatCurrency(valorParcela)}</div>
           </div>
+          <div class="rodape-parcela">Autenticação Bancária / Recibo do Pagador</div>
         </div>
       `;
     }
 
-    carnêHtml += `
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
+    const htmlCarne = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Carnê de Pagamento - ${selectedForCarne.numero}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 20px; font-size: 12px; }
+          .grid-carne { display: grid; grid-template-columns: 1fr; gap: 15px; max-width: 600px; margin: 0 auto; }
+          .parcela { border: 2px dashed #374151; border-radius: 8px; padding: 10px 15px; background: #fff; page-break-inside: avoid; }
+          .cabecalho-parcela { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 8px; color: #1e3a8a; }
+          .corpo-parcela { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
+          .rodape-parcela { font-size: 10px; color: #6b7280; text-align: right; border-top: 1px dotted #e5e7eb; padding-top: 3px; }
+          .print-btn { text-align: center; margin-bottom: 20px; }
+          @media print {
+            .print-btn { display: none; }
+            body { padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-btn">
+          <button onclick="window.print()" style="background: #1e3a8a; color: #fff; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer;">Imprimir Carnê Completo</button>
+        </div>
+        <div class="grid-carne">
+          ${parcelasHtml}
+        </div>
+      </body>
       </html>
     `;
 
-    const janela = window.open('', '_blank');
-    if (janela) {
-      janela.document.write(carnêHtml);
-      janela.document.close();
-    }
-    setModalCarneAberto(false);
-  };
+    win.document.write(htmlCarne);
+    win.document.close();
+    setCarneModalOpen(false);
+  }
+
+  const filteredContracts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return contracts.filter((contract) => {
+      const matchesSearch =
+        !term ||
+        contract.numero.toLowerCase().includes(term) ||
+        contract.cliente_nome.toLowerCase().includes(term) ||
+        contract.cidade.toLowerCase().includes(term) ||
+        contract.plano.toLowerCase().includes(term);
+
+      const matchesStatus =
+        statusFilter === "Todos" || contract.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [contracts, search, statusFilter]);
+
+  const totalContracts = contracts.length;
+  const activeContracts = contracts.filter((i) => i.status === "Ativo").length;
+  const pendingContracts = contracts.filter((i) => i.status === "Pendente").length;
+  const monthlyTotal = contracts
+    .filter((i) => i.status === "Ativo")
+    .reduce((tot, i) => tot + Number(i.valor_mensal || 0), 0);
+
+  function formatCurrency(value: number) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value);
+  }
+
+  function formatDate(value: string | null) {
+    if (!value) return "-";
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("pt-BR");
+  }
+
+  function statusClass(status: ContractStatus) {
+    if (status === "Ativo") return "bg-green-950 text-green-400 border border-green-800";
+    if (status === "Pendente") return "bg-yellow-950 text-yellow-400 border border-yellow-800";
+    if (status === "Vencido") return "bg-red-950 text-red-400 border border-red-800";
+    return "bg-slate-800 text-slate-300 border border-slate-700";
+  }
+
+  function statusIcon(status: ContractStatus) {
+    if (status === "Ativo") return <CheckCircle size={15} />;
+    if (status === "Pendente") return <Clock size={15} />;
+    if (status === "Vencido") return <AlertCircle size={15} />;
+    return <Ban size={15} />;
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 bg-slate-950 min-h-screen text-slate-100">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Gestão de Contratos e Carnês</h1>
-        <p className="text-sm text-slate-400">Cadastre clientes, emita contratos formais em PDF e gere carnês de pagamento parcelados.</p>
-      </div>
+    <main className="min-h-screen bg-slate-950 p-4 md:p-6 text-slate-100">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Contratos</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Gerencie contratos, imprima documentos com cláusulas e gere carnês de pagamento.
+            </p>
+          </div>
 
-      {/* Formulário de Cadastro */}
-      <form onSubmit={handleSubmit} className="bg-slate-900 p-6 rounded-xl shadow-lg border border-slate-800 space-y-4">
-        <h2 className="text-lg font-semibold text-white">Novo Contrato</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Nome do Cliente *</label>
-            <input
-              type="text"
-              required
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-              placeholder="Ex: João da Silva"
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">CPF / CNPJ</label>
-            <input
-              type="text"
-              value={cpfCnpj}
-              onChange={(e) => setCpfCnpj(e.target.value)}
-              placeholder="000.000.000-00"
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Telefone</label>
-            <input
-              type="text"
-              value={telefone}
-              onChange={(e) => setTelefone(e.target.value)}
-              placeholder="(00) 00000-0000"
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-500"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-slate-300 mb-1">Endereço Completo</label>
-            <input
-              type="text"
-              value={endereco}
-              onChange={(e) => setEndereco(e.target.value)}
-              placeholder="Rua Exemplo, 123 - Bairro"
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Qtd. Aparelhos (Progressivo)</label>
-            <input
-              type="number"
-              min="1"
-              value={quantidadeAparelhos}
-              onChange={(e) => setQuantidadeAparelhos(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Data de Início</label>
-            <input
-              type="date"
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Observações</label>
-            <input
-              type="text"
-              value={observacoes}
-              onChange={(e) => setObservacoes(e.target.value)}
-              placeholder="Detalhes adicionais do serviço..."
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none placeholder-slate-500"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-          <div className="text-sm font-semibold text-slate-300">
-            Valor Total Calculado (Escalonado): <span className="text-blue-400 text-base font-bold">R$ {valorTotal.toFixed(2)}</span>
-          </div>
           <button
-            type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg text-sm transition-colors shadow-sm"
+            onClick={openNew}
+            className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500 transition-colors shadow-sm"
           >
-            Cadastrar Contrato
+            <Plus size={19} />
+            Novo contrato
           </button>
         </div>
-      </form>
 
-      {/* Lista de Contratos */}
-      <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden">
-        <div className="p-4 border-b border-slate-800">
-          <h3 className="font-semibold text-white">Contratos Registrados</h3>
-        </div>
-        {contratos.length === 0 ? (
-          <p className="p-6 text-sm text-slate-400 text-center">Nenhum contrato cadastrado ainda.</p>
-        ) : (
-          <div className="divide-y divide-slate-800">
-            {contratos.map((c) => (
-              <div key={c.id} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-slate-800/50 transition-colors">
-                <div className="space-y-1">
-                  <h4 className="font-semibold text-white">{c.cliente}</h4>
-                  <p className="text-xs text-slate-400">
-                    CPF/CNPJ: {c.cpfCnpj || 'Não informado'} | Tel: {c.telefone || 'Não informado'}
-                  </p>
-                  <p className="text-xs font-medium text-slate-300">
-                    Aparelhos: {c.quantidadeAparelhos}x | Total Calculado: <span className="text-blue-400">R$ {Number(c.valorTotalCalculado).toFixed(2)}</span>
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={() => imprimirContrato(c)}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5"
-                  >
-                    📄 Imprimir Contrato PDF
-                  </button>
-                  <button
-                    onClick={() => abrirCarne(c)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5"
-                  >
-                    📑 Gerar Carnê
-                  </button>
-                  <button
-                    onClick={() => excluirContrato(c.id)}
-                    className="text-red-400 hover:text-red-300 text-xs font-medium px-2 py-2"
-                  >
-                    Excluir
-                  </button>
-                </div>
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Total de contratos</p>
+                <p className="mt-1 text-2xl font-bold text-white">{totalContracts}</p>
               </div>
-            ))}
+              <div className="rounded-lg bg-blue-950 border border-blue-900 p-3 text-blue-400">
+                <FileText size={22} />
+              </div>
+            </div>
           </div>
-        )}
+
+          <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Contratos ativos</p>
+                <p className="mt-1 text-2xl font-bold text-green-400">{activeContracts}</p>
+              </div>
+              <div className="rounded-lg bg-green-950 border border-green-900 p-3 text-green-400">
+                <CheckCircle size={22} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Pendentes</p>
+                <p className="mt-1 text-2xl font-bold text-yellow-400">{pendingContracts}</p>
+              </div>
+              <div className="rounded-lg bg-yellow-950 border border-yellow-900 p-3 text-yellow-400">
+                <Clock size={22} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Receita mensal</p>
+                <p className="mt-1 text-2xl font-bold text-blue-400">{formatCurrency(monthlyTotal)}</p>
+              </div>
+              <div className="rounded-lg bg-blue-950 border border-blue-900 p-3 text-blue-400">
+                <FileText size={22} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-5 rounded-xl bg-slate-900 border border-slate-800 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row">
+            <div className="relative flex-1">
+              <Search size={19} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar contrato, cliente ou cidade..."
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 py-3 pl-10 pr-4 text-slate-100 outline-none focus:border-blue-500 placeholder-slate-500 text-sm"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg bg-slate-950 border border-slate-700 px-4 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+            >
+              <option value="Todos">Todos os status</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+          {loading ? (
+            <div className="p-10 text-center text-slate-400">Carregando contratos...</div>
+          ) : filteredContracts.length === 0 ? (
+            <div className="p-10 text-center">
+              <FileText size={45} className="mx-auto mb-3 text-slate-600" />
+              <p className="font-semibold text-slate-300">Nenhum contrato encontrado</p>
+              <p className="mt-1 text-sm text-slate-500">Crie o primeiro contrato para começar.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[950px]">
+                <thead className="border-b border-slate-800 bg-slate-950/50">
+                  <tr>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Contrato</th>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Cliente</th>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Plano</th>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Qtd. Aparelhos</th>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Valor Mensal</th>
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-slate-300">Status</th>
+                    <th className="px-4 py-4 text-right text-sm font-semibold text-slate-300">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {filteredContracts.map((contract) => (
+                    <tr key={contract.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-white">{contract.numero}</div>
+                        <div className="text-xs text-slate-400">Início: {formatDate(contract.data_inicio)}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-medium text-slate-100">{contract.cliente_nome}</div>
+                        <div className="text-sm text-slate-400">{contract.cidade}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="rounded-full bg-blue-950 border border-blue-900 px-3 py-1 text-xs font-semibold text-blue-400">
+                          {contract.plano}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-slate-300">{contract.equipamentos}</td>
+                      <td className="px-4 py-4 font-semibold text-white">
+                        {formatCurrency(Number(contract.valor_mensal || 0))}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(contract.status)}`}>
+                          {statusIcon(contract.status)}
+                          {contract.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => imprimirContrato(contract)}
+                            title="Imprimir Contrato PDF"
+                            className="rounded-lg border border-purple-900 bg-purple-950/30 p-2 text-purple-400 hover:bg-purple-900/50 transition-colors"
+                          >
+                            <Printer size={17} />
+                          </button>
+                          <button
+                            onClick={() => abrirGeradorCarne(contract)}
+                            title="Gerar Carnê"
+                            className="rounded-lg border border-emerald-900 bg-emerald-950/30 p-2 text-emerald-400 hover:bg-emerald-900/50 transition-colors"
+                          >
+                            <FileCode size={17} />
+                          </button>
+                          <button
+                            onClick={() => openDetails(contract)}
+                            title="Visualizar"
+                            className="rounded-lg border border-slate-700 bg-slate-800/50 p-2 text-slate-300 hover:bg-slate-700 transition-colors"
+                          >
+                            <Eye size={17} />
+                          </button>
+                          <button
+                            onClick={() => openEdit(contract)}
+                            title="Editar"
+                            className="rounded-lg border border-blue-900 bg-blue-950/30 p-2 text-blue-400 hover:bg-blue-900/50 transition-colors"
+                          >
+                            <Edit size={17} />
+                          </button>
+                          <button
+                            onClick={() => deleteContract(contract.id)}
+                            title="Excluir"
+                            className="rounded-lg border border-red-900 bg-red-950/30 p-2 text-red-400 hover:bg-red-900/50 transition-colors"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Modal para Escolher Parcelas do Carnê */}
-      {modalCarneAberto && contratoSelecionado && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4 shadow-xl text-slate-100">
-            <h3 className="text-lg font-bold text-white">Gerar Carnê de Parcelas</h3>
-            <p className="text-sm text-slate-300">
-              Cliente: <span className="font-semibold text-white">{contratoSelecionado.cliente}</span>
+      {/* MODAL DE NOVO/EDITAR CONTRATO */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 p-5">
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  {editingId ? "Editar contrato" : "Novo contrato"}
+                </h2>
+                <p className="text-sm text-slate-400">As cláusulas e regras de proteção já vêm pré-preenchidas.</p>
+              </div>
+              <button onClick={closeModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 transition-colors">
+                <X size={21} />
+              </button>
+            </div>
+
+            <form onSubmit={saveContract} className="space-y-5 p-5">
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-300">Cliente</label>
+                <select
+                  required
+                  value={form.cliente_id}
+                  onChange={(e) => handleClientChange(e.target.value)}
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                >
+                  <option value="">Selecione um cliente</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>{client.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Cidade</label>
+                  <input
+                    value={form.cidade}
+                    onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm placeholder-slate-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Plano</label>
+                  <select
+                    value={form.plano}
+                    onChange={(e) => handlePlanChange(e.target.value as Plan)}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                  >
+                    <option value="Residencial">Residencial (R$ 149 base)</option>
+                    <option value="Comercial">Comercial (R$ 299 base)</option>
+                    <option value="Empresarial">Empresarial (R$ 599 base)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Qtd. de Equipamentos</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.equipamentos}
+                    onChange={(e) => setForm({ ...form, equipamentos: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Valor Mensal (Editável)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.valor_mensal}
+                    onChange={(e) => setForm({ ...form, valor_mensal: parseFloat(e.target.value) || 0 })}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 font-bold text-blue-400 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Data de Início</label>
+                  <input
+                    type="date"
+                    required
+                    value={form.data_inicio}
+                    onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-300">Próxima Visita</label>
+                  <input
+                    type="date"
+                    value={form.proxima_visita}
+                    onChange={(e) => setForm({ ...form, proxima_visita: e.target.value })}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-300">Status</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value as ContractStatus })}
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-slate-100 outline-none focus:border-blue-500 text-sm"
+                >
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-300">Cláusulas e Condições do Contrato</label>
+                <textarea
+                  rows={6}
+                  value={form.observacoes}
+                  onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+                  className="w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-slate-200 outline-none focus:border-blue-500 text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-slate-800 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="rounded-lg border border-slate-700 px-5 py-3 font-semibold text-slate-300 hover:bg-slate-800 transition-colors text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-500 disabled:opacity-60 transition-colors text-sm shadow-sm"
+                >
+                  {saving ? "Salvando..." : editingId ? "Salvar alterações" : "Criar contrato"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE GERAR CARNÊ */}
+      {carneModalOpen && selectedForCarne && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <h3 className="text-lg font-bold text-white">Gerar Carnê de Parcelas</h3>
+              <button onClick={() => setCarneModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
+            </div>
+            <p className="text-sm text-slate-300 mb-4">
+              Contrato: <strong className="text-white">{selectedForCarne.numero}</strong> ({selectedForCarne.cliente_nome})
             </p>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Selecione a quantidade de parcelas:</label>
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-slate-300 mb-1">Quantidade de Parcelas</label>
               <select
-                value={quantidadeParcelas}
-                onChange={(e) => setQuantidadeParcelas(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                value={carneParcelas}
+                onChange={(e) => setCarneParcelas(Number(e.target.value))}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 p-3 text-slate-100 outline-none text-sm"
               >
                 <option value={3}>3 Meses (Trimestral)</option>
                 <option value={6}>6 Meses (Semestral)</option>
                 <option value={12}>12 Meses (Anual)</option>
-                <option value={18}>18 Meses</option>
-                <option value={24}>24 Meses</option>
               </select>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-3">
               <button
-                type="button"
-                onClick={() => setModalCarneAberto(false)}
-                className="px-4 py-2 border border-slate-700 rounded-lg text-sm text-slate-300 hover:bg-slate-800"
+                onClick={() => setCarneModalOpen(false)}
+                className="rounded-lg border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800 text-sm"
               >
                 Cancelar
               </button>
               <button
-                type="button"
-                onClick={imprimirCarneParcelas}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
+                onClick={imprimirCarne}
+                className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 text-sm shadow-sm"
               >
                 Imprimir Carnê
               </button>
@@ -388,6 +918,88 @@ export default function ContratosPage() {
           </div>
         </div>
       )}
-    </div>
+
+      {/* MODAL DE DETALHES */}
+      {detailsOpen && selectedContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-xl rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 p-5">
+              <div>
+                <h2 className="text-xl font-bold text-white">{selectedContract.numero}</h2>
+                <p className="text-sm text-slate-400">Detalhes do contrato</p>
+              </div>
+              <button onClick={() => setDetailsOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 transition-colors">
+                <X size={21} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-400">Cliente</p>
+                <p className="font-semibold text-white">{selectedContract.cliente_nome}</p>
+                <p className="text-sm text-slate-400">{selectedContract.cidade}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Plano</p>
+                  <p className="font-semibold text-slate-200">{selectedContract.plano}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Equipamentos</p>
+                  <p className="font-semibold text-slate-200">{selectedContract.equipamentos}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Valor mensal</p>
+                  <p className="font-semibold text-blue-400">{formatCurrency(Number(selectedContract.valor_mensal || 0))}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-400">Status</p>
+                  <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${statusClass(selectedContract.status)}`}>
+                    {statusIcon(selectedContract.status)}
+                    {selectedContract.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => imprimirContrato(selectedContract)}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2 font-semibold text-white hover:bg-purple-500 transition-colors text-sm shadow-sm"
+                >
+                  <Printer size={17} />
+                  Imprimir Contrato PDF
+                </button>
+                <button
+                  onClick={() => abrirGeradorCarne(selectedContract)}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 transition-colors text-sm shadow-sm"
+                >
+                  <FileCode size={17} />
+                  Gerar Carnê
+                </button>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-slate-800 pt-4">
+                <button
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    openEdit(selectedContract);
+                  }}
+                  className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 text-sm shadow-sm transition-colors"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => setDetailsOpen(false)}
+                  className="rounded-lg border border-slate-700 px-4 py-2 font-semibold text-slate-300 hover:bg-slate-800 text-sm transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
   );
 }
