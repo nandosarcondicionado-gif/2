@@ -130,7 +130,7 @@ export default function ContratosPage() {
         .select("*")
         .order("created_at", { ascending: false }),
 
-      // Removido o filtro .eq("ativo", true) para trazer todos os clientes cadastrados
+      // Traz todos os clientes cadastrados sem travas
       supabase
         .from("clientes")
         .select("id,nome,cidade,endereco,documento,ativo")
@@ -334,7 +334,6 @@ export default function ContratosPage() {
     alert("Contrato excluído.");
   }
 
-  // Função para Imprimir / Gerar PDF do Contrato Formatado
   function imprimirContrato(contract: Contract) {
     const clientData = clients.find((c) => c.id === contract.cliente_id);
     const win = window.open("", "_blank");
@@ -412,7 +411,6 @@ export default function ContratosPage() {
     win.document.close();
   }
 
-  // Função para Gerar Carnê de Pagamento
   function abrirGeradorCarne(contract: Contract) {
     setSelectedForCarne(contract);
     setCarneParcelas(12);
