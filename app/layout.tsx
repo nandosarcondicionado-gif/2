@@ -5,28 +5,51 @@ import "./globals.css";
 import { useState, useMemo, useEffect } from "react";
 import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2 } from "lucide-react";
 
-// Base de Dados Completa com Códigos de Erro de Praticamente Todas as Marcas
+// Base de Dados Expandida: Inclui Equipamentos Modernos (Inverter/Split) e Modelos Convencionais/Antigos
 const baseErrosGlobal = [
+  // --- SAMSUNG (Modernos e Antigos) ---
   { marca: "Samsung", codigo: "E121 / E122", problema: "Erro no sensor de temperatura ambiente ou da bobina interna", solucao: "Verificar conector solto ou substituir o sensor NTC da evaporadora." },
   { marca: "Samsung", codigo: "E416 / C416", problema: "Compressor superaquecido (Temperatura de descarga alta)", solucao: "Falta de gás refrigerante, condensadora muito suja ou compressor forçado." },
   { marca: "Samsung", codigo: "E458", problema: "Erro no motor do ventilador externo (DC Fan)", solucao: "Verificar se o ventilador está travado, cabo mal conectado ou placa externa com defeito." },
   { marca: "Samsung", codigo: "E554 / C554", problema: "Erro de vazamento de gás refrigerante", solucao: "Realizar teste de pressão com nitrogênio, corrigir vazamento e refazer carga de gás." },
   { marca: "Samsung", codigo: "C101 / E101", problema: "Erro de comunicação entre unidades (Interna e Externa)", solucao: "Checar se o cabo de comunicação/sinal está rompido, oxidado ou mal conectado." },
+  { marca: "Samsung (Antigo)", codigo: "Luzes Timer/Operation Piscando", problema: "Falha geral de sistema ou sensor aberto em modelos antigos Max / Borborema", solucao: "Testar sensores de temperatura e placa de controle principal." },
+
+  // --- LG (Modernos e Convencionais) ---
   { marca: "LG", codigo: "CH21", problema: "Sobrecorrente no módulo IPM / Compressor", solucao: "Oscilação de tensão elétrica, compressor travado ou defeito na placa inverter." },
   { marca: "LG", codigo: "CH22", problema: "Corrente alta na unidade condensadora", solucao: "Falta de gás, condensadora excessivamente suja ou ventilação externa bloqueada." },
   { marca: "LG", codigo: "CH23", problema: "Baixa tensão no barramento DC da placa", solucao: "Verificar rede elétrica do cliente, disjuntor inadequado ou placa de potência." },
   { marca: "LG", codigo: "CH26", problema: "Compressor DC travado mecanicamente", solucao: "Desligar sistema, testar enrolamentos. Se travado, substituir compressor." },
   { marca: "LG", codigo: "CH05", problema: "Falha de comunicação entre evaporadora e condensadora", solucao: "Verificar fiação de sinal interligação entre as unidades." },
+  { marca: "LG (Convencional Antigo)", codigo: "CH01 / CH02", problema: "Erro no sensor de temperatura do ar interno ou da serpentina", solucao: "Substituir sensor NTC na placa dos modelos convencionais antigos." },
+
+  // --- GREE ---
   { marca: "Gree", codigo: "E1", problema: "Proteção por alta pressão de refrigerante", solucao: "Excesso de gás, condensadora bloqueada ou temperatura externa excessiva." },
   { marca: "Gree", codigo: "E2", problema: "Proteção anti-congelamento da evaporadora", solucao: "Filtros de ar muito sujos, fluxo de ar bloqueado ou baixa carga de gás." },
   { marca: "Gree", codigo: "E3", problema: "Proteção por baixa pressão de refrigerante", solucao: "Falta de gás por vazamento ou restrição na tubulação." },
   { marca: "Gree", codigo: "H5", problema: "Proteção do Módulo IPM", solucao: "Superaquecimento do módulo, falta de pasta térmica ou picos de energia." },
+
+  // --- MIDEA / SPRINGER (Linha Antiga Convencional e Inverter) ---
   { marca: "Midea / Springer", codigo: "E1", problema: "Falha de comunicação entre placas / Erro de EEPROM", solucao: "Reiniciar disjuntor por 5 min. Testar cabo de sinal ou trocar placa." },
   { marca: "Midea / Springer", codigo: "E6", problema: "Erro de comunicação interna/externa ou inversão de cabos", solucao: "Verificar se a fiação de interligação está correta e firme nos Bornes." },
+  { marca: "Springer (Janela Antigo)", codigo: "Luz de Operation Piscando", problema: "Termostato mecânico com defeito ou protetor térmico do compressor aberto", solucao: "Aguardar resfriamento do compressor ou substituir termostato/capacitor." },
+
+  // --- DAIKIN ---
   { marca: "Daikin", codigo: "U0", problema: "Falta de fluido refrigerante (Baixa carga de gás)", solucao: "Pesquisar vazamento com nitrogênio, sanar e aplicar carga completa por peso." },
   { marca: "Daikin", codigo: "E3", problema: "Atuação do pressostato de alta", solucao: "Limpar condensadora, checar ventilador externo e verificar excesso de gás." },
-  { marca: "Fujitsu", codigo: "Luzes Piscando", problema: "Erro de comunicação ou falha no ventilador interno", solucao: "Verificar código piscando no manual específico do modelo." },
-  { marca: "Electrolux", codigo: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." }
+
+  // --- FUJITSU ---
+  { marca: "Fujitsu", codigo: "Luzes Piscando (Operation + Timer)", problema: "Erro de comunicação ou falha no ventilador interno", solucao: "Verificar código piscando no manual específico do modelo." },
+
+  // --- ELECTROLUX (Novos e Antigos) ---
+  { marca: "Electrolux", codigo: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." },
+  { marca: "Electrolux", codigo: "E4", problema: "Atuação do sistema anti-congelamento", solucao: "Limpeza de filtros e verificação de ventilação interna." },
+
+  // --- CONSUL E BRASTEMP (Modelos Antigos e Atuais) ---
+  { marca: "Consul / Brastemp", codigo: "Erro de LEDs / Bips", problema: "Sensor de temperatura solto, em curto ou placa travada", solucao: "Desligar da tomada por 10 minutos. Se persistir, medir o sensor NTC." },
+
+  // --- CARRIER / MAXIFLO / KLIMASA (Convencionais Antigos) ---
+  { marca: "Carrier / Convencionais", codigo: "Compressor não arma / Zumbido", problema: "Capacitor de marcha estourado ou travamento mecânico", solucao: "Substituir o capacitor do compressor e testar corrente com o alicate amperímetro." }
 ];
 
 export default function RootLayout({
@@ -38,11 +61,9 @@ export default function RootLayout({
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
   
-  // Detecção automática de perfil (Lê do localStorage ou assume 'admin' por padrão se não houver login)
   const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
 
   useEffect(() => {
-    // Tenta ler o perfil salvo no navegador ao carregar o sistema
     const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
     if (perfilSalvo) {
       setPerfilUsuario(perfilSalvo);
@@ -101,7 +122,7 @@ export default function RootLayout({
                       </span>
                     </div>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Gerencie erros, atalhos e financeiro em um só lugar" : "Consulta rápida de códigos de erro em campo"}
+                      {perfilUsuario === "admin" ? "Gerencie erros, atalhos e financeiro em um só lugar" : "Consulta rápida de códigos de erro (Modernos e Antigos)"}
                     </p>
                   </div>
                 </div>
@@ -156,7 +177,7 @@ export default function RootLayout({
                         type="text"
                         value={termoBuscaErro}
                         onChange={(e) => setTermoBuscaErro(e.target.value)}
-                        placeholder="Digite o código (ex: E416, CH21) ou marca..."
+                        placeholder="Busque por código (E416, CH21), marca ou máquina antiga..."
                         className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500 text-sm placeholder-slate-500"
                         autoFocus
                       />
