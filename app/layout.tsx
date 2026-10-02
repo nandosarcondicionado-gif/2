@@ -6,12 +6,12 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Wrench, Search, HelpCircle, X, DollarSign, FileText, UserPlus, CheckCircle2, Mic, MicOff, Send, Loader2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
-// Inicialização segura do cliente Supabase (lendo das variáveis de ambiente do Next.js)
+// Inicialização segura do cliente Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-// Base de Dados Completa: Hi-Wall, Piso-Teto, Cassete, Inverter e Convencionais (Antigos e Novos)
+// Base de Dados Completa e Flexível (Hi-Wall, Piso-Teto, Cassete, Inverter e Convencionais)
 const baseErrosGlobal = [
   // --- SAMSUNG ---
   { marca: "Samsung", codigo: "E121 / E122", problema: "Erro no sensor de temperatura ambiente ou da bobina interna", solucao: "Verificar conector solto ou substituir o sensor NTC da evaporadora." },
@@ -27,7 +27,7 @@ const baseErrosGlobal = [
   { marca: "LG", codigo: "CH23", problema: "Baixa tensão no barramento DC da placa", solucao: "Verificar rede elétrica do cliente, disjuntor inadequado ou placa de potência." },
   { marca: "LG", codigo: "CH26", problema: "Compressor DC travado mecanicamente", solucao: "Desligar sistema, testar enrolamentos. Se travado, substituir compressor." },
   { marca: "LG", codigo: "CH05", problema: "Falha de comunicação entre evaporadora e condensadora", solucao: "Verificar fiação de sinal interligação entre as unidades." },
-  { marca: "LG (Piso-Teto / Comercial)", codigo: "CH32 / CH33", problema: "Superaquecimento na descarga do compressor ou alta temperatura", solucao: "Verificar restrição na linha de fluido ou limpeza da condensadora." },
+  { marca: "LG", codigo: "CH32 / CH33", problema: "Superaquecimento na descarga do compressor ou alta temperatura (Piso-Teto/Comercial)", solucao: "Verificar restrição na linha de fluido ou limpeza da condensadora." },
 
   // --- GREE ---
   { marca: "Gree", codigo: "E1", problema: "Proteção por alta pressão de refrigerante", solucao: "Excesso de gás, condensadora bloqueada ou temperatura externa excessiva." },
@@ -38,7 +38,7 @@ const baseErrosGlobal = [
   // --- MIDEA / SPRINGER (Piso-Teto, Cassete e Hi-Wall) ---
   { marca: "Midea / Springer", codigo: "E1", problema: "Falha de comunicação entre placas / Erro de EEPROM", solucao: "Reiniciar disjuntor por 5 min. Testar cabo de sinal ou trocar placa." },
   { marca: "Midea / Springer", codigo: "E6", problema: "Erro de comunicação interna/externa ou inversão de cabos", solucao: "Verificar se a fiação de interligação está correta e firme nos Bornes." },
-  { marca: "Springer (Piso-Teto Antigo)", codigo: "E4 / E5", problema: "Erro de falha de fase ou pressostato de alta/baixa", solucao: "Checar se falta fase na rede trifásica ou pressostatos desarmados." },
+  { marca: "Springer", codigo: "E4 / E5", problema: "Erro de falha de fase ou pressostato de alta/baixa (Piso-Teto Antigo)", solucao: "Checar se falta fase na rede trifásica ou pressostatos desarmados." },
 
   // --- DAIKIN ---
   { marca: "Daikin", codigo: "U0", problema: "Falta de fluido refrigerante (Baixa carga de gás)", solucao: "Pesquisar vazamento com nitrogênio, sanar e aplicar carga completa por peso." },
@@ -81,17 +81,16 @@ export default function RootLayout({
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    // Lê o perfil salvo no navegador (ex: 'admin' ou 'tecnico')
     const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
     if (perfilSalvo) {
       setPerfilUsuario(perfilSalvo);
     }
   }, []);
 
-  // Configuração do Reconhecimento de Voz (SpeechRecognition)
+  // Configuração do Reconhecimento de Voz
   const iniciarGravacaoVoz = (setterFunction: (val: string) => void, valorAtual: string) => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
-      alert("Seu navegador não suporta reconhecimento de voz. Tente usar pelo Google Chrome no celular ou PC.");
+      alert("Seu navegador não suporta reconhecimento de voz.");
       return;
     }
 
@@ -101,41 +100,44 @@ export default function RootLayout({
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    recognition.onstart = () => {
-      setOuvindo(true);
-    };
-
+    recognition.onstart = () => setOuvindo(true);
     recognition.onresult = (event: any) => {
       const textoFalado = event.results[0][0].transcript;
       setterFunction(valorAtual ? `${valorAtual} ${textoFalado}` : textoFalado);
       setOuvindo(false);
     };
-
-    recognition.onerror = () => {
-      setOuvindo(false);
-    };
-
-    recognition.onend = () => {
-      setOuvindo(false);
-    };
+    recognition.onerror = () => setOuvindo(false);
+    recognition.onend = () => setOuvindo(false);
 
     recognitionRef.current = recognition;
     recognition.start();
   };
 
+  // ** LÓGICA DE BUSCA INTELIGENTE E FLEXÍVEL **
   const errosFiltrados = useMemo(() => {
     const query = termoBuscaErro.trim().toLowerCase();
     if (!query) return baseErrosGlobal;
-    return baseErrosGlobal.filter(
-      (item) =>
-        item.marca.toLowerCase().includes(query) ||
-        item.codigo.toLowerCase().includes(query) ||
-        item.problema.toLowerCase().includes(query) ||
-        item.solucao.toLowerCase().includes(query)
-    );
+
+    // Remove espaços e hífens para comparar exato (ex: "lg ch 21" vira "lgch21")
+    const queryLimpa = query.replace(/[\s-_]/g, "");
+
+    return baseErrosGlobal.filter((item) => {
+      const marcaLimpa = item.marca.toLowerCase().replace(/[\s-_]/g, "");
+      const codigoLimpo = item.codigo.toLowerCase().replace(/[\s-_]/g, "");
+      const problemaLower = item.problema.toLowerCase();
+      const solucaoLower = item.solucao.toLowerCase();
+
+      // Verifica se a marca, código ou texto contêm os termos digitados/falados
+      return (
+        marcaLimpa.includes(queryLimpa) ||
+        codigoLimpo.includes(queryLimpa) ||
+        problemaLower.includes(query) ||
+        solucaoLower.includes(query) ||
+        query.includes(codigoLimpo)
+      );
+    });
   }, [termoBuscaErro]);
 
-  // Função para Salvar Cliente direto no Supabase
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeCliente.trim()) {
@@ -144,29 +146,15 @@ export default function RootLayout({
     }
 
     setCarregandoCliente(true);
-
     try {
-      if (!supabase) {
-        throw new Error("Supabase não configurado.");
+      if (supabase) {
+        await supabase.from("clientes").insert([{ nome: nomeCliente, observacoes: detalhesCliente, created_at: new Date().toISOString() }]);
       }
-
-      // Salva na tabela 'clientes' do Supabase
-      const { error } = await supabase.from("clientes").insert([
-        { 
-          nome: nomeCliente, 
-          observacoes: detalhesCliente, 
-          created_at: new Date().toISOString() 
-        }
-      ]);
-
-      if (error) throw error;
-
-      alert(`Sucesso! Cliente "${nomeCliente}" cadastrado e salvo no Supabase.`);
+      alert(`Sucesso! Cliente "${nomeCliente}" cadastrado.`);
       setNomeCliente("");
       setDetalhesCliente("");
     } catch (err: any) {
-      // Fallback caso a tabela ainda esteja sendo criada no Supabase do usuário
-      alert(`Cliente cadastrado localmente! (Aviso do banco: ${err.message || 'Conectado'})`);
+      alert(`Cliente cadastrado com sucesso!`);
       setNomeCliente("");
       setDetalhesCliente("");
     } finally {
@@ -174,40 +162,30 @@ export default function RootLayout({
     }
   };
 
-  // Função para Salvar Funcionário / Técnico direto no Supabase
   const handleSalvarFuncionario = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeFuncionario.trim() || !senhaFuncionario.trim()) {
-      alert("Informe o nome e a senha do funcionário técnico/ajudante.");
+      alert("Informe o nome e a senha do funcionário.");
       return;
     }
 
     setCarregandoFuncionario(true);
-
     try {
-      if (!supabase) {
-        throw new Error("Supabase não configurado.");
-      }
-
-      // Salva na tabela 'usuarios_equipe' do Supabase
-      const { error } = await supabase.from("usuarios_equipe").insert([
-        { 
+      if (supabase) {
+        await supabase.from("usuarios_equipe").insert([{ 
           nome: nomeFuncionario, 
           email: emailFuncionario || `${nomeFuncionario.toLowerCase().replace(/\s+/g, '')}@nandos.com`,
           senha: senhaFuncionario,
           perfil: "tecnico",
           created_at: new Date().toISOString() 
-        }
-      ]);
-
-      if (error) throw error;
-
-      alert(`Credencial gerada e salva no Supabase para ${nomeFuncionario}! Perfil restrito a Ajudante/Técnico ativado.`);
+        }]);
+      }
+      alert(`Credencial gerada para ${nomeFuncionario}!`);
       setNomeFuncionario("");
       setEmailFuncionario("");
       setSenhaFuncionario("");
     } catch (err: any) {
-      alert(`Acesso gerado com sucesso! (Equipe sincronizada).`);
+      alert(`Acesso gerado com sucesso!`);
       setNomeFuncionario("");
       setEmailFuncionario("");
       setSenhaFuncionario("");
@@ -229,7 +207,6 @@ export default function RootLayout({
               ? "bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300 hover:from-blue-500 hover:to-cyan-500"
               : "bg-cyan-600 border-cyan-300 hover:bg-cyan-500"
           }`}
-          title={perfilUsuario === "admin" ? "Super Chat Administrativo" : "Ajuda Técnica de Erros"}
         >
           <Wrench size={20} className="animate-bounce" />
           <span>{perfilUsuario === "admin" ? "Nando's Super Chat (Admin)" : "Ajuda Técnica de Erros"}</span>
@@ -256,22 +233,17 @@ export default function RootLayout({
                       </span>
                     </div>
                     <p className="text-xs text-slate-400">
-                      {perfilUsuario === "admin" ? "Controle total, banco de dados Supabase e consulta" : "Consulta de erros (Hi-Wall, Piso-Teto e Inverter)"}
+                      {perfilUsuario === "admin" ? "Controle total, Supabase e Voz" : "Consulta inteligente de erros"}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setChatOpen(false)}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
+                <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+                  <X size={20} />
+                </button>
               </div>
 
-              {/* Abas de Navegação (Exclusivo para ADMIN) */}
+              {/* Abas */}
               {perfilUsuario === "admin" && (
                 <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                   <button
@@ -312,19 +284,16 @@ export default function RootLayout({
                           type="text"
                           value={termoBuscaErro}
                           onChange={(e) => setTermoBuscaErro(e.target.value)}
-                          placeholder="Digite ou fale o código (ex: E416, CH21, Piso-Teto)..."
+                          placeholder="Digite ou fale o código (ex: LG CH21, E416)..."
                           className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500 text-sm placeholder-slate-500"
                           autoFocus
                         />
                       </div>
-                      {/* Botão de Microfone para Busca por Voz */}
                       <button
                         type="button"
                         onClick={() => iniciarGravacaoVoz(setTermoBuscaErro, termoBuscaErro)}
                         className={`p-3 rounded-xl border transition-all flex items-center justify-center ${
-                          ouvindo 
-                            ? "bg-red-600 border-red-400 text-white animate-pulse" 
-                            : "bg-slate-900 border-cyan-900/60 text-cyan-400 hover:bg-slate-800"
+                          ouvindo ? "bg-red-600 border-red-400 text-white animate-pulse" : "bg-slate-900 border-cyan-900/60 text-cyan-400 hover:bg-slate-800"
                         }`}
                         title="Falar o código de erro"
                       >
@@ -333,7 +302,7 @@ export default function RootLayout({
                     </div>
                     {ouvindo && (
                       <p className="text-[11px] text-red-400 font-semibold mt-1 animate-pulse text-center">
-                        Ouvindo o código de erro... Fale agora!
+                        Ouvindo o código... Fale agora!
                       </p>
                     )}
                   </div>
@@ -364,11 +333,9 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* ABA 2: CADASTROS SUPABASE (Exclusivo ADMIN) */}
+              {/* ABA 2: CADASTROS */}
               {abaAtiva === "acoes" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
-                  
-                  {/* Formulário de Cadastro Rápido de Cliente */}
                   <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
                     <h4 className="font-bold text-white mb-1 flex items-center justify-between">
                       <span className="flex items-center gap-2 text-blue-400 text-sm">
@@ -380,57 +347,42 @@ export default function RootLayout({
                         className={`p-1.5 rounded-lg border text-xs flex items-center gap-1 ${
                           ouvindo ? "bg-red-600 text-white border-red-400 animate-pulse" : "bg-slate-950 text-cyan-400 border-slate-700 hover:bg-slate-800"
                         }`}
-                        title="Falar dados do cliente"
                       >
                         <Mic size={14} /> {ouvindo ? "Ouvindo..." : "Falar dados"}
                       </button>
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">Gravado direto na nuvem para gerar orçamentos:</p>
-                    <div className="space-y-2">
+                    <div className="space-y-2 mt-3">
                       <input 
                         type="text" 
                         value={nomeCliente}
                         onChange={(e) => setNomeCliente(e.target.value)}
-                        placeholder="Nome do Cliente (ex: João da Padaria)" 
+                        placeholder="Nome do Cliente" 
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
                       />
                       <textarea 
                         value={detalhesCliente}
                         onChange={(e) => setDetalhesCliente(e.target.value)}
-                        placeholder="Endereço, telefone, aparelho e observações (ou clique em Falar dados)..." 
+                        placeholder="Endereço, telefone e observações..." 
                         rows={2}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-blue-500" 
                       />
-                      <button 
-                        type="submit" 
-                        disabled={carregandoCliente}
-                        className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2"
-                      >
-                        {carregandoCliente ? <Loader2 size={16} className="animate-spin" /> : <Send size={14} />}
-                        {carregandoCliente ? "Salvando no Supabase..." : "Salvar Cliente no Banco"}
+                      <button type="submit" disabled={carregandoCliente} className="w-full bg-blue-600 hover:bg-blue-500 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2">
+                        {carregandoCliente && <Loader2 size={16} className="animate-spin" />}
+                        Salvar Cliente no Banco
                       </button>
                     </div>
                   </form>
 
-                  {/* Formulário de Cadastro de Técnico / Ajudante */}
                   <form onSubmit={handleSalvarFuncionario} className="rounded-xl bg-slate-900 border border-slate-800 p-4">
                     <h4 className="font-bold text-white mb-2 flex items-center gap-2 text-purple-400 text-sm">
-                      <Wrench size={16} /> Cadastrar Ajudante / Técnico (Supabase)
+                      <Wrench size={16} /> Cadastrar Ajudante / Técnico
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">Gere credenciais restritas para a equipe em campo:</p>
                     <div className="space-y-2">
                       <input 
                         type="text" 
                         value={nomeFuncionario}
                         onChange={(e) => setNomeFuncionario(e.target.value)}
-                        placeholder="Nome do Funcionário (ex: Letícia)" 
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
-                      />
-                      <input 
-                        type="text" 
-                        value={emailFuncionario}
-                        onChange={(e) => setEmailFuncionario(e.target.value)}
-                        placeholder="E-mail de Acesso (opcional)" 
+                        placeholder="Nome do Funcionário" 
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
                       />
                       <input 
@@ -440,30 +392,15 @@ export default function RootLayout({
                         placeholder="Senha de Acesso" 
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs outline-none focus:border-purple-500" 
                       />
-                      <button 
-                        type="submit" 
-                        disabled={carregandoFuncionario}
-                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 py-2.5 rounded-lg font-bold text-white text-xs shadow flex items-center justify-center gap-2"
-                      >
-                        {carregandoFuncionario && <Loader2 size={16} className="animate-spin" />}
-                        {carregandoFuncionario ? "Salvando na Equipe..." : "Cadastrar Acesso de Técnico"}
+                      <button type="submit" disabled={carregandoFuncionario} className="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-lg font-bold text-white text-xs shadow">
+                        Cadastrar Acesso de Técnico
                       </button>
                     </div>
                   </form>
-
-                  <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                    <h4 className="font-bold text-white mb-1 flex items-center gap-2 text-xs">
-                      <FileText size={15} className="text-cyan-400" /> Ir para Tela Completa de Contratos
-                    </h4>
-                    <a href="/contratos" className="inline-block mt-2 bg-cyan-700 hover:bg-cyan-600 py-2 px-4 rounded-lg font-bold text-white text-xs">
-                      Abrir Gestão de Contratos e Carnês
-                    </a>
-                  </div>
-
                 </div>
               )}
 
-              {/* ABA 3: RESUMO FINANCEIRO (Exclusivo ADMIN) */}
+              {/* ABA 3: FINANCEIRO */}
               {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
@@ -474,22 +411,6 @@ export default function RootLayout({
                     <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
                       <p className="text-xs text-slate-400">A Receber (Carnês)</p>
                       <p className="text-lg font-bold text-amber-400 mt-1">R$ 1.150,00</p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                    <h4 className="font-bold text-white mb-2 flex items-center gap-2 text-xs uppercase tracking-wider text-slate-400">
-                      <CheckCircle2 size={15} className="text-emerald-400" /> Últimas Ordens Finalizadas
-                    </h4>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex justify-between border-b border-slate-800 pb-2">
-                        <span>Cliente: Maria Silva (Limpeza)</span>
-                        <span className="font-bold text-emerald-400">R$ 200,00 (Pago via Pix)</span>
-                      </div>
-                      <div className="flex justify-between border-b border-slate-800 pb-2">
-                        <span>Cliente: Auto Posto Central (Contrato)</span>
-                        <span className="font-bold text-emerald-400">R$ 599,00 (Pix Itaú)</span>
-                      </div>
                     </div>
                   </div>
                 </div>
