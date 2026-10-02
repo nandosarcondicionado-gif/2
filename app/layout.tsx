@@ -11,7 +11,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-// Base de Dados Completa (Padronizada em minúsculas para match infalível com a voz)
+// Base de Dados Completa
 const baseErrosGlobal = [
   { marca: "samsung", marcaExibicao: "Samsung", codigo: "e121", codigoExibicao: "E121 / E122", problema: "Erro no sensor de temperatura ambiente ou da bobina interna", solucao: "Verificar conector solto ou substituir o sensor NTC da evaporadora." },
   { marca: "samsung", marcaExibicao: "Samsung", codigo: "e416", codigoExibicao: "E416 / C416", problema: "Compressor superaquecido (Temperatura de descarga alta)", solucao: "Falta de gás refrigerante, condensadora muito suja ou compressor forçado." },
@@ -32,7 +32,7 @@ const baseErrosGlobal = [
   { marca: "midea", marcaExibicao: "Midea / Springer", codigo: "e6", codigoExibicao: "E6", problema: "Erro de comunicação interna/externa ou inversão de cabos", solucao: "Verificar se a fiação de interligação está correta e firme nos Bornes." },
   { marca: "daikin", marcaExibicao: "Daikin", codigo: "u0", codigoExibicao: "U0", problema: "Falta de fluido refrigerante (Baixa carga de gás)", solucao: "Pesquisar vazamento com nitrogênio, sanar e aplicar carga completa por peso." },
   { marca: "daikin", marcaExibicao: "Daikin", codigo: "e3", codigoExibicao: "E3", problema: "Atuação do pressostato de alta", solucao: "Limpar condensadora, checar ventilador externo e verificar excesso de gás." },
-  { marca: "electrolux", marcaExibicao: "Electrolux", codigo: "e1", codigoExibicao: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testar resistência dos sensores NTC e substituir se necessário." }
+  { marca: "electrolux", marcaExibicao: "Electrolux", codigo: "e1", codigoExibicao: "E1 / E3", problema: "Falha nos sensores de temperatura da evaporadora", solucao: "Testار resistência dos sensores NTC e substituir se necessário." }
 ];
 
 export default function RootLayout({
@@ -44,6 +44,7 @@ export default function RootLayout({
   const [abaAtiva, setAbaAtiva] = useState<"erros" | "acoes" | "financeiro">("erros");
   const [termoBuscaErro, setTermoBuscaErro] = useState("");
   const [perfilUsuario, setPerfilUsuario] = useState<"admin" | "tecnico">("admin");
+  const [mostrarBotoes, setMostrarBotoes] = useState(false);
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [detalhesCliente, setDetalhesCliente] = useState("");
@@ -56,24 +57,32 @@ export default function RootLayout({
   const [ouvindo, setOuvindo] = useState(false);
 
   useEffect(() => {
+    // Verifica a rota atual. Se for /login ou /auth, NÃO mostra os botões de forma alguma!
+    const rotaAtual = window.location.pathname;
+    if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
+      setMostrarBotoes(false);
+      return;
+    }
+
+    // Se estiver em qualquer outra página logado, exibe os botões
+    setMostrarBotoes(true);
+
     const perfilSalvo = localStorage.getItem("nandos_user_perfil") as "admin" | "tecnico";
     if (perfilSalvo) {
       setPerfilUsuario(perfilSalvo);
     }
   }, []);
 
-  // Função ultra rápida para falar a resposta em voz alta
   const falarTexto = (texto: string) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(texto);
       utterance.lang = "pt-BR";
-      utterance.rate = 1.05; // Levemente mais rápido para agilizar em campo
+      utterance.rate = 1.05;
       window.speechSynthesis.speak(utterance);
     }
   };
 
-  // ** BUSCA POR VOZ INSTANTÂNEA E COM FEEDBACK POR ÁUDIO **
   const iniciarBuscaPorVoz = () => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       alert("Seu navegador não suporta reconhecimento de voz.");
@@ -88,24 +97,21 @@ export default function RootLayout({
 
     recognition.onstart = () => {
       setOuvindo(true);
-      setChatOpen(true); // Abre o chat instantaneamente
+      setChatOpen(true);
     };
 
     recognition.onresult = (event: any) => {
-      // Converte tudo para minúsculas imediatamente
       const textoFalado = event.results[0][0].transcript.toLowerCase().trim();
       setTermoBuscaErro(textoFalado);
       setOuvindo(false);
 
       const queryLimpa = textoFalado.replace(/[\s-_]/g, "");
 
-      // Procura o erro correspondente na base
       const encontrado = baseErrosGlobal.find((item) => {
         return queryLimpa.includes(item.codigo) || queryLimpa.includes(item.marca) || item.codigo.includes(queryLimpa);
       });
 
       if (encontrado) {
-        // Fala o resultado em voz alta imediatamente para o usuário ouvir na escada
         falarTexto(`Encontrado! ${encontrado.marcaExibicao}, erro ${encontrado.codigoExibicao}. Solução: ${encontrado.solucao}`);
       } else {
         falarTexto(`Mostrando resultados para ${textoFalado}`);
@@ -118,7 +124,6 @@ export default function RootLayout({
     recognition.start();
   };
 
-  // ** FILTRO DE BUSCA 100% BLINDADO A MINÚSCULAS/MAIÚSCULAS **
   const errosFiltrados = useMemo(() => {
     const query = termoBuscaErro.trim().toLowerCase();
     if (!query) return baseErrosGlobal;
@@ -178,27 +183,29 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* BOTÕES FLUTUANTES RÁPIDOS */}
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
-          <button
-            onClick={iniciarBuscaPorVoz}
-            className={`flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all border-2 ${
-              ouvindo ? "bg-red-600 border-red-300 animate-pulse" : "bg-gradient-to-r from-emerald-600 to-cyan-600 border-cyan-300 hover:scale-105"
-            }`}
-            title="Toque e fale o código do erro"
-          >
-            {ouvindo ? <MicOff size={22} className="animate-bounce" /> : <Mic size={20} />}
-            <span className="text-xs">{ouvindo ? "Ouvindo..." : "Falar Erro"}</span>
-          </button>
+        {/* OS BOTÕES SÓ APARECEM SE NÃO ESTIVER NA TELA DE LOGIN */}
+        {mostrarBotoes && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
+            <button
+              onClick={iniciarBuscaPorVoz}
+              className={`flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all border-2 ${
+                ouvindo ? "bg-red-600 border-red-300 animate-pulse" : "bg-gradient-to-r from-emerald-600 to-cyan-600 border-cyan-300 hover:scale-105"
+              }`}
+              title="Toque e fale o código do erro"
+            >
+              {ouvindo ? <MicOff size={22} className="animate-bounce" /> : <Mic size={20} />}
+              <span className="text-xs">{ouvindo ? "Ouvindo..." : "Falar Erro"}</span>
+            </button>
 
-          <button
-            onClick={() => setChatOpen(true)}
-            className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
-          >
-            <Wrench size={20} />
-            <span>Nando's Chat</span>
-          </button>
-        </div>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="flex items-center gap-2 rounded-full px-5 py-3.5 font-bold text-white shadow-2xl transition-all hover:scale-105 border-2 bg-gradient-to-r from-blue-600 to-cyan-600 border-cyan-300"
+            >
+              <Wrench size={20} />
+              <span>Nando's Chat</span>
+            </button>
+          </div>
+        )}
 
         {/* MODAL DO CHAT */}
         {chatOpen && (
@@ -211,8 +218,12 @@ export default function RootLayout({
                     <Wrench size={22} />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">Nando's Assistente Técnico por Voz</h3>
-                    <p className="text-xs text-slate-400">Toque no microfone e fale o erro</p>
+                    <h3 className="text-base font-bold text-white">
+                      {perfilUsuario === "admin" ? "Nando's Assistente Administrativo" : "Nando's Suporte Técnico"}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {perfilUsuario === "admin" ? "Controle total e consulta de erros" : "Consulta técnica de campo"}
+                    </p>
                   </div>
                 </div>
                 <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
@@ -220,17 +231,22 @@ export default function RootLayout({
                 </button>
               </div>
 
-              {/* Abas */}
+              {/* Abas de Navegação (Exibe Cadastros e Financeiro APENAS se for Admin) */}
               <div className="flex bg-slate-950 border-b border-slate-800 p-2 gap-2">
                 <button onClick={() => setAbaAtiva("erros")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "erros" ? "bg-cyan-600 text-white" : "bg-slate-900 text-slate-400"}`}>
                   <HelpCircle size={15} className="inline mr-1" /> Erros
                 </button>
-                <button onClick={() => setAbaAtiva("acoes")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "acoes" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"}`}>
-                  <UserPlus size={15} className="inline mr-1" /> Cadastros Supabase
-                </button>
-                <button onClick={() => setAbaAtiva("financeiro")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "financeiro" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"}`}>
-                  <DollarSign size={15} className="inline mr-1" /> Financeiro
-                </button>
+
+                {perfilUsuario === "admin" && (
+                  <>
+                    <button onClick={() => setAbaAtiva("acoes")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "acoes" ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                      <UserPlus size={15} className="inline mr-1" /> Cadastros
+                    </button>
+                    <button onClick={() => setAbaAtiva("financeiro")} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${abaAtiva === "financeiro" ? "bg-emerald-600 text-white" : "bg-slate-900 text-slate-400"}`}>
+                      <DollarSign size={15} className="inline mr-1" /> Financeiro
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* ABA DE ERROS */}
@@ -243,7 +259,7 @@ export default function RootLayout({
                         type="text"
                         value={termoBuscaErro}
                         onChange={(e) => setTermoBuscaErro(e.target.value)}
-                        placeholder="Ex: lg ch21..."
+                        placeholder="Digite ou clique em Falar Erro..."
                         className="w-full rounded-xl bg-slate-900 border border-cyan-900/60 py-3 pl-10 pr-4 text-white outline-none text-sm"
                         autoFocus
                       />
@@ -251,7 +267,7 @@ export default function RootLayout({
                         type="button"
                         onClick={iniciarBuscaPorVoz}
                         className="p-3 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-white flex items-center gap-1"
-                        title="Falar Erro"
+                        title="Falar"
                       >
                         <Mic size={18} />
                       </button>
@@ -288,8 +304,8 @@ export default function RootLayout({
                 </>
               )}
 
-              {/* ABA DE CADASTROS */}
-              {abaAtiva === "acoes" && (
+              {/* ABA DE CADASTROS (APENAS ADMIN) */}
+              {abaAtiva === "acoes" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <form onSubmit={handleSalvarCliente} className="rounded-xl bg-slate-900 border border-slate-800 p-4 space-y-2">
                     <h4 className="font-bold text-blue-400 text-sm">Cadastrar Cliente (Supabase)</h4>
@@ -300,8 +316,8 @@ export default function RootLayout({
                 </div>
               )}
 
-              {/* ABA FINANCEIRO */}
-              {abaAtiva === "financeiro" && (
+              {/* ABA FINANCEIRO (APENAS ADMIN) */}
+              {abaAtiva === "financeiro" && perfilUsuario === "admin" && (
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-950/60 text-sm">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
@@ -313,7 +329,7 @@ export default function RootLayout({
               )}
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400">
-                Nando's Ar Condicionado — Resposta por Voz e Busca Otimizada
+                Nando's Ar Condicionado — Segurança e Controle por Perfil
               </div>
             </div>
           </div>
