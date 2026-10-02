@@ -50,7 +50,7 @@ export default function RootLayout({
   const [carregandoCliente, setCarregandoCliente] = useState(false);
   const [ouvindo, setOuvindo] = useState(false);
 
-  // Validação segura do perfil executada no navegador
+  // Validação estrita do perfil administrativo
   useEffect(() => {
     const verificarAcessoAdmin = () => {
       const rotaAtual = window.location.pathname;
@@ -61,7 +61,7 @@ export default function RootLayout({
         return;
       }
 
-      // Verifica estritamente se o perfil salvo no navegador é 'admin'
+      // Verifica se o perfil salvo no navegador é estritamente admin
       const perfilSalvo = localStorage.getItem("nandos_user_perfil");
       if (perfilSalvo === "admin") {
         setEhAdmin(true);
@@ -77,10 +77,13 @@ export default function RootLayout({
 
   // FUNÇÃO DE LOGOUT / LIMPEZA COMPLETA DO SISTEMA
   const realizarLogoutCompleto = () => {
+    // Apaga absolutamente tudo da memória do navegador para garantir segurança total
     localStorage.clear();
     sessionStorage.clear();
     setEhAdmin(false);
     setChatOpen(false);
+    
+    // Redireciona para a página de login
     window.location.href = "/login";
   };
 
