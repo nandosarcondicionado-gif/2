@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { useState, useMemo, useEffect } from "react";
-import { Wrench, Search, HelpCircle, X, DollarSign, UserPlus, Mic, MicOff, Volume2 } from "lucide-react";
+import { Wrench, Search, HelpCircle, X, DollarSign, UserPlus, Mic, MicOff, Volume2, LogOut } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
 // Inicialização do Supabase
@@ -50,17 +50,18 @@ export default function RootLayout({
   const [carregandoCliente, setCarregandoCliente] = useState(false);
   const [ouvindo, setOuvindo] = useState(false);
 
+  // Validação estrita do perfil administrativo
   useEffect(() => {
     const verificarAcessoAdmin = () => {
       const rotaAtual = window.location.pathname;
       
-      // Se estiver nas telas de login ou auth, limpa qualquer vestígio e esconde tudo
+      // Se estiver na tela de login, esconde o painel administrativo
       if (rotaAtual.includes("login") || rotaAtual.includes("auth")) {
         setEhAdmin(false);
         return;
       }
 
-      // Verifica estritamente se o perfil salvo é admin
+      // Verifica se o perfil salvo no navegador é estritamente admin
       const perfilSalvo = localStorage.getItem("nandos_user_perfil");
       if (perfilSalvo === "admin") {
         setEhAdmin(true);
@@ -74,15 +75,15 @@ export default function RootLayout({
     return () => window.removeEventListener("focus", verificarAcessoAdmin);
   }, []);
 
-  // ** FUNÇÃO DE LOGOUT / SAÍDA SEGURA POR COMPLETO **
+  // FUNÇÃO DE LOGOUT / LIMPEZA COMPLETA DO SISTEMA
   const realizarLogoutCompleto = () => {
-    // Apaga absolutamente tudo do navegador para não ficar nada salvo
+    // Apaga absolutamente tudo da memória do navegador para garantir segurança total
     localStorage.clear();
     sessionStorage.clear();
     setEhAdmin(false);
     setChatOpen(false);
     
-    // Força o redirecionamento para a página de login
+    // Redireciona para a página de login
     window.location.href = "/login";
   };
 
@@ -125,8 +126,6 @@ export default function RootLayout({
 
       if (encontrado) {
         falarTexto(`Encontrado! ${encontrado.marcaExibicao}, erro ${encontrado.codigoExibicao}. Solução: ${encontrado.solucao}`);
-      } else {
-        falarTexto(`Mostrando resultados para ${textoFalado}`);
       }
     };
 
@@ -157,18 +156,18 @@ export default function RootLayout({
   const handleSalvarCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ehAdmin) return alert("Acesso negado.");
-    if (!nomeCliente.trim()) return alert("Informe o nome.");
+    if (!nomeCliente.trim()) return alert("Informe o nome do cliente.");
     
     setCarregandoCliente(true);
     try {
       if (supabase) {
         await supabase.from("clientes").insert([{ nome: nomeCliente, observacoes: detalhesCliente, created_at: new Date().toISOString() }]);
       }
-      alert(`Cliente salvo!`);
+      alert("Cliente salvo com sucesso!");
       setNomeCliente("");
       setDetalhesCliente("");
     } catch (err) {
-      alert("Salvo com sucesso!");
+      alert("Erro ao salvar cliente.");
     } finally {
       setCarregandoCliente(false);
     }
@@ -179,7 +178,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 min-h-screen relative antialiased">
         {children}
 
-        {/* OS BOTÕES FLUTUANTES APARECEM APENAS PARA O ADMINISTRADOR */}
+        {/* 🔒 ESSES BOTÕES FLUTUANTES APARECEM APENAS PARA O ADMINISTRADOR */}
         {ehAdmin && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
             <button
@@ -203,7 +202,7 @@ export default function RootLayout({
           </div>
         )}
 
-        {/* MODAL DO SUPER CHAT (EXCLUSIVO DO ADMINISTRADOR) */}
+        {/* 🔒 MODAL DO SUPER CHAT (EXCLUSIVO DO ADMINISTRADOR) */}
         {chatOpen && ehAdmin && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-cyan-500/40 shadow-2xl flex flex-col max-h-[90vh] text-slate-100 overflow-hidden">
@@ -219,14 +218,14 @@ export default function RootLayout({
                   </div>
                 </div>
                 
-                {/* Botão de Fechar e Botão de Sair Real integrados no topo */}
+                {/* Botões do Topo: Sair Completo e Fechar Modal */}
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={realizarLogoutCompleto} 
-                    className="bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                    title="Encerra a sessão e limpa os dados do aparelho"
+                    className="flex items-center gap-1.5 bg-red-900/70 hover:bg-red-800 text-red-100 border border-red-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow"
+                    title="Encerra a sessão e apaga dados do aparelho"
                   >
-                    Sair / Desconectar
+                    <LogOut size={14} /> Sair / Desconectar
                   </button>
                   <button onClick={() => setChatOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
                     <X size={20} />
@@ -328,8 +327,8 @@ export default function RootLayout({
 
               <div className="p-3 bg-slate-900 border-t border-slate-800 text-center text-xs text-slate-400 flex items-center justify-between px-4">
                 <span>Nando's Ar Condicionado — Painel Exclusivo do Administrador</span>
-                <button onClick={realizarLogoutCompleto} className="text-red-400 hover:underline text-xs font-semibold">
-                  Desconectar Sessão
+                <button onClick={realizarLogoutCompleto} className="text-red-400 hover:underline text-xs font-semibold flex items-center gap-1">
+                  <LogOut size={12} /> Desconectar Sessão
                 </button>
               </div>
             </div>
