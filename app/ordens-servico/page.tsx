@@ -256,75 +256,212 @@ function SignatureModal({
   );
 }
 
-function printServiceOrder(order: ServiceOrder) {
+async function printServiceOrder(order: ServiceOrder) {
+  // Busca a assinatura mais recente diretamente do banco antes de imprimir.
+  // Isso evita que a impressão use uma versão antiga da OS que ainda esteja
+  // na memória da tela.
+  let printableOrder = order;
+
+  try {
+    const { data } = await supabase
+      .from("ordens_servico")
+      .select("assinatura_admin")
+      .eq("id", order.id)
+      .maybeSingle();
+
+    if (data?.assinatura_admin) {
+      printableOrder = {
+        ...order,
+        signatureAdmin: String(data.assinatura_admin),
+      };
+    }
+  } catch (error) {
+    // Se a consulta falhar, usa a assinatura que já está carregada na tela.
+    console.error("Não foi possível atualizar a assinatura antes da impressão:", error);
+  }
+
+  const signatureHtml = printableOrder.signatureAdmin
+    ? `
+      <div class="signature-image-wrap">
+        <img
+          id="admin-signature"
+          src="${escapeHtml(printableOrder.signatureAdmin)}"
+          alt="Assinatura do Administrador"
+        />
+      </div>
+    `
+    : `
+      <div class="signature-placeholder">
+        Assinatura Digital ADM
+      </div>
+    `;
+
   const html = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>OS ${escapeHtml(order.number)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OS ${escapeHtml(printableOrder.number)}</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 0; padding: 30px; color: #111827; }
-  .header { border-bottom: 2px solid #111827; padding-bottom: 15px; margin-bottom: 25px; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 30px;
+    color: #111827;
+    background: #fff;
+  }
+  .header {
+    border-bottom: 2px solid #111827;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+  }
   h1 { margin: 0; font-size: 24px; }
-  h2 { font-size: 17px; margin-top: 25px; border-bottom: 1px solid #ddd; padding-bottom: 7px; }
+  h2 {
+    font-size: 17px;
+    margin-top: 25px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 7px;
+  }
   .muted { color: #6b7280; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .box { border: 1px solid #ddd; padding: 12px; border-radius: 8px; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .box {
+    border: 1px solid #ddd;
+    padding: 12px;
+    border-radius: 8px;
+  }
   .label { color: #6b7280; font-size: 12px; }
   .value { font-weight: bold; margin-top: 4px; }
   .total { font-size: 20px; font-weight: bold; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; }
-  .signature-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; text-align: center; min-height: 90px; }
-  .signature-box img { max-height: 70px; margin-top: 5px; }
-  footer { margin-top: 40px; text-align: center; font-size: 12px; color: #6b7280; }
+  .signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-top: 50px;
+  }
+  .signature-box {
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    min-height: 130px;
+  }
+  .signature-image-wrap {
+    height: 85px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .signature-box img {
+    display: block;
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    max-height: 80px;
+    object-fit: contain;
+  }
+  .signature-placeholder {
+    margin-top: 50px;
+    color: #999;
+    border-top: 1px dashed #ccc;
+    padding-top: 5px;
+  }
+  footer {
+    margin-top: 40px;
+    text-align: center;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  @media print {
+    body { padding: 15mm; }
+    .signature-box img { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  }
 </style>
 </head>
 <body>
 <div class="header">
   <h1>Nando's Ar-Condicionado</h1>
   <div class="muted">Qualidade e confiança em todos os detalhes.</div>
-  <div style="margin-top:8px"><strong>ORDEM DE SERVIÇO ${escapeHtml(order.number)}</strong></div>
+  <div style="margin-top:8px"><strong>ORDEM DE SERVIÇO ${escapeHtml(printableOrder.number)}</strong></div>
 </div>
+
 <h2>Cliente e Equipe</h2>
 <div class="grid">
-  <div class="box"><div class="label">Nome do Cliente</div><div class="value">${escapeHtml(order.client)}</div></div>
-  <div class="box"><div class="label">Cidade</div><div class="value">${escapeHtml(order.city)}</div></div>
-  <div class="box"><div class="label">Data</div><div class="value">${escapeHtml(formatDate(order.date))}</div></div>
-  <div class="box"><div class="label">Técnico / Ajudante</div><div class="value">${escapeHtml(order.technician || "Não definido")} ${order.helper ? `/ ${escapeHtml(order.helper)}` : ""}</div></div>
+  <div class="box"><div class="label">Nome do Cliente</div><div class="value">${escapeHtml(printableOrder.client)}</div></div>
+  <div class="box"><div class="label">Cidade</div><div class="value">${escapeHtml(printableOrder.city)}</div></div>
+  <div class="box"><div class="label">Data</div><div class="value">${escapeHtml(formatDate(printableOrder.date))}</div></div>
+  <div class="box"><div class="label">Técnico / Ajudante</div><div class="value">${escapeHtml(printableOrder.technician || "Não definido")} ${printableOrder.helper ? `/ ${escapeHtml(printableOrder.helper)}` : ""}</div></div>
 </div>
+
 <h2>Equipamento e Serviço</h2>
 <div class="box">
   <div class="label">Equipamento</div>
-  <div class="value">${escapeHtml(order.equipment || "Não informado")}</div>
+  <div class="value">${escapeHtml(printableOrder.equipment || "Não informado")}</div>
   <div style="margin-top:12px" class="label">Tipo de Serviço</div>
-  <div class="value">${escapeHtml(order.serviceType)}</div>
+  <div class="value">${escapeHtml(printableOrder.serviceType)}</div>
   <div style="margin-top:12px" class="label">Descrição</div>
-  <div style="margin-top:4px">${escapeHtml(order.description || "Não informada")}</div>
+  <div style="margin-top:4px">${escapeHtml(printableOrder.description || "Não informada")}</div>
 </div>
+
 <h2>Valores</h2>
 <div class="grid">
-  <div class="box"><div class="label">Valor do Serviço</div><div class="value">${formatCurrency(order.serviceValue)}</div></div>
-  <div class="box"><div class="label">Total Geral</div><div class="total">${formatCurrency(order.value)}</div></div>
+  <div class="box"><div class="label">Valor do Serviço</div><div class="value">${formatCurrency(printableOrder.serviceValue)}</div></div>
+  <div class="box"><div class="label">Total Geral</div><div class="total">${formatCurrency(printableOrder.value)}</div></div>
 </div>
+
 <h2>Assinaturas e Aprovação</h2>
 <div class="signatures">
   <div class="signature-box">
     <div class="label">Assinatura do Administrador (Nando's)</div>
-    ${order.signatureAdmin ? `<img src="${order.signatureAdmin}" />` : `<div style="margin-top:40px; color:#999; border-top: 1px dashed #ccc; padding-top: 5px;">Assinatura Digital ADM</div>`}
+    ${signatureHtml}
   </div>
   <div class="signature-box">
     <div class="label">Assinatura do Cliente (Aprovação)</div>
-    <div style="margin-top:40px; color:#999; border-top: 1px dashed #ccc; padding-top: 5px;">Assine aqui</div>
+    <div class="signature-placeholder">Assine aqui</div>
   </div>
 </div>
+
 <footer>Nando's Ar-Condicionado</footer>
-<script>window.onload = function() { window.print(); };</script>
+
+<script>
+  (function () {
+    function imprimir() {
+      setTimeout(function () {
+        window.focus();
+        window.print();
+      }, 300);
+    }
+
+    window.addEventListener("load", function () {
+      var imagem = document.getElementById("admin-signature");
+
+      if (imagem && !imagem.complete) {
+        imagem.onload = imprimir;
+        imagem.onerror = imprimir;
+      } else {
+        imprimir();
+      }
+    });
+  })();
+</script>
 </body>
 </html>
 `;
+
   const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
+  if (!printWindow) {
+    alert("O navegador bloqueou a janela de impressão. Permita pop-ups para o ClimaPro e tente novamente.");
+    return;
+  }
+
+  printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
 }
