@@ -42,6 +42,14 @@ type Client = {
   cidade: string;
 };
 
+type Technician = {
+  id: string;
+  nome: string;
+  cargo?: string | null;
+  funcao?: string | null;
+  status?: string | null;
+};
+
 const STATUS: AppointmentStatus[] = [
   "Agendado",
   "Confirmado",
@@ -100,6 +108,7 @@ export default function AgendaPage() {
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -122,22 +131,39 @@ export default function AgendaPage() {
   async function loadData() {
     setLoading(true);
 
-    const [appointmentsResult, clientsResult] = await Promise.all([
+    const [
+      appointmentsResult,
+      clientsResult,
+      techniciansResult,
+    ] = await Promise.all([
       supabase
         .from("agenda")
         .select("*")
         .order("data", { ascending: true })
         .order("horario", { ascending: true }),
 
+      // Não usamos .eq("ativo", true), porque essa coluna
+      // pode não existir na tabela clientes.
       supabase
         .from("clientes")
         .select("id,nome,cidade")
-        .eq("ativo", true)
+        .order("nome", { ascending: true }),
+
+      // Busca os técnicos cadastrados.
+      // Não filtramos por cargo para não esconder técnicos
+      // que estejam cadastrados com outra nomenclatura.
+      supabase
+        .from("funcionarios")
+        .select("id,nome,cargo,funcao,status")
         .order("nome", { ascending: true }),
     ]);
 
     if (appointmentsResult.error) {
-      console.error(appointmentsResult.error);
+      console.error(
+        "Erro ao carregar agenda:",
+        appointmentsResult.error
+      );
+
       alert("Não foi possível carregar a agenda.");
     } else {
       setAppointments(
@@ -146,9 +172,36 @@ export default function AgendaPage() {
     }
 
     if (clientsResult.error) {
-      console.error(clientsResult.error);
+      console.error(
+        "Erro ao carregar clientes:",
+        clientsResult.error
+      );
+
+      alert("Não foi possível carregar os clientes.");
     } else {
       setClients((clientsResult.data || []) as Client[]);
+    }
+
+    if (techniciansResult.error) {
+      console.error(
+        "Erro ao carregar técnicos:",
+        techniciansResult.error
+      );
+
+      setTechnicians([]);
+      alert(
+        "Não foi possível carregar os técnicos cadastrados."
+      );
+    } else {
+      const loadedTechnicians =
+        (techniciansResult.data || []) as Technician[];
+
+      setTechnicians(loadedTechnicians);
+
+      console.log(
+        "Técnicos carregados na Agenda:",
+        loadedTechnicians
+      );
     }
 
     setLoading(false);
@@ -175,12 +228,26 @@ export default function AgendaPage() {
   function handleClientChange(clientId: string) {
     setSelectedClientId(clientId);
 
-    const client = clients.find((item) => item.id === clientId);
+    const client = clients.find(
+      (item) => item.id === clientId
+    );
 
     if (client) {
       setCity(client.cidade || "");
     } else {
       setCity("");
+    }
+  }
+
+  function handleTechnicianChange(technicianId: string) {
+    const selectedTechnician = technicians.find(
+      (item) => item.id === technicianId
+    );
+
+    if (selectedTechnician) {
+      setTechnician(selectedTechnician.nome);
+    } else {
+      setTechnician("");
     }
   }
 
@@ -196,7 +263,7 @@ export default function AgendaPage() {
     }
 
     if (!technician.trim()) {
-      alert("Informe o técnico.");
+      alert("Selecione o técnico.");
       return;
     }
 
@@ -235,14 +302,21 @@ export default function AgendaPage() {
     const insertError = insertResult.error;
 
     if (insertError) {
-      console.error(insertError);
+      console.error(
+        "Erro ao salvar atendimento:",
+        insertError
+      );
+
       alert("Não foi possível salvar o atendimento.");
       setSaving(false);
       return;
     }
 
     if (!insertedAppointment) {
-      alert("O atendimento foi enviado, mas não retornou os dados.");
+      alert(
+        "O atendimento foi enviado, mas não retornou os dados."
+      );
+
       setSaving(false);
       return;
     }
@@ -282,7 +356,9 @@ export default function AgendaPage() {
     );
   }
 
-  async function deleteAppointment(appointment: Appointment) {
+  async function deleteAppointment(
+    appointment: Appointment
+  ) {
     const confirmed = window.confirm(
       `Excluir o atendimento de ${appointment.cliente_nome}?`
     );
@@ -301,7 +377,9 @@ export default function AgendaPage() {
     }
 
     setAppointments((current) =>
-      current.filter((item) => item.id !== appointment.id)
+      current.filter(
+        (item) => item.id !== appointment.id
+      )
     );
   }
 
@@ -317,9 +395,12 @@ export default function AgendaPage() {
 
   const dailyAppointments = useMemo(() => {
     return appointments
-      .filter((appointment) => appointment.data === date)
+      .filter(
+        (appointment) => appointment.data === date
+      )
       .filter((appointment) => {
         if (statusFilter === "Todos") return true;
+
         return appointment.status === statusFilter;
       })
       .filter((appointment) => {
@@ -328,16 +409,29 @@ export default function AgendaPage() {
         if (!term) return true;
 
         return (
-          appointment.cliente_nome.toLowerCase().includes(term) ||
-          appointment.cidade.toLowerCase().includes(term) ||
-          appointment.servico.toLowerCase().includes(term) ||
-          appointment.tecnico.toLowerCase().includes(term)
+          appointment.cliente_nome
+            .toLowerCase()
+            .includes(term) ||
+          appointment.cidade
+            .toLowerCase()
+            .includes(term) ||
+          appointment.servico
+            .toLowerCase()
+            .includes(term) ||
+          appointment.tecnico
+            .toLowerCase()
+            .includes(term)
         );
       })
       .sort((a, b) =>
         a.horario.localeCompare(b.horario)
       );
-  }, [appointments, date, search, statusFilter]);
+  }, [
+    appointments,
+    date,
+    search,
+    statusFilter,
+  ]);
 
   const totalDay = appointments.filter(
     (appointment) => appointment.data === date
@@ -419,7 +513,10 @@ export default function AgendaPage() {
               </button>
 
               <div className="ml-2 flex items-center gap-2">
-                <CalendarDays size={18} className="text-blue-600" />
+                <CalendarDays
+                  size={18}
+                  className="text-blue-600"
+                />
 
                 <span className="font-semibold text-gray-900">
                   {formatDateBR(date)}
@@ -436,7 +533,9 @@ export default function AgendaPage() {
 
                 <input
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) =>
+                    setSearch(event.target.value)
+                  }
                   placeholder="Buscar atendimento..."
                   className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 sm:w-64"
                 />
@@ -446,12 +545,16 @@ export default function AgendaPage() {
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(
-                    event.target.value as AppointmentStatus | "Todos"
+                    event.target.value as
+                      | AppointmentStatus
+                      | "Todos"
                   )
                 }
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500"
               >
-                <option value="Todos">Todos os status</option>
+                <option value="Todos">
+                  Todos os status
+                </option>
 
                 {STATUS.map((status) => (
                   <option key={status} value={status}>
@@ -603,13 +706,17 @@ export default function AgendaPage() {
                         onChange={(event) =>
                           updateStatus(
                             appointment,
-                            event.target.value as AppointmentStatus
+                            event.target
+                              .value as AppointmentStatus
                           )
                         }
                         className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                       >
                         {STATUS.map((status) => (
-                          <option key={status} value={status}>
+                          <option
+                            key={status}
+                            value={status}
+                          >
                             {status}
                           </option>
                         ))}
@@ -617,7 +724,9 @@ export default function AgendaPage() {
 
                       <button
                         onClick={() =>
-                          deleteAppointment(appointment)
+                          deleteAppointment(
+                            appointment
+                          )
                         }
                         className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
                         title="Excluir"
@@ -644,7 +753,8 @@ export default function AgendaPage() {
                 </h2>
 
                 <p className="text-sm text-gray-500">
-                  Agendar atendimento para {formatDateBR(date)}
+                  Agendar atendimento para{" "}
+                  {formatDateBR(date)}
                 </p>
               </div>
 
@@ -657,6 +767,7 @@ export default function AgendaPage() {
             </div>
 
             <div className="space-y-4 p-5">
+              {/* CLIENTE */}
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                   Cliente
@@ -665,22 +776,30 @@ export default function AgendaPage() {
                 <select
                   value={selectedClientId}
                   onChange={(event) =>
-                    handleClientChange(event.target.value)
+                    handleClientChange(
+                      event.target.value
+                    )
                   }
                   className="w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500"
                 >
                   <option value="">
-                    Selecione o cliente
+                    {clients.length === 0
+                      ? "Nenhum cliente cadastrado"
+                      : "Selecione o cliente"}
                   </option>
 
                   {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
+                    <option
+                      key={client.id}
+                      value={client.id}
+                    >
                       {client.nome}
                     </option>
                   ))}
                 </select>
               </div>
 
+              {/* CIDADE */}
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                   Cidade
@@ -688,12 +807,15 @@ export default function AgendaPage() {
 
                 <input
                   value={city}
-                  onChange={(event) => setCity(event.target.value)}
+                  onChange={(event) =>
+                    setCity(event.target.value)
+                  }
                   placeholder="Cidade"
                   className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                 />
               </div>
 
+              {/* SERVIÇO */}
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                   Serviço
@@ -701,26 +823,60 @@ export default function AgendaPage() {
 
                 <input
                   value={service}
-                  onChange={(event) => setService(event.target.value)}
+                  onChange={(event) =>
+                    setService(event.target.value)
+                  }
                   placeholder="Ex.: Instalação, manutenção..."
                   className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                 />
               </div>
 
+              {/* TÉCNICO + HORÁRIO */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-gray-700">
                     Técnico
                   </label>
 
-                  <input
-                    value={technician}
-                    onChange={(event) =>
-                      setTechnician(event.target.value)
+                  <select
+                    value={
+                      technicians.find(
+                        (item) =>
+                          item.nome === technician
+                      )?.id || ""
                     }
-                    placeholder="Nome do técnico"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
-                  />
+                    onChange={(event) =>
+                      handleTechnicianChange(
+                        event.target.value
+                      )
+                    }
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">
+                      {technicians.length === 0
+                        ? "Nenhum técnico encontrado"
+                        : "Selecione o técnico"}
+                    </option>
+
+                    {technicians.map((item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                      >
+                        {item.nome}
+                        {item.cargo
+                          ? ` — ${item.cargo}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {technicians.length === 0 && (
+                    <p className="mt-1 text-xs text-red-500">
+                      Nenhum funcionário foi encontrado
+                      na tabela de técnicos.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -731,7 +887,9 @@ export default function AgendaPage() {
                   <input
                     type="time"
                     value={time}
-                    onChange={(event) => setTime(event.target.value)}
+                    onChange={(event) =>
+                      setTime(event.target.value)
+                    }
                     className="w-full rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none focus:border-blue-500"
                   />
                 </div>
@@ -752,7 +910,9 @@ export default function AgendaPage() {
                 disabled={saving}
                 className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? "Salvando..." : "Salvar atendimento"}
+                {saving
+                  ? "Salvando..."
+                  : "Salvar atendimento"}
               </button>
             </div>
           </div>
