@@ -12,11 +12,13 @@ import {
   DollarSign,
   Clock,
   CheckCircle,
+  FileText,
 } from "lucide-react";
 import { createClient } from "../../lib/supabase/client";
 
 type TransactionType = "Entrada" | "Saída";
 type TransactionStatus = "Pago" | "Pendente";
+type TransactionOrigin = "Manual" | "OS";
 
 type Transaction = {
   id: string;
@@ -28,8 +30,30 @@ type Transaction = {
   data: string;
   status: TransactionStatus;
   observacoes: string | null;
+  origem: TransactionOrigin;
+  origemId?: string;
+  numeroOS?: string;
   created_at?: string;
   updated_at?: string;
+};
+
+type OrdemServicoFinanceiro = {
+  id: string;
+  numero: string | null;
+  cliente_nome: string | null;
+  tipo_servico: string | null;
+  data: string | null;
+  valor: number | null;
+  valor_servicos: number | null;
+  valor_materiais: number | null;
+  materiais_descricao: string | null;
+  materiais_pago: boolean | null;
+  materiais_pago_em: string | null;
+  materiais_forma_pagamento: string | null;
+  forma_pagamento: string | null;
+  data_pagamento: string | null;
+  status: string | null;
+  financeiro_movimentacao_id: string | null;
 };
 
 const categories = [
@@ -67,6 +91,7 @@ export default function FinanceiroClient() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("Todos");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [originFilter, setOriginFilter] = useState("Todos");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,24 +99,229 @@ export default function FinanceiroClient() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  function normalizeNumber(value: unknown) {
+    const number = Number(value || 0);
+
+    if (Number.isNaN(number)) {
+      return 0;
+    }
+
+    return number;
+  }
+
+  function getServiceValue(os: OrdemServicoFinanceiro) {
+    const valorServicos = normalizeNumber(os.valor_servicos);
+
+    if (valorServicos > 0) {
+      return valorServicos;
+    }
+
+    return normalizeNumber(os.valor);
+  }
+
+  function isServicePaid(os: OrdemServicoFinanceiro) {
+    return Boolean(
+      os.forma_pagamento ||
+        os.data_pagamento ||
+        os.financeiro_movimentacao_id
+    );
+  }
+
+  function buildOSTransactions(
+    ordens: OrdemServicoFinanceiro[]
+  ): Transaction[] {
+    const result: Transaction[] = [];
+
+    for (const os of ordens) {
+      const numeroOS = os.numero || os.id.slice(0, 8);
+      const cliente = os.cliente_nome || null;
+
+      /*
+       * SERVIÇO
+       *
+       * O serviço entra no Financeiro quando a OS possui
+       * registro de pagamento.
+       */
+      const valorServico = getServiceValue(os);
+
+      if (valorServico > 0 && isServicePaid(os)) {
+        result.push({
+          id: `os-servico-${os.id}`,
+          descricao: `OS ${numeroOS} — Serviço`,
+          cliente,
+          categoria:
+            os.tipo_servico?.trim() || "Manutenção",
+          tipo: "Entrada",
+          valor: valorServico,
+          data:
+            os.data_pagamento ||
+            os.data ||
+            new Date().toISOString().slice(0, 10),
+          status: "Pago",
+          observacoes:
+            os.forma_pagamento
+              ? `Pagamento do serviço da ${numeroOS}. Forma de pagamento: ${os.forma_pagamento}.`
+              : `Pagamento do serviço da ${numeroOS}.`,
+          origem: "OS",
+          origemId: os.id,
+          numeroOS,
+        });
+      }
+
+      /*
+       * MATERIAIS
+       *
+       * Os materiais possuem pagamento separado do serviço.
+       */
+      const valorMateriais = normalizeNumber(
+        os.valor_materiais
+      );
+
+      if (valorMateriais > 0 && os.materiais_pago) {
+        result.push({
+          id: `os-materiais-${os.id}`,
+          descricao: `OS ${numeroOS} — Materiais`,
+          cliente,
+          categoria: "Materiais",
+          tipo: "Entrada",
+          valor: valorMateriais,
+          data:
+            os.materiais_pago_em ||
+            os.data ||
+            new Date().toISOString().slice(0, 10),
+          status: "Pago",
+          observacoes:
+            os.materiais_descricao
+              ? `Materiais: ${os.materiais_descricao}${
+                  os.materiais_forma_pagamento
+                    ? ` Forma de pagamento: ${os.materiais_forma_pagamento}.`
+                    : ""
+                }`
+              : `Materiais da ${numeroOS}${
+                  os.materiais_forma_pagamento
+                    ? `. Forma de pagamento: ${os.materiais_forma_pagamento}.`
+                    : "."
+                }`,
+          origem: "OS",
+          origemId: os.id,
+          numeroOS,
+        });
+      }
+    }
+
+    return result;
+  }
+
   async function loadTransactions() {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("lancamentos_financeiros")
-      .select("*")
-      .order("data", { ascending: false })
-      .order("created_at", { ascending: false });
+    try {
+      const [
+        lancamentosResult,
+        ordensResult,
+      ] = await Promise.all([
+        supabase
+          .from("lancamentos_financeiros")
+          .select("*")
+          .order("data", { ascending: false })
+          .order("created_at", { ascending: false }),
 
-    if (error) {
-      console.error("Erro ao carregar financeiro:", error);
-      alert(`Erro ao carregar financeiro: ${error.message}`);
+        supabase
+          .from("ordens_servico")
+          .select(
+            `
+              id,
+              numero,
+              cliente_nome,
+              tipo_servico,
+              data,
+              valor,
+              valor_servicos,
+              valor_materiais,
+              materiais_descricao,
+              materiais_pago,
+              materiais_pago_em,
+              materiais_forma_pagamento,
+              forma_pagamento,
+              data_pagamento,
+              status,
+              financeiro_movimentacao_id
+            `
+          )
+          .order("data", { ascending: false }),
+      ]);
+
+      if (lancamentosResult.error) {
+        console.error(
+          "Erro ao carregar lançamentos:",
+          lancamentosResult.error
+        );
+
+        alert(
+          `Erro ao carregar financeiro: ${lancamentosResult.error.message}`
+        );
+
+        setTransactions([]);
+        return;
+      }
+
+      if (ordensResult.error) {
+        console.error(
+          "Erro ao carregar ordens para o financeiro:",
+          ordensResult.error
+        );
+
+        /*
+         * Mesmo se a consulta das OS falhar, mantemos o
+         * Financeiro manual funcionando.
+         */
+        const manualTransactions: Transaction[] =
+          (lancamentosResult.data || []).map(
+            (item: any) => ({
+              ...item,
+              origem: "Manual",
+            })
+          );
+
+        setTransactions(manualTransactions);
+        return;
+      }
+
+      const manualTransactions: Transaction[] =
+        (lancamentosResult.data || []).map(
+          (item: any) => ({
+            ...item,
+            origem: "Manual",
+          })
+        );
+
+      const osTransactions = buildOSTransactions(
+        (ordensResult.data ||
+          []) as OrdemServicoFinanceiro[]
+      );
+
+      /*
+       * Mantém os lançamentos manuais e adiciona os
+       * pagamentos originados das OS.
+       */
+      setTransactions([
+        ...osTransactions,
+        ...manualTransactions,
+      ]);
+    } catch (error) {
+      console.error(
+        "Erro inesperado ao carregar financeiro:",
+        error
+      );
+
+      alert(
+        "Ocorreu um erro inesperado ao carregar o financeiro."
+      );
+
       setTransactions([]);
-    } else {
-      setTransactions((data || []) as Transaction[]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -100,11 +330,21 @@ export default function FinanceiroClient() {
 
   function openNew() {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      data: new Date().toISOString().slice(0, 10),
+    });
     setModalOpen(true);
   }
 
   function openEdit(transaction: Transaction) {
+    if (transaction.origem === "OS") {
+      alert(
+        "Este lançamento veio de uma Ordem de Serviço. Para alterar o pagamento, altere a própria OS."
+      );
+      return;
+    }
+
     setEditingId(transaction.id);
 
     setForm({
@@ -126,7 +366,11 @@ export default function FinanceiroClient() {
 
     setModalOpen(false);
     setEditingId(null);
-    setForm(emptyForm);
+
+    setForm({
+      ...emptyForm,
+      data: new Date().toISOString().slice(0, 10),
+    });
   }
 
   async function saveTransaction(
@@ -144,6 +388,11 @@ export default function FinanceiroClient() {
       return;
     }
 
+    if (!form.data) {
+      alert("Informe a data.");
+      return;
+    }
+
     setSaving(true);
 
     const dataToSave = {
@@ -154,7 +403,8 @@ export default function FinanceiroClient() {
       valor: Number(form.valor),
       data: form.data,
       status: form.status,
-      observacoes: form.observacoes.trim() || null,
+      observacoes:
+        form.observacoes.trim() || null,
     };
 
     try {
@@ -166,13 +416,17 @@ export default function FinanceiroClient() {
 
         if (error) {
           console.error(error);
+
           alert(
             `Erro ao atualizar lançamento: ${error.message}`
           );
+
           return;
         }
 
-        alert("Lançamento atualizado com sucesso.");
+        alert(
+          "Lançamento atualizado com sucesso."
+        );
       } else {
         const { error } = await supabase
           .from("lancamentos_financeiros")
@@ -180,13 +434,17 @@ export default function FinanceiroClient() {
 
         if (error) {
           console.error(error);
+
           alert(
             `Erro ao criar lançamento: ${error.message}`
           );
+
           return;
         }
 
-        alert("Lançamento criado com sucesso.");
+        alert(
+          "Lançamento criado com sucesso."
+        );
       }
 
       closeModal();
@@ -196,7 +454,16 @@ export default function FinanceiroClient() {
     }
   }
 
-  async function deleteTransaction(id: string) {
+  async function deleteTransaction(
+    transaction: Transaction
+  ) {
+    if (transaction.origem === "OS") {
+      alert(
+        "Este lançamento é vinculado à Ordem de Serviço e não pode ser excluído por aqui. Altere o pagamento na própria OS."
+      );
+      return;
+    }
+
     const confirmed = window.confirm(
       "Tem certeza que deseja excluir este lançamento?"
     );
@@ -206,16 +473,22 @@ export default function FinanceiroClient() {
     const { error } = await supabase
       .from("lancamentos_financeiros")
       .delete()
-      .eq("id", id);
+      .eq("id", transaction.id);
 
     if (error) {
       console.error(error);
-      alert(`Erro ao excluir lançamento: ${error.message}`);
+
+      alert(
+        `Erro ao excluir lançamento: ${error.message}`
+      );
+
       return;
     }
 
     setTransactions((previous) =>
-      previous.filter((item) => item.id !== id)
+      previous.filter(
+        (item) => item.id !== transaction.id
+      )
     );
 
     alert("Lançamento excluído.");
@@ -225,6 +498,13 @@ export default function FinanceiroClient() {
     transaction: Transaction,
     status: TransactionStatus
   ) {
+    if (transaction.origem === "OS") {
+      alert(
+        "Este lançamento veio de uma Ordem de Serviço. Para alterar o status do pagamento, altere o pagamento na própria OS."
+      );
+      return;
+    }
+
     const { error } = await supabase
       .from("lancamentos_financeiros")
       .update({ status })
@@ -232,7 +512,11 @@ export default function FinanceiroClient() {
 
     if (error) {
       console.error(error);
-      alert(`Erro ao alterar status: ${error.message}`);
+
+      alert(
+        `Erro ao alterar status: ${error.message}`
+      );
+
       return;
     }
 
@@ -259,6 +543,9 @@ export default function FinanceiroClient() {
           .includes(term) ||
         transaction.categoria
           .toLowerCase()
+          .includes(term) ||
+        (transaction.numeroOS || "")
+          .toLowerCase()
           .includes(term);
 
       const matchesType =
@@ -269,10 +556,15 @@ export default function FinanceiroClient() {
         statusFilter === "Todos" ||
         transaction.status === statusFilter;
 
+      const matchesOrigin =
+        originFilter === "Todos" ||
+        transaction.origem === originFilter;
+
       return (
         matchesSearch &&
         matchesType &&
-        matchesStatus
+        matchesStatus &&
+        matchesOrigin
       );
     });
   }, [
@@ -280,19 +572,22 @@ export default function FinanceiroClient() {
     search,
     typeFilter,
     statusFilter,
+    originFilter,
   ]);
 
   const totalEntradas = transactions
     .filter((item) => item.tipo === "Entrada")
     .reduce(
-      (total, item) => total + Number(item.valor || 0),
+      (total, item) =>
+        total + Number(item.valor || 0),
       0
     );
 
   const totalSaidas = transactions
     .filter((item) => item.tipo === "Saída")
     .reduce(
-      (total, item) => total + Number(item.valor || 0),
+      (total, item) =>
+        total + Number(item.valor || 0),
       0
     );
 
@@ -306,6 +601,22 @@ export default function FinanceiroClient() {
         (item.tipo === "Entrada"
           ? Number(item.valor || 0)
           : -Number(item.valor || 0)),
+      0
+    );
+
+  const totalOS = transactions
+    .filter((item) => item.origem === "OS")
+    .reduce(
+      (total, item) =>
+        total + Number(item.valor || 0),
+      0
+    );
+
+  const totalManual = transactions
+    .filter((item) => item.origem === "Manual")
+    .reduce(
+      (total, item) =>
+        total + Number(item.valor || 0),
       0
     );
 
@@ -338,7 +649,7 @@ export default function FinanceiroClient() {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500">
-              Controle as entradas, saídas e o saldo da empresa.
+              Controle as entradas, saídas e os pagamentos das Ordens de Serviço.
             </p>
           </div>
 
@@ -431,6 +742,44 @@ export default function FinanceiroClient() {
           </div>
         </div>
 
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white p-2 text-blue-600 shadow-sm">
+                <FileText size={20} />
+              </div>
+
+              <div>
+                <p className="text-sm text-blue-700">
+                  Recebimentos das OS
+                </p>
+
+                <p className="text-xl font-bold text-blue-900">
+                  {formatCurrency(totalOS)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-gray-100 p-2 text-gray-600">
+                <DollarSign size={20} />
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-600">
+                  Lançamentos manuais
+                </p>
+
+                <p className="text-xl font-bold text-gray-900">
+                  {formatCurrency(totalManual)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-5 rounded-xl bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">
@@ -444,7 +793,7 @@ export default function FinanceiroClient() {
                 onChange={(event) =>
                   setSearch(event.target.value)
                 }
-                placeholder="Buscar lançamento, cliente ou categoria..."
+                placeholder="Buscar lançamento, cliente, categoria ou OS..."
                 className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-4 outline-none focus:border-blue-500"
               />
             </div>
@@ -456,9 +805,17 @@ export default function FinanceiroClient() {
               }
               className="rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
             >
-              <option value="Todos">Todos os tipos</option>
-              <option value="Entrada">Entradas</option>
-              <option value="Saída">Saídas</option>
+              <option value="Todos">
+                Todos os tipos
+              </option>
+
+              <option value="Entrada">
+                Entradas
+              </option>
+
+              <option value="Saída">
+                Saídas
+              </option>
             </select>
 
             <select
@@ -468,9 +825,37 @@ export default function FinanceiroClient() {
               }
               className="rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
             >
-              <option value="Todos">Todos os status</option>
-              <option value="Pago">Pagos</option>
-              <option value="Pendente">Pendentes</option>
+              <option value="Todos">
+                Todos os status
+              </option>
+
+              <option value="Pago">
+                Pagos
+              </option>
+
+              <option value="Pendente">
+                Pendentes
+              </option>
+            </select>
+
+            <select
+              value={originFilter}
+              onChange={(event) =>
+                setOriginFilter(event.target.value)
+              }
+              className="rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+            >
+              <option value="Todos">
+                Todas as origens
+              </option>
+
+              <option value="OS">
+                Ordens de Serviço
+              </option>
+
+              <option value="Manual">
+                Manuais
+              </option>
             </select>
           </div>
         </div>
@@ -492,12 +877,12 @@ export default function FinanceiroClient() {
               </p>
 
               <p className="mt-1 text-sm text-gray-500">
-                Cadastre o primeiro lançamento financeiro.
+                Cadastre um lançamento ou registre um pagamento em uma OS.
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
+              <table className="w-full min-w-[1050px]">
                 <thead className="border-b bg-gray-50">
                   <tr>
                     <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
@@ -514,6 +899,10 @@ export default function FinanceiroClient() {
 
                     <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
                       Categoria
+                    </th>
+
+                    <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
+                      Origem
                     </th>
 
                     <th className="px-4 py-4 text-left text-sm font-semibold text-gray-600">
@@ -568,6 +957,19 @@ export default function FinanceiroClient() {
                         </td>
 
                         <td className="px-4 py-4">
+                          {transaction.origem === "OS" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                              <FileText size={14} />
+                              {transaction.numeroOS || "OS"}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                              Manual
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-4">
                           {transaction.tipo ===
                           "Entrada" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
@@ -594,8 +996,11 @@ export default function FinanceiroClient() {
                           "Entrada"
                             ? "+"
                             : "-"}
+
                           {formatCurrency(
-                            Number(transaction.valor || 0)
+                            Number(
+                              transaction.valor || 0
+                            )
                           )}
                         </td>
 
@@ -619,9 +1024,7 @@ export default function FinanceiroClient() {
                           >
                             {transaction.status ===
                             "Pago" ? (
-                              <CheckCircle
-                                size={14}
-                              />
+                              <CheckCircle size={14} />
                             ) : (
                               <Clock size={14} />
                             )}
@@ -631,29 +1034,38 @@ export default function FinanceiroClient() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() =>
-                                openEdit(transaction)
-                              }
-                              title="Editar"
-                              className="rounded-lg border border-blue-200 p-2 text-blue-600 hover:bg-blue-50"
-                            >
-                              <Edit size={17} />
-                            </button>
+                          {transaction.origem ===
+                          "Manual" ? (
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() =>
+                                  openEdit(
+                                    transaction
+                                  )
+                                }
+                                title="Editar"
+                                className="rounded-lg border border-blue-200 p-2 text-blue-600 hover:bg-blue-50"
+                              >
+                                <Edit size={17} />
+                              </button>
 
-                            <button
-                              onClick={() =>
-                                deleteTransaction(
-                                  transaction.id
-                                )
-                              }
-                              title="Excluir"
-                              className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 size={17} />
-                            </button>
-                          </div>
+                              <button
+                                onClick={() =>
+                                  deleteTransaction(
+                                    transaction
+                                  )
+                                }
+                                title="Excluir"
+                                className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              Alterar na OS
+                            </span>
+                          )}
                         </td>
                       </tr>
                     )
@@ -677,7 +1089,7 @@ export default function FinanceiroClient() {
                 </h2>
 
                 <p className="text-sm text-gray-500">
-                  Registre uma entrada ou saída.
+                  Registre uma entrada ou saída manual.
                 </p>
               </div>
 
