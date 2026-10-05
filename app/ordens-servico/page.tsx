@@ -2646,16 +2646,3 @@ export default function OrdensServicoPage() {
     </main>
   );
 }
-
-Agora faça só este teste: substitua o conteúdo de "app/ordens-servico/page.tsx" por esse arquivo, salve no GitHub e deixe o Vercel fazer o deploy.
-
-Depois de abrir Nova OS, a parte Materiais deverá mostrar:
-
-- Valor dos Materiais
-- Materiais PAGOS / PENDENTES
-- Descrição dos Materiais
-- quando marcar como pago: Forma de Pagamento
-- Data do Pagamento
-- resumo de Serviço + Materiais + Total da OS
-
-E o status de pagamento também aparece na visualização e na impressão da OS.
